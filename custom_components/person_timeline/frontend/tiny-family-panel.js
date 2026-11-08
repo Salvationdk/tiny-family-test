@@ -789,7 +789,7 @@ class TinyFamilyPanel extends HTMLElement {
         });
         const gaps=selected.reduce((total,p)=>
           total+Math.max(0,(p.segments||[]).length-1),0);
-        report.textContent=(count?"Viser "+count+" GPS-punkter.":"Ingen delbare spor i det valgte tidsrum. Kontroller GPS, tidsrummet og Ghost Mode.")+
+        report.textContent=(count?"Viser "+count+" GPS-punkter.":"Ingen delbare spor i det valgte tidsrum. Kontroller GPS og tidsrummet.")+
           (gaps?" · "+gaps+" adskilte rutestykker/GPS-pauser.":"")+
           (gpsStatus.length?" · GPS-status: "+gpsStatus.join("; ")+".":"")+
           " Spor er historiske, ikke en garanti for aktuel position.";
@@ -1204,11 +1204,11 @@ class TinyFamilyPanel extends HTMLElement {
           const head=document.createElement("div");head.className="tf-card-head";
           const title=document.createElement("strong");title.textContent=person.name;
           const liveLabel=document.createElement("span");liveLabel.className="tf-chip";
-          liveLabel.textContent=person.ghost?"Ghost Mode – skjult":
+          liveLabel.textContent=person.ghost?"Tidligere privatmarkering":
             person.stale?"GPS forældet":person.gps_health==="fresh"?"Frisk GPS":"GPS ukendt";
           head.append(title,liveLabel);box.appendChild(head);
           const status=document.createElement("p");
-          status.textContent=person.ghost ? "Ghost Mode – position skjult" :
+          status.textContent=person.ghost ? "Position beskyttet af tidligere privatindstilling" :
             (person.status || "Ukendt")+" · "+(person.stale?"sidste position":"opdateret")+
             (person.battery_percent!=null?" · "+person.battery_percent+" % batteri":"")+
             (person.charging==="on"?" · oplader":"")+
@@ -1601,7 +1601,7 @@ class TinyFamilyPanel extends HTMLElement {
           :(item.label||"Ukendt sted");
         body.textContent=item.duration_min+" min · "+metrics+
           (item.gps_gap?" · GPS-afbrydelse":"")+
-          (item.private?" · registreret under Ghost Mode":"");
+          (item.private?" · historisk privatmarkeret":"");
         card.append(title,body);list.appendChild(card);
       }
       if(!list.children.length){
@@ -1714,7 +1714,7 @@ class TinyFamilyPanel extends HTMLElement {
       ["SOS", "Sender en hjælpanmodning til de konfigurerede telefoner. Dette er ikke en alarmcentral eller en erstatning for 112."],
       ["Beskedstatus", "Accepteret betyder, at Home Assistants notifikationstjeneste tog imod anmodningen, ikke at telefonen har modtaget beskeden. Læsekvittering kræver, at modtageren markerer beskeden som læst inde i Tiny Family. Ved netværksfejl skal du bekræfte et eventuelt nyt forsøg, da det kan give en dobbeltbesked."],
       ["Automatiske alarmer", "Administrator bestemmer pr. familiemedlem hvilke ankomst-, afgangs-, fart-, batteri- og GPS-advarsler der er aktive. Systemhistorikken viser registrerede hændelser, ikke bekræftet push-levering."],
-      ["GPS og sporing", "GPS-sporing styres via den valgte Companion-telefon. Tiny Family har ingen pause- eller Ghost-knap. Hvis telefonens GPS-tilladelse mangler, vises data som gamle eller utilgængelige."],
+      ["GPS og sporing", "GPS-sporing bruger den valgte Companion-telefon. Hvis GPS-tilladelsen mangler, vises positionen som forældet eller utilgængelig."],
       ["Android-widget", "Opret en Action Button-widget i Home Assistant Companion: handling = Kald tjeneste. Vælg person_timeline.mobile_checkin, person_timeline.mobile_heading_home eller person_timeline.mobile_sos."],
       ["iPhone og iPad", "Brug Home Assistant Companion-genveje eller en iOS-Genvej, der kalder de tilsvarende Tiny Family-tjenester med den indloggede brugers konto."],
       ["Svar direkte fra push", "Ved en Companion notify.mobile_app_*-modtager kan du skrive svar på telefonens notifikation. Svarnøglen gælder én gang i højst 24 timer og udløber ved HA-genstart/genindlæsning. Andre notify-enheder har almindelige beskeder uden hurtigsvar."],
