@@ -75,6 +75,17 @@ class TinyFamilyPanel extends HTMLElement {
       .tf-wrap .tf-tabs button[aria-current=page]{border-color:#15b7c9;color:var(--primary-text-color);box-shadow:0 0 0 1px rgba(29,183,201,.17),0 0 12px rgba(29,183,201,.10)}
       .tf-wrap .tf-person{border-color:color-mix(in srgb,var(--divider-color) 83%,#7e69be)}
       .tf-wrap .tf-header-action{border-color:color-mix(in srgb,var(--divider-color) 75%,#35b7d2)}
+      .tf-wrap .tf-save{background:linear-gradient(125deg,color-mix(in srgb,var(--primary-color) 85%,#0ccacc),color-mix(in srgb,var(--primary-color) 78%,#7863bb));box-shadow:0 3px 13px rgba(23,159,186,.14);color:var(--text-primary-color,#fff)}
+      .tf-wrap .tf-save:active{transform:translateY(1px)}
+      .tf-add-place{border-color:color-mix(in srgb,var(--divider-color) 65%,#35bbc9)!important}
+      .tf-add-place>summary{cursor:pointer;list-style:none;display:flex;align-items:center;min-height:45px;font-weight:750;color:var(--primary-text-color);padding:3px 5px}
+      .tf-add-place>summary::-webkit-details-marker{display:none}
+      .tf-add-place[open]>summary{color:var(--primary-color);margin-bottom:10px}
+      .tf-contact-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+      .tf-contact-actions button:first-child,.tf-contact-actions button:last-child{grid-column:1/-1}
+      .tf-contact-actions button{padding:12px 8px}
+      .tf-contact-recipient{display:grid;gap:7px}
+      .tf-contact-recipient select{padding:10px 12px;border:1px solid var(--divider-color);background:var(--primary-background-color);color:var(--primary-text-color);border-radius:10px;min-height:44px}
       .tf-map-tools{border:1px solid var(--divider-color);border-radius:12px;padding:8px 12px;margin:0 0 12px;background:var(--card-background-color)}
       .tf-map-tools summary{cursor:pointer;font-weight:600;padding:6px 0}
       .tf-map-tools>*:not(summary){margin-top:10px}
@@ -462,8 +473,8 @@ class TinyFamilyPanel extends HTMLElement {
     intro.textContent="Fælles steder er synlige for alle familiemedlemmer. Du kan oprette og redigere dine egne. Administrator kan ændre alle steder.";
     root.appendChild(intro);
 
-    const create=document.createElement("section");create.className="tf-person";
-    const head=document.createElement("strong");head.textContent="Tilføj et fælles sted";
+    const create=document.createElement("details");create.className="tf-person tf-add-place";
+    const head=document.createElement("summary");head.textContent="+ Tilføj et fælles sted";
     create.appendChild(head);
     const form=document.createElement("form");form.className="tf-shared-place-form";
     const nameLabel=document.createElement("label");
@@ -523,24 +534,43 @@ class TinyFamilyPanel extends HTMLElement {
         map.setView([latitude,longitude],Math.max(14,map.getZoom()));
       }
     };
-    try{
-      await this.leaflet();
-      if(this.active!=="places")return;
-      map=this.createLeafletMap(pointMap);
-      await this.addBaseMap(map,pointMap);
-      map.setView([
-        this.hassInstance.config.latitude||0,
-        this.hassInstance.config.longitude||0
-      ],11);
-      map.on("click",event=>choose(event.latlng.lat,event.latlng.lng));
-      setTimeout(()=>{if(this._familyMap===map)map.invalidateSize();},150);
-    }catch(error){
-      hint.textContent="Kortet kunne ikke indlæses. Du kan stadig angive koordinater manuelt.";
-    }
-
+    const ensurePlaceMap=async()=>{
+      if(map||!create.open||this.active!=="places")return;
+      try{
+        await this.leaflet();
+        if(this.active!=="places"||!create.open)return;
+        map=this.createLeafletMap(pointMap);
+        await this.addBaseMap(map,pointMap);
+        const status=await this.hassInstance.callApi("GET","tiny_family/status")
+          .catch(()=>null);
+        if(this.active!=="places")return;
+        const mine=status?.people?.find(item=>item.person===status.viewer_person);
+        if(mine && Number.isFinite(mine.latitude) && Number.isFinite(mine.longitude)){
+          map.setView([mine.latitude,mine.longitude],13);
+        }else{
+          map.setView([
+            this.hassInstance.config.latitude||0,
+            this.hassInstance.config.longitude||0
+          ],11);
+        }
+        map.on("click",event=>choose(event.latlng.lat,event.latlng.lng));
+        if(chosen)choose(chosen.latitude,chosen.longitude);
+        setTimeout(()=>{if(this._familyMap===map)map.invalidateSize();},150);
+      }catch(error){
+        hint.textContent="Kortet kunne ikke indlæses. Du kan stadig angive koordinater manuelt.";
+      }
+    };
+    create.addEventListener("toggle",()=>{
+      if(create.open){
+        ensurePlaceMap();
+        if(map)setTimeout(()=>map.invalidateSize(),100);
+      }
+    });
     const fill=(place,defaultName="")=>{
+      create.open=true;
       name.value=defaultName || (place.name==="Ukendt sted"?"":place.name)||"";
       choose(Number(place.latitude),Number(place.longitude));
+      ensurePlaceMap();
       create.scrollIntoView({behavior:"smooth",block:"start"});
       name.focus();
     };
@@ -1913,7 +1943,7 @@ class TinyFamilyPanel extends HTMLElement {
     heading.textContent = "Beskeder og sikkerhed";
     root.appendChild(heading);
     const info = document.createElement("p");
-    info.textContent = "Send beskeder, check-in og SOS gennem Home Assistants tilknyttede notifikationstjenester. En accepteret notifikation er ikke bevis for, at den er leveret på telefonen. En læsekvittering kræver, at modtageren åbner Tiny Family og aktivt markerer beskeden som læst.";
+    info.textContent = "Skriv til familien, giv besked om at du er på vej, eller send en SOS-hjælpanmodning.";
     root.appendChild(info);
 
     const note = document.createElement("p");
@@ -1923,7 +1953,7 @@ class TinyFamilyPanel extends HTMLElement {
     const form = document.createElement("form");
     form.className = "tf-person";
     const input = document.createElement("textarea");
-    input.maxLength = 500; input.rows = 3;
+    input.maxLength = 500; input.rows = 2;
     input.placeholder = "Skriv en besked ...";
     input.setAttribute("aria-label","Besked");
     input.style.cssText = "width:100%;box-sizing:border-box;padding:10px;font:inherit;color:var(--primary-text-color);background:var(--card-background-color);border:1px solid var(--divider-color);border-radius:10px";
@@ -1933,10 +1963,11 @@ class TinyFamilyPanel extends HTMLElement {
     includePositionCheckbox.type="checkbox";
     includePositionCheckbox.checked=true;
     includePositionLabel.append(includePositionCheckbox,document.createTextNode(
-      " Medtag position ved Check-in, På vej hjem og SOS, hvis tilladt under Min dag"));
+      " Medtag frisk GPS-position ved Check-in, På vej hjem og SOS"));
     form.appendChild(includePositionLabel);
     const recipientLabel = document.createElement("label");
-    recipientLabel.textContent = "Send besked til";
+    recipientLabel.textContent = "Modtager";
+    recipientLabel.className = "tf-contact-recipient";
     const recipientSelect = document.createElement("select");
     recipientSelect.setAttribute("aria-label", "Beskedmodtager");
     const everyone = document.createElement("option");
@@ -1945,15 +1976,18 @@ class TinyFamilyPanel extends HTMLElement {
     recipientLabel.appendChild(recipientSelect);
     form.appendChild(recipientLabel);
     const actions = document.createElement("div");
-    actions.style.cssText = "display:flex;flex-wrap:wrap;gap:8px";
+    actions.className = "tf-contact-actions";
     const ids = [
       ["message","Send besked"], ["checkin","Check-in: Jeg er okay"],
       ["heading_home","På vej hjem"], ["sos","SOS – bed om hjælp"]
     ];
     const buttons = [];
-    const deliveryDetails=document.createElement("section");
-    deliveryDetails.className="tf-person";
-    deliveryDetails.setAttribute("aria-label","Beskedstatus");
+    const deliveryDetails=document.createElement("details");
+    deliveryDetails.className="tf-person tf-map-tools";
+    deliveryDetails.setAttribute("aria-label","Information om levering");
+    const deliverySummary=document.createElement("summary");
+    deliverySummary.textContent="Om levering og læsekvitteringer";
+    deliveryDetails.appendChild(deliverySummary);
     const deliveryLegend=document.createElement("p");
     deliveryLegend.className="tf-message";
     deliveryLegend.textContent="1. Accepteret: Home Assistant-notifikationstjenesten har modtaget anmodningen. 2. Leveret: telefonens faktiske modtagelse kan ikke bekræftes. 3. Læst: kun når modtageren aktivt markerer beskeden som læst i Tiny Family.";
@@ -2024,7 +2058,7 @@ class TinyFamilyPanel extends HTMLElement {
       });
     }
     form.appendChild(actions);
-    deliveryDetails.appendChild(retry);
+    form.appendChild(retry);
     form.appendChild(deliveryDetails);
     const shortcuts=document.createElement("div");
     shortcuts.style.cssText="display:flex;gap:6px;flex-wrap:wrap";
