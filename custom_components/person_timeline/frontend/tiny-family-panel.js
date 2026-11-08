@@ -64,7 +64,8 @@ class TinyFamilyPanel extends HTMLElement {
       .tf-person-pin{width:48px;height:48px;border:3px solid #57dce8;display:flex;align-items:center;justify-content:center;border-radius:50%;background:linear-gradient(135deg,#152a37,#29233f);color:#fff;font-weight:800;font-size:15px;box-shadow:0 0 0 2px rgba(255,255,255,.90),0 0 13px rgba(44,202,229,.38);letter-spacing:.4px;flex:none}
       .tf-neon-stats{display:flex;gap:6px;justify-content:center;align-items:center;max-width:132px;padding:5px 8px;border:1px solid rgba(87,220,232,.65);border-radius:999px;background:rgba(17,28,42,.96);color:#effcff;white-space:nowrap;box-shadow:0 0 12px rgba(37,201,224,.2);font-size:11px;line-height:1.2;font-weight:700}
       .tf-neon-metric{display:flex;align-items:center;gap:3px;font-variant-numeric:tabular-nums}
-      .tf-neon-symbol{font-weight:900;color:#6fe9ec;font-size:12px}
+      .tf-neon-symbol{display:inline-flex;align-items:center;justify-content:center;color:#6fe9ec}
+      .tf-neon-symbol svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
       .tf-neon-metric.battery-low,.tf-neon-metric.battery-low .tf-neon-symbol{color:#ff9b9b}
       .tf-neon-stay{padding:3px 8px;border-radius:999px;background:rgba(36,29,55,.96);border:1px solid rgba(180,152,248,.72);box-shadow:0 0 10px rgba(157,127,235,.25);color:#eee2ff;font-size:11px;font-weight:700;white-space:nowrap}
       .tf-neon-stale .tf-person-pin,.tf-neon-stale .tf-neon-stats{box-shadow:none;filter:saturate(.5);border-color:#a7b2c4}
@@ -521,7 +522,7 @@ class TinyFamilyPanel extends HTMLElement {
     adminDetails.appendChild(adminTitle);
     const adminList=document.createElement("div");adminDetails.appendChild(adminList);
 
-    let map=null,chosen=null,marker=null;
+    let map=null,chosen=null,marker=null,mapLoading=false;
     const choose=(latitude,longitude)=>{
       if(!Number.isFinite(latitude)||!Number.isFinite(longitude))return;
       chosen={latitude:Number(latitude.toFixed(6)),longitude:Number(longitude.toFixed(6))};
@@ -535,7 +536,8 @@ class TinyFamilyPanel extends HTMLElement {
       }
     };
     const ensurePlaceMap=async()=>{
-      if(map||!create.open||this.active!=="places")return;
+      if(map||mapLoading||!create.open||this.active!=="places")return;
+      mapLoading=true;
       try{
         await this.leaflet();
         if(this.active!=="places"||!create.open)return;
@@ -558,6 +560,8 @@ class TinyFamilyPanel extends HTMLElement {
         setTimeout(()=>{if(this._familyMap===map)map.invalidateSize();},150);
       }catch(error){
         hint.textContent="Kortet kunne ikke indlæses. Du kan stadig angive koordinater manuelt.";
+      }finally{
+        mapLoading=false;
       }
     };
     create.addEventListener("toggle",()=>{
@@ -1339,7 +1343,10 @@ class TinyFamilyPanel extends HTMLElement {
               item.title=title;
               const glyph=document.createElement("span");
               glyph.className="tf-neon-symbol";
-              glyph.textContent=symbol;
+              // Fixed icon markup: no values from people, names or sensors are injected.
+              glyph.innerHTML=symbol==="speed"
+                ?'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17a9 9 0 0 1 18 0"/><path d="M12 17l5-6"/><circle cx="12" cy="17" r="1.5"/><path d="M6 21h12"/></svg>'
+                :'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="6" width="18" height="12" rx="2"/><path d="M22 10v4"/><path d="M5 9h7v6H5z" fill="currentColor" stroke="none"/></svg>';
               const label=document.createElement("span");
               label.textContent=value;
               item.append(glyph,label);
@@ -1349,9 +1356,9 @@ class TinyFamilyPanel extends HTMLElement {
             const hasSpeed=!person.stale && person.speed_kmh!=null &&
               Number.isFinite(speed) && speed>=0;
             const batteryAvailable=Number.isFinite(battery);
-            addMetric("↗",hasSpeed?Math.round(speed)+" km/t":"— km/t",
+            addMetric("speed",hasSpeed?Math.round(speed)+" km/t":"— km/t",
               hasSpeed?"Aktuel hastighed":"Ingen frisk hastighed");
-            addMetric("▣",batteryAvailable?Math.round(battery)+" %":"— %",
+            addMetric("battery",batteryAvailable?Math.round(battery)+" %":"— %",
               batteryAvailable?"Batteriniveau":"Batteriniveau ikke tilgængeligt",
               batteryAvailable&&battery<=20?"battery-low":"");
             markerBody.appendChild(metricRow);
