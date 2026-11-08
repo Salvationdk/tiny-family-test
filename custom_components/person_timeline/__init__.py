@@ -375,8 +375,14 @@ class TinyFamilySettingsView(HomeAssistantView):
                 raise ValueError("Notification target is not registered")
             # The selected Companion tracker is the source of its sensor bindings.
             # Never guess using a different phone's similarly named entity.
-            previous_trackers = {**entry.data, **entry.options}.get("trackers") or {}
-            for person, tracker in trackers.items():
+            # Each configured member has one authoritative Companion phone.
+            # Ignore caller-supplied sensor entity IDs, even if they point to
+            # another family member's battery/activity sensor.
+            batteries.clear()
+            charging_sensors.clear()
+            activity_sensors.clear()
+            for person in persons:
+                tracker = trackers.get(person)
                 if not tracker:
                     continue
                 found = companion_device_sensors(self.hass, tracker)
@@ -386,10 +392,6 @@ class TinyFamilySettingsView(HomeAssistantView):
                 ):
                     if found.get(key):
                         mapping[person] = found[key]
-                    elif previous_trackers.get(person) != tracker and not mapping.get(person):
-                        # No registry match: keep explicit manual fallback data,
-                        # but do not carry an old phone sensor into an empty field.
-                        mapping.pop(person, None)
         except (KeyError, ValueError, TypeError, AttributeError):
             return web.json_response({"message": "Invalid settings"}, status=400)
         options = dict(entry.options)
