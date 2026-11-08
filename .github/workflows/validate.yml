@@ -27,7 +27,7 @@ jobs:
           runtime = Path("custom_components/person_timeline/__init__.py").read_text()
           assert "shared_places" in src
           assert "admin_suggestions" in src
-          assert '"kind":"shared"' in panel
+          assert 'kind:"shared"' in panel
           assert 'this.active = "live"' in panel
           assert "companion_device_sensors(self.hass, tracker)" in runtime
           assert "batteries.clear()" in runtime
