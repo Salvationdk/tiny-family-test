@@ -58,8 +58,23 @@ class TinyFamilyPanel extends HTMLElement {
       .tf-more summary::-webkit-details-marker{display:none}
       .tf-more-menu{position:absolute;z-index:120;right:0;top:calc(100% + 6px);width:210px;max-width:calc(100vw - 30px);display:grid;gap:4px;padding:8px;border-radius:14px;border:1px solid var(--divider-color);background:var(--card-background-color);box-shadow:0 12px 30px rgba(0,0,0,.2)}
       .tf-more-menu button{display:flex;align-items:center;gap:8px;text-align:left;min-height:43px;padding:8px 10px;border:0;border-radius:9px;color:var(--primary-text-color);background:transparent}
+      /* Tiny Neon: the same muted cyan/violet accents work in HA light and dark themes. */
       .tf-person-icon{border:0;background:transparent}
-      .tf-person-pin{width:48px;height:48px;border:4px solid #1fb77e;display:flex;align-items:center;justify-content:center;border-radius:50%;background:#17343f;color:white;font-weight:800;font-size:15px;box-shadow:0 4px 18px rgba(0,0,0,.36),0 0 0 2px #fff;letter-spacing:.4px}
+      .tf-map-person{display:flex;flex-direction:column;align-items:center;gap:4px;width:132px;min-height:90px;font-family:inherit;transform:translateZ(0);filter:drop-shadow(0 5px 10px rgba(8,15,28,.32))}
+      .tf-person-pin{width:48px;height:48px;border:3px solid #57dce8;display:flex;align-items:center;justify-content:center;border-radius:50%;background:linear-gradient(135deg,#152a37,#29233f);color:#fff;font-weight:800;font-size:15px;box-shadow:0 0 0 2px rgba(255,255,255,.90),0 0 13px rgba(44,202,229,.38);letter-spacing:.4px;flex:none}
+      .tf-neon-stats{display:flex;gap:6px;justify-content:center;align-items:center;max-width:132px;padding:5px 8px;border:1px solid rgba(87,220,232,.65);border-radius:999px;background:rgba(17,28,42,.96);color:#effcff;white-space:nowrap;box-shadow:0 0 12px rgba(37,201,224,.2);font-size:11px;line-height:1.2;font-weight:700}
+      .tf-neon-metric{display:flex;align-items:center;gap:3px;font-variant-numeric:tabular-nums}
+      .tf-neon-symbol{font-weight:900;color:#6fe9ec;font-size:12px}
+      .tf-neon-metric.battery-low,.tf-neon-metric.battery-low .tf-neon-symbol{color:#ff9b9b}
+      .tf-neon-stay{padding:3px 8px;border-radius:999px;background:rgba(36,29,55,.96);border:1px solid rgba(180,152,248,.72);box-shadow:0 0 10px rgba(157,127,235,.25);color:#eee2ff;font-size:11px;font-weight:700;white-space:nowrap}
+      .tf-neon-stale .tf-person-pin,.tf-neon-stale .tf-neon-stats{box-shadow:none;filter:saturate(.5);border-color:#a7b2c4}
+      .tf-neon-stale .tf-neon-stats{color:#c4ceda}
+      .tf-neon-focus{padding:4px 0;min-width:175px;font:inherit}
+      .tf-neon-focus strong{display:block;margin:0 0 6px}
+      .tf-neon-focus span{display:block;margin:3px 0}
+      .tf-wrap .tf-tabs button[aria-current=page]{border-color:#15b7c9;color:var(--primary-text-color);box-shadow:0 0 0 1px rgba(29,183,201,.17),0 0 12px rgba(29,183,201,.10)}
+      .tf-wrap .tf-person{border-color:color-mix(in srgb,var(--divider-color) 83%,#7e69be)}
+      .tf-wrap .tf-header-action{border-color:color-mix(in srgb,var(--divider-color) 75%,#35b7d2)}
       .tf-map-tools{border:1px solid var(--divider-color);border-radius:12px;padding:8px 12px;margin:0 0 12px;background:var(--card-background-color)}
       .tf-map-tools summary{cursor:pointer;font-weight:600;padding:6px 0}
       .tf-map-tools>*:not(summary){margin-top:10px}
@@ -1277,18 +1292,74 @@ class TinyFamilyPanel extends HTMLElement {
             const battery=person.battery_percent;
             const color=person.stale?"#888888":battery!=null&&battery<20?"#d64646":
               battery!=null&&battery<=50?"#d79b3f":"#1fb77e";
+            // Construct a marker from DOM text nodes, never HTML from HA sensor values.
+            const markerBody=document.createElement("div");
+            markerBody.className="tf-map-person"+(person.stale?" tf-neon-stale":"");
             const pin=document.createElement("span");
             pin.className="tf-person-pin";
             pin.textContent=String(person.name||"?").trim().split(/\s+/)
               .slice(0,2).map(word=>word[0]||"").join("").toUpperCase();
             pin.style.borderColor=color;
-            if(person.stale)pin.style.opacity="0.65";
+            markerBody.appendChild(pin);
+            const metricRow=document.createElement("div");
+            metricRow.className="tf-neon-stats";
+            const addMetric=(symbol,value,title,extraClass="")=>{
+              const item=document.createElement("span");
+              item.className="tf-neon-metric"+(extraClass?" "+extraClass:"");
+              item.title=title;
+              const glyph=document.createElement("span");
+              glyph.className="tf-neon-symbol";
+              glyph.textContent=symbol;
+              const label=document.createElement("span");
+              label.textContent=value;
+              item.append(glyph,label);
+              metricRow.appendChild(item);
+            };
+            const speed=Number(person.speed_kmh);
+            const hasSpeed=!person.stale && person.speed_kmh!=null &&
+              Number.isFinite(speed) && speed>=0;
+            const batteryAvailable=Number.isFinite(battery);
+            addMetric("↗",hasSpeed?Math.round(speed)+" km/t":"— km/t",
+              hasSpeed?"Aktuel hastighed":"Ingen frisk hastighed");
+            addMetric("▣",batteryAvailable?Math.round(battery)+" %":"— %",
+              batteryAvailable?"Batteriniveau":"Batteriniveau ikke tilgængeligt",
+              batteryAvailable&&battery<=20?"battery-low":"");
+            markerBody.appendChild(metricRow);
+            const stay=Number(person.stay_minutes);
+            const staying=!person.stale && person.movement==="stationary" &&
+              person.stay_minutes!=null && Number.isFinite(stay) && stay>=0;
+            if(staying){
+              const stayLabel=document.createElement("span");
+              stayLabel.className="tf-neon-stay";
+              stayLabel.textContent="◷ Ophold "+(stay>=60?
+                Math.floor(stay/60)+" t "+Math.floor(stay%60)+" min":
+                Math.floor(stay)+" min");
+              markerBody.appendChild(stayLabel);
+            }
             const icon=window.L.divIcon({
-              className:"tf-person-icon",html:pin.outerHTML,
-              iconSize:[48,48],iconAnchor:[24,24]
+              className:"tf-person-icon",html:markerBody.outerHTML,
+              iconSize:[132,100],iconAnchor:[66,26],popupAnchor:[0,-24]
             });
             const mapMarker=window.L.marker(point,{icon}).addTo(map);
-            const popup=document.createElement("span");popup.textContent=person.name;
+            const popup=document.createElement("div");
+            popup.className="tf-neon-focus";
+            const popupName=document.createElement("strong");
+            popupName.textContent=person.name;
+            popup.appendChild(popupName);
+            const popupInfo=document.createElement("span");
+            popupInfo.textContent=(hasSpeed?Math.round(speed)+" km/t":"Hastighed ikke tilgængelig")+
+              " · "+(batteryAvailable?Math.round(battery)+" % batteri":"Batteri ukendt");
+            popup.appendChild(popupInfo);
+            if(staying){
+              const popupStay=document.createElement("span");
+              popupStay.textContent="Ophold: "+Math.floor(stay)+" minutter";
+              popup.appendChild(popupStay);
+            }
+            if(person.stale){
+              const gps=document.createElement("span");
+              gps.textContent="GPS er ikke opdateret";
+              popup.appendChild(gps);
+            }
             mapMarker.bindPopup(popup);
             bounds.push(point);
             if(!person.stale){
