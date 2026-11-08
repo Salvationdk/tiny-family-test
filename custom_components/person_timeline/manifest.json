@@ -1,0 +1,21 @@
+{
+  "domain": "person_timeline",
+  "name": "Tiny Family",
+  "codeowners": [
+    "@Salvationdk"
+  ],
+  "config_flow": true,
+  "dependencies": [
+    "frontend",
+    "http",
+    "panel_custom",
+    "zone"
+  ],
+  "documentation": "https://github.com/Salvationdk/tiny-family-test",
+  "integration_type": "service",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/Salvationdk/tiny-family-test/issues",
+  "requirements": [],
+  "single_config_entry": true,
+  "version": "0.6.6"
+}

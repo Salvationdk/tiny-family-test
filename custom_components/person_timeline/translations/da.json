@@ -1,0 +1,22 @@
+{
+  "title": "Tiny Family",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Tiny Family",
+        "description": "Vælg de personer, du vil følge. Resten kan konfigureres i Tiny Family-panelets egen editor.",
+        "data": {"persons": "Familiemedlemmer"}
+      }
+    },
+    "abort": {"already_configured": "Tiny Family er allerede tilføjet."}
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Personer",
+        "description": "Avancerede indstillinger findes i Tiny Family-sidepanelet.",
+        "data": {"persons": "Familiemedlemmer"}
+      }
+    }
+  }
+}

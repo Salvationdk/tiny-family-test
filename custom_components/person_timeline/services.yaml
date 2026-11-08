@@ -1,0 +1,206 @@
+get_day_summary:
+  name: Hent dagoversigt
+  description: Returnerer distance, ophold og max-fart for en person i dag.
+  fields:
+    person:
+      name: Person
+      description: Person entity, e.g. person.john_doe
+      required: true
+      selector:
+        entity:
+          domain: person
+
+log_message:
+  name: Gem besked i historik
+  description: Gemmer en sendt besked i beskedhistorikken.
+  fields:
+    fra:
+      name: Afsender
+      description: Navn på afsenderen.
+      required: true
+      selector:
+        text:
+    til:
+      name: Modtager
+      description: Navn på modtageren.
+      required: true
+      selector:
+        text:
+    tekst:
+      name: Tekst
+      description: Beskedens indhold.
+      required: true
+      selector:
+        text:
+          multiline: true
+
+log_notification:
+  name: Gem systembesked i historik
+  description: Gemmer en systemnotifikation (SOS, ankomst, batteri, fart, ture) i historikken.
+  fields:
+    kategori:
+      name: Kategori
+      description: F.eks. SOS, Ankomst, Lavt batteri, Fartalarm, Tur afsluttet.
+      required: true
+      selector:
+        text:
+    tekst:
+      name: Tekst
+      description: Notifikationens indhold.
+      required: true
+      selector:
+        text:
+          multiline: true
+
+create_zone_from_suggestion:
+  name: Opret zone fra forslag
+  description: Opretter en zone ud fra koordinater og navn.
+  fields:
+    navn:
+      name: Navn
+      description: Zonens navn.
+      required: true
+      selector:
+        text:
+    lat:
+      name: Breddegrad
+      required: true
+      selector:
+        number:
+          mode: box
+    lon:
+      name: Længdegrad
+      required: true
+      selector:
+        number:
+          mode: box
+    radius:
+      name: Radius
+      required: false
+      default: 25
+      selector:
+        number:
+          min: 10
+          max: 200
+          mode: box
+          unit_of_measurement: m
+
+label_place:
+  name: Navngiv ukendt sted
+  description: Navngiver et lært sted så det bliver genkendeligt.
+  fields:
+    person:
+      name: Person
+      required: true
+      selector:
+        entity:
+          domain: person
+    lat:
+      name: Breddegrad
+      required: true
+      selector:
+        number:
+          mode: box
+    lon:
+      name: Længdegrad
+      required: true
+      selector:
+        number:
+          mode: box
+    label:
+      name: Navn
+      required: true
+      selector:
+        text:
+
+save_place_as_zone:
+  name: Gem sted og opret zone
+  description: Gemmer det præcise forslag under personen og opretter samtidig en HA-zone.
+  fields:
+    person:
+      name: Person
+      required: true
+      selector:
+        entity:
+          domain: person
+    lat:
+      name: Breddegrad
+      required: true
+      selector:
+        number:
+          mode: box
+    lon:
+      name: Længdegrad
+      required: true
+      selector:
+        number:
+          mode: box
+    navn:
+      name: Navn
+      required: true
+      selector:
+        text:
+    radius:
+      name: Radius
+      required: false
+      default: 25
+      selector:
+        number:
+          min: 10
+          max: 200
+          mode: box
+          unit_of_measurement: m
+
+delete_place_suggestion:
+  name: Slet stedforslag
+  description: Fjerner det valgte unavngivne sted, så det først kan foreslås igen efter et nyt ophold.
+  fields:
+    person:
+      name: Person
+      required: true
+      selector:
+        entity:
+          domain: person
+    lat:
+      name: Breddegrad
+      required: true
+      selector:
+        number:
+          mode: box
+    lon:
+      name: Længdegrad
+      required: true
+      selector:
+        number:
+          mode: box
+
+mobile_checkin:
+  name: Companion – Check-in
+  description: Send Jeg er okay fra den indloggede Home Assistant-bruger til familiens valgte telefoner. Position sendes kun hvis deling er aktiv og lokation er frisk.
+
+mobile_heading_home:
+  name: Companion – På vej hjem
+  description: Send På vej hjem fra den indloggede Home Assistant-bruger. ETA medtages kun når beregningen er pålidelig.
+
+mobile_sos:
+  name: Companion – SOS
+  description: Send en frivillig SOS-hjælpebesked via Companion. Ikke en certificeret nødtjeneste; kan ikke erstatte 112.
+
+mobile_message:
+  name: Companion – Send besked
+  description: Send besked som den indloggede Home Assistant-bruger, valgfrit til én bestemt person.
+  fields:
+    recipient_person:
+      name: Modtager (valgfri)
+      description: Vælg en bestemt familieperson; udelades feltet, sendes til de andre konfigurerede telefoner.
+      required: false
+      selector:
+        entity:
+          domain: person
+    message:
+      name: Besked
+      description: Tekst, der sendes til familiens valgte telefoner.
+      required: true
+      selector:
+        text:
+          multiline: true
