@@ -1,0 +1,35 @@
+name: Validate Tiny Family
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Check Python syntax
+        run: python -m compileall -q custom_components/person_timeline
+      - name: Check JavaScript syntax
+        run: |
+          node --check custom_components/person_timeline/frontend/tiny-family-panel.js
+          node --check custom_components/person_timeline/frontend/person-timeline-card.js
+      - name: Check shared place and phone integration contracts
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          src = Path("custom_components/person_timeline/places_api.py").read_text()
+          panel = Path("custom_components/person_timeline/frontend/tiny-family-panel.js").read_text()
+          runtime = Path("custom_components/person_timeline/__init__.py").read_text()
+          assert "shared_places" in src
+          assert "admin_suggestions" in src
+          assert '"kind":"shared"' in panel
+          assert 'this.active = "live"' in panel
+          assert "companion_device_sensors(self.hass, tracker)" in runtime
+          assert "batteries.clear()" in runtime
+          assert "ghost mode" not in panel.lower()
+          PY
