@@ -439,103 +439,265 @@ class TinyFamilyPanel extends HTMLElement {
   }
 
   async places(root) {
-    const h=document.createElement("h2");h.textContent="Mine opholdssteder";
-    root.appendChild(h);
+    const title=document.createElement("h2");
+    title.textContent="Familiens steder";root.appendChild(title);
     const intro=document.createElement("p");intro.className="tf-message";
-    intro.textContent="Forslag vises efter tre registrerede ophold. Kun din egen konto kan se disse koordinater. Eksisterende HA-zoner redigeres på fælleskortet.";
+    intro.textContent="Fælles steder er synlige for alle familiemedlemmer. Du kan oprette og redigere dine egne. Administrator kan ændre alle steder.";
     root.appendChild(intro);
-    const quality=document.createElement("p");quality.className="tf-message";
-    root.appendChild(quality);
-    const list=document.createElement("div");root.appendChild(list);
-    const load=async()=>{
-      const data=await this.hassInstance.callApi("GET","tiny_family/places");
-      const names={fresh:"Frisk GPS",stale:"GPS forældet",unknown:"Ingen GPS endnu"};
-      quality.textContent=(names[data.gps_health]||"GPS ukendt")+
-        (data.gps_age_minutes!=null?" · seneste fix for "+data.gps_age_minutes+" min siden":"")+
-        (data.ghost_active?" · Ghost Mode aktiv":"")+
-        ". Indlærte steder er historiske oplysninger, ikke nødvendigvis din aktuelle position.";
-      if(this.active!=="places")return;
-      list.replaceChildren();
-      for(const place of data.places||[]){
-        const card=document.createElement("section");card.className="tf-person";
-        const title=document.createElement("strong");
-        const kind={zone:"Home Assistant-zone",named:"Navngivet sted",
-                    suggested:"Forslag til ny zone",learned:"Sted under indlæring"};
-        title.textContent=place.name+" · "+(kind[place.status]||"Ophold");
-        const details=document.createElement("p");
-        details.textContent=place.visits+" besøg · "+place.minutes+
-          " minutter"+(place.last?" · senest "+place.last:"");
-        card.append(title,details);
-        const actions=document.createElement("div");
-        actions.className="tf-card-actions";
-        const navigate=document.createElement("a");
-        navigate.textContent="Vis i kortapp";
-        navigate.href="https://www.google.com/maps/search/?api=1&query="+
-          encodeURIComponent(place.latitude+","+place.longitude);
-        navigate.target="_blank";navigate.rel="noopener noreferrer";
-        actions.appendChild(navigate);
-        if(place.status!=="zone"){
-          const label=document.createElement("input");
-          label.type="text";label.maxLength=80;
-          label.value=place.name==="Ukendt sted"?"":place.name;
-          label.placeholder="Stedets navn";
-          label.setAttribute("aria-label","Nyt stednavn");
-          actions.appendChild(label);
-          const operate=async(method,name,radius)=>{
-            const dataToSend={latitude:place.latitude,longitude:place.longitude,
-                              ...(name?{name}:{}),...(radius?{radius}: {})};
-            const result=await this.hassInstance.callApi(method,"tiny_family/places",dataToSend);
-            this.message("Stedet er opdateret.");await load();return result;
-          };
-          const rename=document.createElement("button");
-          rename.type="button";rename.className="tf-save";rename.textContent="Gem navn";
-          rename.addEventListener("click",async()=>{
-            rename.disabled=true;
-            try{await operate("PUT",label.value.trim());}
-            catch(error){this.message("Navn kunne ikke gemmes: "+error.message,true);}
-            finally{rename.disabled=false;}
-          });
-          actions.appendChild(rename);
-          if(data.can_create_zone){
-            const zone=document.createElement("button");
-            zone.type="button";zone.className="tf-save";
-            zone.textContent="Opret HA-zone";
-            zone.addEventListener("click",async()=>{
-              if(!label.value.trim()){this.message("Navngiv stedet først.",true);return;}
-              const given=window.prompt("Zoneradius i meter (25–5000)","100");
-              if(given===null)return;
-              const radius=Number(given);
-              if(!Number.isInteger(radius)||radius<25||radius>5000){
-                this.message("Vælg en radius mellem 25 og 5000 meter.",true);return;
-              }
-              zone.disabled=true;
-              try{await operate("POST",label.value.trim(),radius);}
-              catch(error){this.message("Zone kunne ikke oprettes: "+error.message,true);}
-              finally{zone.disabled=false;}
-            });actions.appendChild(zone);
-          }
-          const remove=document.createElement("button");
-          remove.type="button";remove.className="tf-save";
-          remove.style.background="var(--error-color,#b3261e)";
-          remove.textContent="Fjern sted";
-          remove.addEventListener("click",async()=>{
-            if(!window.confirm("Slet dette indlærte sted? Det kan ikke fortrydes."))return;
-            remove.disabled=true;
-            try{await operate("DELETE");}
-            catch(error){this.message("Stedet kunne ikke slettes: "+error.message,true);}
-            finally{remove.disabled=false;}
-          });actions.appendChild(remove);
-        }
-        card.appendChild(actions);list.appendChild(card);
-      }
-      if(!list.children.length){
-        const empty=document.createElement("p");empty.className="tf-empty";
-        empty.textContent="Ingen opholdssteder indlært endnu. Tiny Family foreslår steder efter gentagne, stabile ophold.";
-        list.appendChild(empty);
+
+    const create=document.createElement("section");create.className="tf-person";
+    const head=document.createElement("strong");head.textContent="Tilføj et fælles sted";
+    create.appendChild(head);
+    const form=document.createElement("form");form.className="tf-shared-place-form";
+    const nameLabel=document.createElement("label");
+    nameLabel.textContent="Stedets navn";
+    const name=document.createElement("input");name.type="text";name.maxLength=80;
+    name.required=true;name.placeholder="Fx Skole, Arbejde eller Bedstemor";
+    nameLabel.appendChild(name);form.appendChild(nameLabel);
+    const hint=document.createElement("p");hint.className="tf-message";
+    hint.textContent="Vælg et punkt på kortet, eller brug din seneste friske GPS-position.";
+    form.appendChild(hint);
+    const pointMap=document.createElement("div");pointMap.className="tf-map";
+    pointMap.style.height="260px";pointMap.style.minHeight="260px";
+    form.appendChild(pointMap);
+    const coords=document.createElement("details");
+    const coordsTitle=document.createElement("summary");
+    coordsTitle.textContent="Koordinater (kan også indtastes)";
+    coords.appendChild(coordsTitle);
+    const coordRow=document.createElement("div");coordRow.className="tf-fields";
+    const latLabel=document.createElement("label");latLabel.textContent="Breddegrad";
+    const lat=document.createElement("input");lat.type="number";lat.step="any";lat.min="-90";lat.max="90";
+    latLabel.appendChild(lat);
+    const lonLabel=document.createElement("label");lonLabel.textContent="Længdegrad";
+    const lon=document.createElement("input");lon.type="number";lon.step="any";lon.min="-180";lon.max="180";
+    lonLabel.appendChild(lon);coordRow.append(latLabel,lonLabel);coords.appendChild(coordRow);
+    form.appendChild(coords);
+    const actions=document.createElement("div");actions.className="tf-shared-place-actions";
+    const position=document.createElement("button");position.type="button";
+    position.className="tf-save";position.textContent="Brug min position";
+    const submit=document.createElement("button");submit.type="submit";
+    submit.className="tf-save";submit.textContent="Gem som fælles sted";
+    actions.append(position,submit);form.appendChild(actions);
+    create.appendChild(form);root.appendChild(create);
+    const sharedTitle=document.createElement("h3");sharedTitle.textContent="Fælles steder";
+    root.appendChild(sharedTitle);
+    const sharedList=document.createElement("div");root.appendChild(sharedList);
+    const ownDetails=document.createElement("details");ownDetails.className="tf-place-group";
+    const ownTitle=document.createElement("summary");ownTitle.textContent="Mine registrerede ophold";
+    ownDetails.appendChild(ownTitle);
+    const ownList=document.createElement("div");ownDetails.appendChild(ownList);
+    root.appendChild(ownDetails);
+    const adminDetails=document.createElement("details");adminDetails.className="tf-place-group";
+    const adminTitle=document.createElement("summary");
+    adminTitle.textContent="Administrator: destinationer og opholdsforslag";
+    adminDetails.appendChild(adminTitle);
+    const adminList=document.createElement("div");adminDetails.appendChild(adminList);
+
+    let map=null,chosen=null,marker=null;
+    const choose=(latitude,longitude)=>{
+      if(!Number.isFinite(latitude)||!Number.isFinite(longitude))return;
+      chosen={latitude:Number(latitude.toFixed(6)),longitude:Number(longitude.toFixed(6))};
+      lat.value=String(chosen.latitude);lon.value=String(chosen.longitude);
+      if(map){
+        if(marker)marker.remove();
+        marker=window.L.circleMarker([latitude,longitude],{
+          radius:9,weight:2,color:"#fff",fillColor:"#9c56c4",fillOpacity:1
+        }).addTo(map);
+        map.setView([latitude,longitude],Math.max(14,map.getZoom()));
       }
     };
+    try{
+      await this.leaflet();
+      if(this.active!=="places")return;
+      map=this.createLeafletMap(pointMap);
+      await this.addBaseMap(map,pointMap);
+      map.setView([
+        this.hassInstance.config.latitude||0,
+        this.hassInstance.config.longitude||0
+      ],11);
+      map.on("click",event=>choose(event.latlng.lat,event.latlng.lng));
+      setTimeout(()=>{if(this._familyMap===map)map.invalidateSize();},150);
+    }catch(error){
+      hint.textContent="Kortet kunne ikke indlæses. Du kan stadig angive koordinater manuelt.";
+    }
+
+    const fill=(place,defaultName="")=>{
+      name.value=defaultName || (place.name==="Ukendt sted"?"":place.name)||"";
+      choose(Number(place.latitude),Number(place.longitude));
+      create.scrollIntoView({behavior:"smooth",block:"start"});
+      name.focus();
+    };
+    const call=async(method,payload,success)=>{
+      try{
+        await this.hassInstance.callApi(method,"tiny_family/places",payload);
+        this.message(success);
+        await load();
+        return true;
+      }catch(error){this.message("Stedet kunne ikke gemmes: "+this.errorText(error),true);return false;}
+    };
+    const openMaps=place=>{
+      const link=document.createElement("a");
+      link.textContent="Vis i kortapp";
+      link.href="https://www.google.com/maps/search/?api=1&query="+
+        encodeURIComponent(place.latitude+","+place.longitude);
+      link.target="_blank";link.rel="noopener noreferrer";
+      return link;
+    };
+    const labelInput=(title,value)=>{
+      const wrapper=document.createElement("label");wrapper.textContent=title;
+      const input=document.createElement("input");
+      input.type="text";input.value=String(value ?? "");
+      input.style.cssText="width:100%;padding:9px;color:var(--primary-text-color);background:var(--primary-background-color);border:1px solid var(--divider-color);border-radius:9px";
+      wrapper.appendChild(input);return {wrapper,input};
+    };
+    const load=async()=>{
+      const data=await this.hassInstance.callApi("GET","tiny_family/places");
+      if(this.active!=="places")return;
+      sharedList.replaceChildren();ownList.replaceChildren();adminList.replaceChildren();
+      for(const place of data.shared_places||[]){
+        const card=document.createElement("section");card.className="tf-person";
+        const heading=document.createElement("strong");heading.textContent=place.name;
+        const meta=document.createElement("p");
+        meta.className="tf-message";
+        meta.textContent="Oprettet af "+(place.created_by_name||"Familiemedlem");
+        card.append(heading,meta,openMaps(place));
+        if(place.can_edit){
+          const edit=document.createElement("details");
+          const editTitle=document.createElement("summary");editTitle.textContent="Rediger sted";
+          edit.appendChild(editTitle);
+          const newName=labelInput("Navn",place.name);
+          const newLat=labelInput("Breddegrad",place.latitude);
+          const newLon=labelInput("Længdegrad",place.longitude);
+          edit.append(newName.wrapper,newLat.wrapper,newLon.wrapper);
+          const editActions=document.createElement("div");editActions.className="tf-card-actions";
+          const save=document.createElement("button");save.type="button";
+          save.className="tf-save";save.textContent="Gem ændringer";
+          save.addEventListener("click",async()=>{
+            const latitude=Number(newLat.input.value),longitude=Number(newLon.input.value);
+            if(!newLat.input.value.trim()||!newLon.input.value.trim()||
+               !Number.isFinite(latitude)||!Number.isFinite(longitude)){
+              this.message("Indtast gyldige koordinater.",true);return;
+            }
+            save.disabled=true;
+            await call("PUT",{shared_id:place.id,name:newName.input.value.trim(),
+              latitude,longitude},"Fælles sted opdateret.");
+            save.disabled=false;
+          });
+          const remove=document.createElement("button");remove.type="button";
+          remove.className="tf-save";remove.textContent="Slet sted";
+          remove.style.background="var(--error-color,#b3261e)";
+          remove.addEventListener("click",async()=>{
+            if(!window.confirm("Slet dette fælles sted for alle familiemedlemmer?"))return;
+            remove.disabled=true;
+            await call("DELETE",{shared_id:place.id},"Fælles sted slettet.");
+            remove.disabled=false;
+          });
+          editActions.append(save,remove);edit.appendChild(editActions);
+          card.appendChild(edit);
+        }
+        sharedList.appendChild(card);
+      }
+      if(!sharedList.children.length){
+        const empty=document.createElement("p");empty.className="tf-empty";
+        empty.textContent="Ingen fælles steder endnu. Opret det første ovenfor.";
+        sharedList.appendChild(empty);
+      }
+      for(const place of data.places||[]){
+        const card=document.createElement("section");card.className="tf-person";
+        const heading=document.createElement("strong");
+        heading.textContent=place.name+" · "+(place.status==="suggested"?"Forslag":"Ophold");
+        const info=document.createElement("p");
+        info.textContent=place.visits+" besøg · "+place.minutes+" minutter";
+        const actions=document.createElement("div");actions.className="tf-card-actions";
+        const publish=document.createElement("button");publish.type="button";
+        publish.className="tf-save";publish.textContent="Del med familien";
+        publish.addEventListener("click",()=>fill(place));
+        actions.append(publish,openMaps(place));
+        card.append(heading,info,actions);
+        ownList.appendChild(card);
+      }
+      if(!ownList.children.length){
+        const empty=document.createElement("p");
+        empty.textContent="Der er endnu ingen indlærte ophold.";
+        ownList.appendChild(empty);
+      }
+      if(data.can_manage_all_places){
+        if(!adminDetails.isConnected)root.appendChild(adminDetails);
+        for(const place of data.admin_suggestions||[]){
+          const card=document.createElement("section");card.className="tf-person";
+          const heading=document.createElement("strong");
+          heading.textContent=place.person_name+" · "+place.name;
+          const info=document.createElement("p");
+          info.textContent=place.visits+" besøg · "+place.minutes+" minutter"+
+            (place.last?" · sidst "+place.last:"");
+          const actions=document.createElement("div");actions.className="tf-card-actions";
+          const publish=document.createElement("button");publish.type="button";
+          publish.className="tf-save";publish.textContent="Opret fælles sted";
+          publish.addEventListener("click",()=>fill(place));
+          const zone=document.createElement("button");zone.type="button";
+          zone.className="tf-save";zone.textContent="Opret HA-zone";
+          zone.addEventListener("click",async()=>{
+            const named=window.prompt("Navn på zonen",place.name==="Ukendt sted"?"":place.name);
+            if(named===null||!named.trim())return;
+            const radiusText=window.prompt("Zonens radius i meter (25–5000)","100");
+            if(radiusText===null)return;
+            const radius=Number(radiusText);
+            if(!Number.isInteger(radius)||radius<25||radius>5000){
+              this.message("Vælg en radius mellem 25 og 5000 meter.",true);return;
+            }
+            zone.disabled=true;
+            await call("POST",{person:place.person,name:named.trim(),radius,
+              latitude:place.latitude,longitude:place.longitude},"Home Assistant-zone oprettet.");
+            zone.disabled=false;
+          });
+          const rename=document.createElement("button");rename.type="button";
+          rename.className="tf-save";rename.textContent="Ret stednavn";
+          rename.addEventListener("click",async()=>{
+            const named=window.prompt("Ret navn for "+place.person_name,place.name==="Ukendt sted"?"":place.name);
+            if(named===null||!named.trim())return;
+            rename.disabled=true;
+            await call("PUT",{person:place.person,name:named.trim(),
+              latitude:place.latitude,longitude:place.longitude},"Opholdssted opdateret.");
+            rename.disabled=false;
+          });
+          actions.append(publish,zone,rename);
+          card.append(heading,info,actions);
+          adminList.appendChild(card);
+        }
+        if(!adminList.children.length)adminList.textContent="Ingen registrerede destinationer endnu.";
+      }else if(adminDetails.isConnected)adminDetails.remove();
+    };
+    position.addEventListener("click",async()=>{
+      position.disabled=true;
+      try{
+        const status=await this.hassInstance.callApi("GET","tiny_family/status");
+        const own=(status.people||[]).find(item=>item.person===status.viewer_person);
+        if(!own || own.stale || own.gps_health!=="fresh" ||
+           !Number.isFinite(own.latitude)||!Number.isFinite(own.longitude)){
+          this.message("Ingen frisk GPS-position fra din valgte telefon.",true);return;
+        }
+        choose(own.latitude,own.longitude);
+      }catch(error){this.message("Kunne ikke hente din GPS-position.",true);}
+      finally{position.disabled=false;}
+    });
+    form.addEventListener("submit",async event=>{
+      event.preventDefault();
+      const latitude=Number(lat.value),longitude=Number(lon.value);
+      if(!lat.value.trim()||!lon.value.trim()||
+         !Number.isFinite(latitude)||!Number.isFinite(longitude)||
+         latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180){
+        this.message("Vælg først stedet på kortet eller indtast gyldige koordinater.",true);
+        return;
+      }
+      submit.disabled=true;
+      if(await call("POST",{kind:"shared",name:name.value.trim(),
+           latitude,longitude},"Fælles sted er oprettet for hele familien.")){
+        name.value="";
+      }
+      submit.disabled=false;
+    });
     try{await load();}
-    catch(error){list.textContent="Steder kunne ikke indlæses: "+error.message;}
+    catch(error){this.message("Steder kunne ikke indlæses: "+this.errorText(error),true);}
   }
 
   async routes(root) {
