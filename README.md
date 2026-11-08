@@ -1,16 +1,16 @@
-# Tiny Family — offentlig testversion 0.6.7
+# Tiny Family — offentlig testversion 0.6.8
 
 Tiny Family er en Home Assistant-integration til familiekort, GPS-ruter, opdagelse af steder, 30-dages turhistorik, beskeder, SOS og familieadvarsler.
 
 **Testversion:** Integrationen er stadig under praktisk afprøvning. SOS er ikke en certificeret nødtjeneste, og Home Assistant-notifikationer garanterer ikke levering på en telefon.
 
-## Nyt i 0.6.7
-- Mobilvenlig navigation med store trykflader og de vigtigste GPS-, batteri- og statusoplysninger øverst på **Min dag**.
-- Særskilt **Administration**-fane, som kun vises for Home Assistant-administratorer.
-- Administrator vælger én Companion-telefon til hver person. GPS-trackerens Home Assistant-enheds-ID bruges til automatisk at knytte telefonens batteri-, opladnings- og aktivitetssensorer.
-- Hvis en sensor ikke er registreret på telefonens enhed, kan administrator vælge den manuelt under **Avanceret**. Pushmodtagere vælges separat for at undgå fejlbeskeder til en anden telefon.
-- Almindelige brugere har ikke en Ghost Mode- eller GPS-pauseknap. Nye forsøg på at aktivere sådanne fravalg gennem integrations-API'et afvises. Historiske private GPS-data fra tidligere opsætninger bevares efter de gamle adgangsregler.
-- Kort, zoner, polygoner, fartalarmer, historik, beskeder og personlige datafunktioner er bevaret.
+## Nyt i 0.6.8 – Zenly-inspireret mobilvisning
+- Fire faner: **Kort**, **Steder**, **Aktivitet** og **Beskeder**. Kortet åbner først, og administration findes via skjoldikonet.
+- Vælg én Companion-telefon pr. person. GPS, batteri, opladning og aktivitet tilknyttes automatisk fra **samme** Home Assistant-enhed, uden særskilte sensorvalg.
+- Et familiemedlem kan oprette fælles steder fra et kortpunkt, koordinater eller frisk telefon-GPS. Stederne bliver synlige for alle tilknyttede familiemedlemmer på kortet.
+- Opretteren kan rette/slette egne fælles steder. Administrator kan altid rette/slette **alle** fælles steder og se indlærte destinationer og opholdsforslag fra samtlige tilknyttede personer.
+- Administrator kan bruge registrerede ophold til at oprette et fælles sted eller en Home Assistant-zone.
+- Privat historik deles ikke automatisk, når et nyt fælles sted oprettes. Ingen Ghost Mode- eller sporingspauseknap i Tiny Family.
 
 **Vigtigt:** Tiny Family kan ikke tilsidesætte Android/iOS' placeringstilladelser. Personer og enheder skal være korrekt tilknyttet i Home Assistant Companion.
 
