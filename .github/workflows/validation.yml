@@ -1,0 +1,59 @@
+name: Validate public Tiny Family test package
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# Validation only; this workflow does not release, publish to HACS, or change
+# repository visibility. Never upload real Home Assistant configuration.
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Python, JS and integration metadata
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: Verify publishable integration
+        run: |
+          python -m compileall -q custom_components/person_timeline
+          node --check custom_components/person_timeline/frontend/tiny-family-panel.js
+          node --check custom_components/person_timeline/frontend/person-timeline-card.js
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          meta=json.loads(Path("custom_components/person_timeline/manifest.json").read_text())
+          hacs=json.loads(Path("hacs.json").read_text())
+          assert meta["domain"] == "person_timeline"
+          assert meta["version"] == "0.6.7"
+          assert hacs["name"] == "Tiny Family"
+          assert Path("custom_components/person_timeline/device_binding.py").is_file()
+          assert Path("custom_components/person_timeline/frontend/leaflet/LICENSE").is_file()
+          print("Tiny Family 0.6.7 public package verified")
+          PY
+
+  hassfest:
+    name: Home Assistant hassfest
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: home-assistant/actions/hassfest@master
+
+  hacs:
+    name: Official HACS validator for public repositories
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: hacs/action@main
+        with:
+          category: integration
+          comment: 'false'
