@@ -31,5 +31,10 @@ jobs:
           assert 'this.active = "live"' in panel
           assert "companion_device_sensors(self.hass, tracker)" in runtime
           assert "batteries.clear()" in runtime
+          profile = Path("custom_components/person_timeline/privacy.py").read_text()
+          assert 'result["speed_kmh"]' in profile
+          assert 'result["stay_minutes"]' in profile
+          assert 'tf-neon-stats' in panel
+          assert 'tf-neon-stay' in panel
           assert "ghost mode" not in panel.lower()
           PY
