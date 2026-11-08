@@ -2155,42 +2155,30 @@ class TinyFamilyPanel extends HTMLElement {
       const tracker = choice("Telefon (Home Assistant Companion / GPS)", this.settings.available_trackers || [], this.settings.trackers?.[person.id]);
       const detected=document.createElement("p");
       detected.className="tf-message";fields.appendChild(detected);
-      const advanced=document.createElement("details");
-      advanced.className="tf-advanced";
-      const advancedTitle=document.createElement("summary");
-      advancedTitle.textContent="Avanceret: kontrollér telefonens sensorer";
-      advanced.appendChild(advancedTitle);
-      const extra=document.createElement("div");
-      extra.className="tf-fields";advanced.appendChild(extra);
-      const battery = choice("Batteri", this.settings.available_batteries || [], this.settings.batteries?.[person.id], extra);
-      const charging = choice("Opladning (Companion)", this.settings.available_charging || [],
-                              this.settings.charging_sensors?.[person.id], extra);
-      const activity = choice("Telefonaktivitet (Companion)", this.settings.available_activities || [],
-                              this.settings.activity_sensors?.[person.id], extra);
-      const refreshPhone=initial=>{
+      // The selected Companion phone owns every sensor binding.
+      // No independent battery/activity drop-downs: the backend resolves
+      // them from the very same HA device registry entry.
+      const battery={value:""},charging={value:""},activity={value:""};
+      const refreshPhone=()=>{
         const auto=this.settings.device_sensors?.[tracker.value]||{};
-        for(const [field,input] of [
-          ["battery",battery],["charging",charging],["activity",activity]
-        ]){
-          if(auto[field] && [...input.options].some(o=>o.value===auto[field]))
-            input.value=auto[field];
-          else if(!initial)input.value="";
-        }
-        const matched=Object.keys(auto).filter(key=>auto[key]);
+        battery.value=auto.battery||"";
+        charging.value=auto.charging||"";
+        activity.value=auto.activity||"";
+        const found=Object.keys(auto).filter(key=>auto[key]);
         detected.textContent=tracker.value
-          ? (matched.length
-            ? "Automatisk tilknyttet fra samme telefon: "+matched.map(k=>({
-                battery:"batteri",charging:"opladning",activity:"aktivitet"
-              })[k]).join(", ")+". Manglende sensorer kan vælges under Avanceret."
-            : "Home Assistant fandt ingen registrerede Companion-sensorer til telefonen. Aktivér sensorerne på telefonen, eller vælg dem under Avanceret.")
-          : "Vælg en Companion-telefon for at tilknytte dens GPS og sensorer.";
+          ?found.length
+            ?"Sensorer fra denne telefon: "+found.map(key=>({
+               battery:"batteri",charging:"opladning",activity:"aktivitet"
+              })[key]||key).join(", ")
+            :"Ingen Companion-sensorer fundet på telefonen. Aktivér dem i Home Assistant Companion."
+          :"Vælg telefonen én gang. GPS og tilgængelige sensorer tilknyttes automatisk.";
       };
-      tracker.addEventListener("change",()=>refreshPhone(false));
-      refreshPhone(true);
+      tracker.addEventListener("change",refreshPhone);
+      refreshPhone();
       const colorLabel = document.createElement("label");colorLabel.textContent = "Farve";
       const color = document.createElement("input");color.type="color";color.value=this.settings.colors?.[person.id]||"#00a8a9";
       colorLabel.appendChild(color);fields.appendChild(colorLabel);
-      section.append(fields,advanced);form.appendChild(section);
+      section.append(fields);form.appendChild(section);
       const owner = choice("Home Assistant-bruger", this.settings.available_users || [],
                            this.settings.owners?.[person.id]);
       const target = choice("Companion push-modtager", this.settings.available_notify_targets || [],
@@ -2298,7 +2286,7 @@ class TinyFamilyPanel extends HTMLElement {
         for(const row of rows){
           row.checkbox.checked=selected.has(row.person);
           for(const [element,key] of [
-            [row.tracker,"trackers"],[row.battery,"batteries"]
+            [row.tracker,"trackers"]
           ]){
             const value=plan.settings[key]?.[row.person];
             if(value && [...element.options].some(option=>option.value===value))
