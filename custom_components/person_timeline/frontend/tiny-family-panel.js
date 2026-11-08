@@ -58,6 +58,8 @@ class TinyFamilyPanel extends HTMLElement {
       .tf-more summary::-webkit-details-marker{display:none}
       .tf-more-menu{position:absolute;z-index:120;right:0;top:calc(100% + 6px);width:210px;max-width:calc(100vw - 30px);display:grid;gap:4px;padding:8px;border-radius:14px;border:1px solid var(--divider-color);background:var(--card-background-color);box-shadow:0 12px 30px rgba(0,0,0,.2)}
       .tf-more-menu button{display:flex;align-items:center;gap:8px;text-align:left;min-height:43px;padding:8px 10px;border:0;border-radius:9px;color:var(--primary-text-color);background:transparent}
+      .tf-person-icon{border:0;background:transparent}
+      .tf-person-pin{width:48px;height:48px;border:4px solid #1fb77e;display:flex;align-items:center;justify-content:center;border-radius:50%;background:#17343f;color:white;font-weight:800;font-size:15px;box-shadow:0 4px 18px rgba(0,0,0,.36),0 0 0 2px #fff;letter-spacing:.4px}
       .tf-map-tools{border:1px solid var(--divider-color);border-radius:12px;padding:8px 12px;margin:0 0 12px;background:var(--card-background-color)}
       .tf-map-tools summary{cursor:pointer;font-weight:600;padding:6px 0}
       .tf-map-tools>*:not(summary){margin-top:10px}
@@ -1247,9 +1249,19 @@ class TinyFamilyPanel extends HTMLElement {
             const battery=person.battery_percent;
             const color=person.stale?"#888888":battery!=null&&battery<20?"#d64646":
               battery!=null&&battery<=50?"#d79b3f":"#1fb77e";
-            const circle=window.L.circleMarker(point,{radius:11,color:"#ffffff",weight:2,
-              fillColor:color,fillOpacity:0.95}).addTo(map);
-            circle.bindPopup(person.name);
+            const pin=document.createElement("span");
+            pin.className="tf-person-pin";
+            pin.textContent=String(person.name||"?").trim().split(/\s+/)
+              .slice(0,2).map(word=>word[0]||"").join("").toUpperCase();
+            pin.style.borderColor=color;
+            if(person.stale)pin.style.opacity="0.65";
+            const icon=window.L.divIcon({
+              className:"tf-person-icon",html:pin.outerHTML,
+              iconSize:[48,48],iconAnchor:[24,24]
+            });
+            const mapMarker=window.L.marker(point,{icon}).addTo(map);
+            const popup=document.createElement("span");popup.textContent=person.name;
+            mapMarker.bindPopup(popup);
             bounds.push(point);
             if(!person.stale){
               const navigate=document.createElement("a");
@@ -2070,6 +2082,11 @@ class TinyFamilyPanel extends HTMLElement {
     zoneTools.textContent="Åbn administratorværktøjer til zoner og polygoner på familiekortet";
     zoneTools.addEventListener("click",()=>this.show("live"));
     root.appendChild(zoneTools);
+    const placeTools=document.createElement("button");
+    placeTools.type="button";placeTools.className="tf-save";
+    placeTools.textContent="Se alle familiens indlærte destinationer og ophold";
+    placeTools.addEventListener("click",()=>this.show("places"));
+    root.appendChild(placeTools);
     const form = document.createElement("form");
     const autoLabel=document.createElement("label");
     autoLabel.className="tf-person";
