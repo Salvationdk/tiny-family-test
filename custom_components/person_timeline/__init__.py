@@ -28,7 +28,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.discovery import async_load_platform
 from homeassistant.helpers.event import async_track_state_change_event, async_track_time_change, async_track_time_interval
 
-from .const import CARD_VERSION, DOMAIN, HISTORY_FILE, HISTORY_KEY, PLACES_FILE, STATIC_URL
+from .const import CARD_VERSION, DOMAIN, HISTORY_FILE, HISTORY_KEY, PLACES_FILE, SHARED_PLACES_FILE, STATIC_URL
 from .places import _predict, _record_place, _seed_zones, estimate_home_eta, estimate_destination_eta
 from .places_api import TinyFamilyPlacesView
 from .motion import update_motion
@@ -520,6 +520,12 @@ async def _async_setup_runtime(hass: HomeAssistant, config: dict) -> bool:
         ):
             if found.get(key):
                 cfg[mapping_key][person] = found[key]
+    # Shared places load once, and each person's prediction engine sees
+    # the same in-memory list. Personal learned stays remain separate.
+    shared = await hass.async_add_executor_job(
+        _load_places, hass.config.path(SHARED_PLACES_FILE)
+    )
+    runtime["shared_places"] = shared if isinstance(shared, list) else []
     places_path = hass.config.path(PLACES_FILE)
     try:
         saved = await hass.async_add_executor_job(_load_places, places_path)
@@ -581,6 +587,7 @@ async def _async_setup_runtime(hass: HomeAssistant, config: dict) -> bool:
                                      "trip_active": False, "trip_start": None, "trip_last_move": None,
                                      "trip_dist_m": 0.0, "trip_max_speed": 0.0, "last_trip": "Ingen ture endnu",
                                      "places": list(saved.get(person, [])),
+                                     "family_places": runtime["shared_places"],
                                      "recent": [], "seeded": False,
                                      "destination": "", "dest_eta_min": 0, "dest_dist_m": 0.0,
                                      "destination_confidence": 0.0,
