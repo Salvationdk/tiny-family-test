@@ -485,7 +485,8 @@ async def _async_setup_runtime(hass: HomeAssistant, config: dict) -> bool:
         hass.bus.async_listen("mobile_app_notification_action", _on_companion_reply)
     )
 
-    cfg = config.get(DOMAIN, {})
+    # Work with a runtime copy; keep legacy persisted options unchanged.
+    cfg = dict(config.get(DOMAIN, {}) or {})
     persons = cfg.get("persons") or []
     ghost_people = set(cfg.get("ghost_people") or [])
     location_opt_out = set(cfg.get("message_location_opt_out") or [])
@@ -506,6 +507,19 @@ async def _async_setup_runtime(hass: HomeAssistant, config: dict) -> bool:
     # The HA Companion app supplies that Person's GPS via its device_tracker.
     for person in persons:
         trackers[person] = trackers.get(person) or person
+    # Refresh phone-owned sensor mapping during startup as well as on save.
+    # This avoids stale sensor references after an upgrade or a phone switch.
+    for mapping_key in ("batteries", "charging_sensors", "activity_sensors"):
+        cfg[mapping_key] = {}
+    for person in persons:
+        tracker = trackers.get(person)
+        found = companion_device_sensors(hass, tracker)
+        for key, mapping_key in (
+            ("battery", "batteries"), ("charging", "charging_sensors"),
+            ("activity", "activity_sensors"),
+        ):
+            if found.get(key):
+                cfg[mapping_key][person] = found[key]
     places_path = hass.config.path(PLACES_FILE)
     try:
         saved = await hass.async_add_executor_job(_load_places, places_path)
