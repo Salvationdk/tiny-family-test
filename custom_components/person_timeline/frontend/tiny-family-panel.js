@@ -1,17 +1,18 @@
 /* Tiny Family: own Home Assistant panel, independent of Lovelace. */
 const TF_VIEWS = [
-  ["today", "Min dag", "mdi:home-outline"],
-  ["live", "Familiekort", "mdi:map-marker-multiple-outline"],
-  ["activity", "Ture og ophold", "mdi:walk"],
+  ["live", "Kort", "mdi:map-marker-multiple-outline"],
   ["places", "Steder", "mdi:map-marker-radius-outline"],
-  ["routes", "Ruter", "mdi:map-outline"],
-  ["contact", "Beskeder", "mdi:message-text-outline"],
-  ["history", "Historik", "mdi:history"],
-  ["help", "Hjælp", "mdi:help-circle-outline"],
-  ["editor", "Administration", "mdi:shield-crown-outline"]
+  ["activity", "Aktivitet", "mdi:walk"],
+  ["contact", "Beskeder", "mdi:message-text-outline"]
+];
+const TF_MORE_VIEWS = [
+  ["today", "Min status", "mdi:home-outline"],
+  ["routes", "GPS-ruter", "mdi:map-outline"],
+  ["history", "Hændelser", "mdi:history"],
+  ["help", "Hjælp", "mdi:help-circle-outline"]
 ];
 class TinyFamilyPanel extends HTMLElement {
-  constructor() { super(); this.active = "today"; this.booted = false; this.settings = null; }
+  constructor() { super(); this.active = "live"; this.booted = false; this.settings = null; }
   set hass(value) {
     this.hassInstance = value;
     if (this.isConnected && !this.booted) this.initialize();
@@ -49,7 +50,26 @@ class TinyFamilyPanel extends HTMLElement {
       .tf-empty{padding:18px;border:1px dashed var(--divider-color);border-radius:12px;color:var(--secondary-text-color)}
       .tf-wrap a{color:var(--primary-color)}
       .tf-person p{margin:4px 0;overflow-wrap:anywhere}
-      .tf-head{display:flex;align-items:center;gap:10px;margin-bottom:18px}
+      .tf-head{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+      .tf-head h1{flex:1;min-width:0}
+      .tf-header-action{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:44px;min-width:44px;padding:8px;border:1px solid var(--divider-color);border-radius:12px;background:var(--card-background-color);color:var(--primary-text-color);cursor:pointer}
+      .tf-more{position:relative}
+      .tf-more summary{list-style:none;cursor:pointer}
+      .tf-more summary::-webkit-details-marker{display:none}
+      .tf-more-menu{position:absolute;z-index:120;right:0;top:calc(100% + 6px);width:210px;max-width:calc(100vw - 30px);display:grid;gap:4px;padding:8px;border-radius:14px;border:1px solid var(--divider-color);background:var(--card-background-color);box-shadow:0 12px 30px rgba(0,0,0,.2)}
+      .tf-more-menu button{display:flex;align-items:center;gap:8px;text-align:left;min-height:43px;padding:8px 10px;border:0;border-radius:9px;color:var(--primary-text-color);background:transparent}
+      .tf-person-icon{border:0;background:transparent}
+      .tf-person-pin{width:48px;height:48px;border:4px solid #1fb77e;display:flex;align-items:center;justify-content:center;border-radius:50%;background:#17343f;color:white;font-weight:800;font-size:15px;box-shadow:0 4px 18px rgba(0,0,0,.36),0 0 0 2px #fff;letter-spacing:.4px}
+      .tf-map-tools{border:1px solid var(--divider-color);border-radius:12px;padding:8px 12px;margin:0 0 12px;background:var(--card-background-color)}
+      .tf-map-tools summary{cursor:pointer;font-weight:600;padding:6px 0}
+      .tf-map-tools>*:not(summary){margin-top:10px}
+      .tf-shared-place-form{display:grid;gap:10px}
+      .tf-shared-place-form label{display:grid;gap:5px}
+      .tf-shared-place-form input{width:100%;padding:10px;border:1px solid var(--divider-color);border-radius:9px;background:var(--primary-background-color);color:var(--primary-text-color)}
+      .tf-shared-place-actions{display:flex;flex-wrap:wrap;gap:8px}
+      .tf-shared-place-actions>*{flex:1 1 150px}
+      .tf-place-group{margin:15px 0}
+      .tf-place-group>summary{padding:10px 0;cursor:pointer;font-weight:600}
       .tf-head h1{margin:0;font-size:24px}
       .tf-tabs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;max-width:100%}
       .tf-tabs button{display:flex;align-items:center;justify-content:center;gap:7px;padding:12px 16px;min-height:44px;border-radius:14px;border:1px solid var(--divider-color);color:var(--primary-text-color);background:var(--card-background-color);cursor:pointer}
@@ -69,15 +89,18 @@ class TinyFamilyPanel extends HTMLElement {
       .tf-save{background:var(--primary-color);color:var(--text-primary-color,#fff);border:0;border-radius:10px;padding:12px 18px;min-height:44px;cursor:pointer;overflow-wrap:anywhere}
       .tf-message{margin:14px 0;color:var(--secondary-text-color)}
       @media(max-width:600px){
-        .tf-wrap{padding:10px}.tf-head h1{font-size:21px}
-        .tf-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;overflow:visible;padding:0 0 8px}
+        .tf-wrap{padding:10px 10px calc(100px + env(safe-area-inset-bottom))}.tf-head h1{font-size:21px}
+        .tf-head{margin-bottom:8px}
+        .tf-tabs{position:fixed;left:0;right:0;bottom:0;z-index:100;background:var(--card-background-color);border-top:1px solid var(--divider-color);padding:7px 8px calc(7px + env(safe-area-inset-bottom));box-shadow:0 -4px 20px rgba(0,0,0,.08)}
+        .tf-family-view>.tf-map{height:calc(100dvh - 210px);min-height:380px;max-height:750px;border-radius:18px}
+        .tf-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;overflow:visible}
         .tf-tabs button{display:flex;flex-direction:column;gap:3px;font-size:11px;line-height:1.2;padding:7px 2px;min-height:58px;white-space:normal;text-align:center;border-radius:10px}
         .tf-tabs button ha-icon{--mdc-icon-size:21px}
-        .tf-tabs button[data-view=editor]{grid-column:1/-1;min-height:48px;flex-direction:row;font-size:13px}
         .tf-fields{grid-template-columns:1fr}
         .tf-metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
         .tf-stat{padding:10px}
         .tf-person{padding:11px}.tf-map{height:min(57vh,440px);min-height:330px}
+        .tf-family-view>.tf-map{height:calc(100dvh - 210px);min-height:380px;max-height:750px}
         .tf-card-actions>*{flex:1 1 100%}
         .tf-wrap .tf-save{width:100%}
         .tf-admin-panel{padding:12px}
@@ -87,7 +110,7 @@ class TinyFamilyPanel extends HTMLElement {
       }
       @media(prefers-reduced-motion:reduce){.tf-tabs{scroll-behavior:auto}}
       </style>
-      <section class="tf-wrap"><header class="tf-head"><ha-icon icon="mdi:account-group"></ha-icon><h1>Tiny Family</h1></header>
+      <section class="tf-wrap"><header class="tf-head"><ha-icon icon="mdi:account-group"></ha-icon><h1>Tiny Family</h1><div class="tf-admin-access"></div><details class="tf-more"><summary class="tf-header-action" aria-label="Flere funktioner"><ha-icon icon="mdi:dots-horizontal"></ha-icon></summary><div class="tf-more-menu"></div></details></header>
       <nav class="tf-tabs" aria-label="Tiny Family"></nav>
       <p id="tf-message" class="tf-message" aria-live="polite"></p>
       <main id="tf-main"></main></section>`;
@@ -96,7 +119,6 @@ class TinyFamilyPanel extends HTMLElement {
       // Only an authenticated administrator gets the Administration tab.
       await this.refreshSettings();
       for (const [key, title, icon] of TF_VIEWS) {
-        if (key === "editor" && !this.settings.editable) continue;
         const button = document.createElement("button");
         const pictogram=document.createElement("ha-icon");
         pictogram.setAttribute("icon",icon);
@@ -107,6 +129,31 @@ class TinyFamilyPanel extends HTMLElement {
         button.type="button";
         button.addEventListener("click", () => this.show(key));
         tabs.appendChild(button);
+      }
+      const moreMenu=this.querySelector(".tf-more-menu");
+      for(const [key,title,icon] of TF_MORE_VIEWS){
+        const button=document.createElement("button");
+        button.type="button";
+        const pictogram=document.createElement("ha-icon");
+        pictogram.setAttribute("icon",icon);
+        button.append(pictogram,document.createTextNode(title));
+        button.addEventListener("click",()=>{
+          this.querySelector(".tf-more").open=false;
+          this.show(key);
+        });
+        moreMenu.appendChild(button);
+      }
+      if(this.settings.editable){
+        const adminButton=document.createElement("button");
+        adminButton.type="button";
+        adminButton.className="tf-header-action";
+        adminButton.title="Administration";
+        adminButton.setAttribute("aria-label","Åbn administration");
+        const shield=document.createElement("ha-icon");
+        shield.setAttribute("icon","mdi:shield-crown-outline");
+        adminButton.append(shield);
+        adminButton.addEventListener("click",()=>this.show("editor"));
+        this.querySelector(".tf-admin-access").appendChild(adminButton);
       }
       try {
         const profile=await this.hassInstance.callApi("GET","tiny_family/status");
@@ -143,13 +190,14 @@ class TinyFamilyPanel extends HTMLElement {
   }
   show(key) {
     if (!this.booted) return;
-    if (key === "editor" && !this.settings?.editable) key = "today";
+    if (key === "editor" && !this.settings?.editable) key = "live";
     this.active = key; this.card = null; this._todayPerson = null; this.message("");
     if(this._familyTimer){clearInterval(this._familyTimer);this._familyTimer=null;}
     if(this._familyMap){this._familyMap.remove();this._familyMap=null;}
     this.querySelectorAll("[data-view]").forEach(b => b.setAttribute("aria-current", b.dataset.view === key ? "page" : "false"));
     const root = this.querySelector("#tf-main");
     root.classList.toggle("tf-admin-panel",key==="editor");
+    root.classList.toggle("tf-family-view",key==="live");
     root.replaceChildren();
     if (key === "editor") { this.editor(root); return; }
     if (key === "contact") { this.contact(root); return; }
@@ -393,110 +441,300 @@ class TinyFamilyPanel extends HTMLElement {
   }
 
   async places(root) {
-    const h=document.createElement("h2");h.textContent="Mine opholdssteder";
-    root.appendChild(h);
+    const title=document.createElement("h2");
+    title.textContent="Familiens steder";root.appendChild(title);
     const intro=document.createElement("p");intro.className="tf-message";
-    intro.textContent="Forslag vises efter tre registrerede ophold. Kun din egen konto kan se disse koordinater. Eksisterende HA-zoner redigeres på fælleskortet.";
+    intro.textContent="Fælles steder er synlige for alle familiemedlemmer. Du kan oprette og redigere dine egne. Administrator kan ændre alle steder.";
     root.appendChild(intro);
-    const quality=document.createElement("p");quality.className="tf-message";
-    root.appendChild(quality);
-    const list=document.createElement("div");root.appendChild(list);
-    const load=async()=>{
-      const data=await this.hassInstance.callApi("GET","tiny_family/places");
-      const names={fresh:"Frisk GPS",stale:"GPS forældet",unknown:"Ingen GPS endnu"};
-      quality.textContent=(names[data.gps_health]||"GPS ukendt")+
-        (data.gps_age_minutes!=null?" · seneste fix for "+data.gps_age_minutes+" min siden":"")+
-        (data.ghost_active?" · Ghost Mode aktiv":"")+
-        ". Indlærte steder er historiske oplysninger, ikke nødvendigvis din aktuelle position.";
-      if(this.active!=="places")return;
-      list.replaceChildren();
-      for(const place of data.places||[]){
-        const card=document.createElement("section");card.className="tf-person";
-        const title=document.createElement("strong");
-        const kind={zone:"Home Assistant-zone",named:"Navngivet sted",
-                    suggested:"Forslag til ny zone",learned:"Sted under indlæring"};
-        title.textContent=place.name+" · "+(kind[place.status]||"Ophold");
-        const details=document.createElement("p");
-        details.textContent=place.visits+" besøg · "+place.minutes+
-          " minutter"+(place.last?" · senest "+place.last:"");
-        card.append(title,details);
-        const actions=document.createElement("div");
-        actions.className="tf-card-actions";
-        const navigate=document.createElement("a");
-        navigate.textContent="Vis i kortapp";
-        navigate.href="https://www.google.com/maps/search/?api=1&query="+
-          encodeURIComponent(place.latitude+","+place.longitude);
-        navigate.target="_blank";navigate.rel="noopener noreferrer";
-        actions.appendChild(navigate);
-        if(place.status!=="zone"){
-          const label=document.createElement("input");
-          label.type="text";label.maxLength=80;
-          label.value=place.name==="Ukendt sted"?"":place.name;
-          label.placeholder="Stedets navn";
-          label.setAttribute("aria-label","Nyt stednavn");
-          actions.appendChild(label);
-          const operate=async(method,name,radius)=>{
-            const dataToSend={latitude:place.latitude,longitude:place.longitude,
-                              ...(name?{name}:{}),...(radius?{radius}: {})};
-            const result=await this.hassInstance.callApi(method,"tiny_family/places",dataToSend);
-            this.message("Stedet er opdateret.");await load();return result;
-          };
-          const rename=document.createElement("button");
-          rename.type="button";rename.className="tf-save";rename.textContent="Gem navn";
-          rename.addEventListener("click",async()=>{
-            rename.disabled=true;
-            try{await operate("PUT",label.value.trim());}
-            catch(error){this.message("Navn kunne ikke gemmes: "+error.message,true);}
-            finally{rename.disabled=false;}
-          });
-          actions.appendChild(rename);
-          if(data.can_create_zone){
-            const zone=document.createElement("button");
-            zone.type="button";zone.className="tf-save";
-            zone.textContent="Opret HA-zone";
-            zone.addEventListener("click",async()=>{
-              if(!label.value.trim()){this.message("Navngiv stedet først.",true);return;}
-              const given=window.prompt("Zoneradius i meter (25–5000)","100");
-              if(given===null)return;
-              const radius=Number(given);
-              if(!Number.isInteger(radius)||radius<25||radius>5000){
-                this.message("Vælg en radius mellem 25 og 5000 meter.",true);return;
-              }
-              zone.disabled=true;
-              try{await operate("POST",label.value.trim(),radius);}
-              catch(error){this.message("Zone kunne ikke oprettes: "+error.message,true);}
-              finally{zone.disabled=false;}
-            });actions.appendChild(zone);
-          }
-          const remove=document.createElement("button");
-          remove.type="button";remove.className="tf-save";
-          remove.style.background="var(--error-color,#b3261e)";
-          remove.textContent="Fjern sted";
-          remove.addEventListener("click",async()=>{
-            if(!window.confirm("Slet dette indlærte sted? Det kan ikke fortrydes."))return;
-            remove.disabled=true;
-            try{await operate("DELETE");}
-            catch(error){this.message("Stedet kunne ikke slettes: "+error.message,true);}
-            finally{remove.disabled=false;}
-          });actions.appendChild(remove);
-        }
-        card.appendChild(actions);list.appendChild(card);
-      }
-      if(!list.children.length){
-        const empty=document.createElement("p");empty.className="tf-empty";
-        empty.textContent="Ingen opholdssteder indlært endnu. Tiny Family foreslår steder efter gentagne, stabile ophold.";
-        list.appendChild(empty);
+
+    const create=document.createElement("section");create.className="tf-person";
+    const head=document.createElement("strong");head.textContent="Tilføj et fælles sted";
+    create.appendChild(head);
+    const form=document.createElement("form");form.className="tf-shared-place-form";
+    const nameLabel=document.createElement("label");
+    nameLabel.textContent="Stedets navn";
+    const name=document.createElement("input");name.type="text";name.maxLength=80;
+    name.required=true;name.placeholder="Fx Skole, Arbejde eller Bedstemor";
+    nameLabel.appendChild(name);form.appendChild(nameLabel);
+    const hint=document.createElement("p");hint.className="tf-message";
+    hint.textContent="Vælg et punkt på kortet, eller brug din seneste friske GPS-position.";
+    form.appendChild(hint);
+    const pointMap=document.createElement("div");pointMap.className="tf-map";
+    pointMap.style.height="260px";pointMap.style.minHeight="260px";
+    form.appendChild(pointMap);
+    const coords=document.createElement("details");
+    const coordsTitle=document.createElement("summary");
+    coordsTitle.textContent="Koordinater (kan også indtastes)";
+    coords.appendChild(coordsTitle);
+    const coordRow=document.createElement("div");coordRow.className="tf-fields";
+    const latLabel=document.createElement("label");latLabel.textContent="Breddegrad";
+    const lat=document.createElement("input");lat.type="number";lat.step="any";lat.min="-90";lat.max="90";
+    latLabel.appendChild(lat);
+    const lonLabel=document.createElement("label");lonLabel.textContent="Længdegrad";
+    const lon=document.createElement("input");lon.type="number";lon.step="any";lon.min="-180";lon.max="180";
+    lonLabel.appendChild(lon);coordRow.append(latLabel,lonLabel);coords.appendChild(coordRow);
+    form.appendChild(coords);
+    const actions=document.createElement("div");actions.className="tf-shared-place-actions";
+    const position=document.createElement("button");position.type="button";
+    position.className="tf-save";position.textContent="Brug min position";
+    const submit=document.createElement("button");submit.type="submit";
+    submit.className="tf-save";submit.textContent="Gem som fælles sted";
+    actions.append(position,submit);form.appendChild(actions);
+    create.appendChild(form);root.appendChild(create);
+    const sharedTitle=document.createElement("h3");sharedTitle.textContent="Fælles steder";
+    root.appendChild(sharedTitle);
+    const sharedList=document.createElement("div");root.appendChild(sharedList);
+    const ownDetails=document.createElement("details");ownDetails.className="tf-place-group";
+    const ownTitle=document.createElement("summary");ownTitle.textContent="Mine registrerede ophold";
+    ownDetails.appendChild(ownTitle);
+    const ownList=document.createElement("div");ownDetails.appendChild(ownList);
+    root.appendChild(ownDetails);
+    const adminDetails=document.createElement("details");adminDetails.className="tf-place-group";
+    const adminTitle=document.createElement("summary");
+    adminTitle.textContent="Administrator: destinationer og opholdsforslag";
+    adminDetails.appendChild(adminTitle);
+    const adminList=document.createElement("div");adminDetails.appendChild(adminList);
+
+    let map=null,chosen=null,marker=null;
+    const choose=(latitude,longitude)=>{
+      if(!Number.isFinite(latitude)||!Number.isFinite(longitude))return;
+      chosen={latitude:Number(latitude.toFixed(6)),longitude:Number(longitude.toFixed(6))};
+      lat.value=String(chosen.latitude);lon.value=String(chosen.longitude);
+      if(map){
+        if(marker)marker.remove();
+        marker=window.L.circleMarker([latitude,longitude],{
+          radius:9,weight:2,color:"#fff",fillColor:"#9c56c4",fillOpacity:1
+        }).addTo(map);
+        map.setView([latitude,longitude],Math.max(14,map.getZoom()));
       }
     };
+    try{
+      await this.leaflet();
+      if(this.active!=="places")return;
+      map=this.createLeafletMap(pointMap);
+      await this.addBaseMap(map,pointMap);
+      map.setView([
+        this.hassInstance.config.latitude||0,
+        this.hassInstance.config.longitude||0
+      ],11);
+      map.on("click",event=>choose(event.latlng.lat,event.latlng.lng));
+      setTimeout(()=>{if(this._familyMap===map)map.invalidateSize();},150);
+    }catch(error){
+      hint.textContent="Kortet kunne ikke indlæses. Du kan stadig angive koordinater manuelt.";
+    }
+
+    const fill=(place,defaultName="")=>{
+      name.value=defaultName || (place.name==="Ukendt sted"?"":place.name)||"";
+      choose(Number(place.latitude),Number(place.longitude));
+      create.scrollIntoView({behavior:"smooth",block:"start"});
+      name.focus();
+    };
+    const call=async(method,payload,success)=>{
+      try{
+        await this.hassInstance.callApi(method,"tiny_family/places",payload);
+        this.message(success);
+        await load();
+        return true;
+      }catch(error){this.message("Stedet kunne ikke gemmes: "+this.errorText(error),true);return false;}
+    };
+    const openMaps=place=>{
+      const link=document.createElement("a");
+      link.textContent="Vis i kortapp";
+      link.href="https://www.google.com/maps/search/?api=1&query="+
+        encodeURIComponent(place.latitude+","+place.longitude);
+      link.target="_blank";link.rel="noopener noreferrer";
+      return link;
+    };
+    const labelInput=(title,value)=>{
+      const wrapper=document.createElement("label");wrapper.textContent=title;
+      const input=document.createElement("input");
+      input.type="text";input.value=String(value ?? "");
+      input.style.cssText="width:100%;padding:9px;color:var(--primary-text-color);background:var(--primary-background-color);border:1px solid var(--divider-color);border-radius:9px";
+      wrapper.appendChild(input);return {wrapper,input};
+    };
+    const load=async()=>{
+      const data=await this.hassInstance.callApi("GET","tiny_family/places");
+      if(this.active!=="places")return;
+      sharedList.replaceChildren();ownList.replaceChildren();adminList.replaceChildren();
+      for(const place of data.shared_places||[]){
+        const card=document.createElement("section");card.className="tf-person";
+        const heading=document.createElement("strong");heading.textContent=place.name;
+        const meta=document.createElement("p");
+        meta.className="tf-message";
+        meta.textContent="Oprettet af "+(place.created_by_name||"Familiemedlem");
+        card.append(heading,meta,openMaps(place));
+        if(place.can_edit){
+          const edit=document.createElement("details");
+          const editTitle=document.createElement("summary");editTitle.textContent="Rediger sted";
+          edit.appendChild(editTitle);
+          const newName=labelInput("Navn",place.name);
+          const newLat=labelInput("Breddegrad",place.latitude);
+          const newLon=labelInput("Længdegrad",place.longitude);
+          edit.append(newName.wrapper,newLat.wrapper,newLon.wrapper);
+          const editActions=document.createElement("div");editActions.className="tf-card-actions";
+          const save=document.createElement("button");save.type="button";
+          save.className="tf-save";save.textContent="Gem ændringer";
+          save.addEventListener("click",async()=>{
+            const latitude=Number(newLat.input.value),longitude=Number(newLon.input.value);
+            if(!newLat.input.value.trim()||!newLon.input.value.trim()||
+               !Number.isFinite(latitude)||!Number.isFinite(longitude)){
+              this.message("Indtast gyldige koordinater.",true);return;
+            }
+            save.disabled=true;
+            await call("PUT",{shared_id:place.id,name:newName.input.value.trim(),
+              latitude,longitude},"Fælles sted opdateret.");
+            save.disabled=false;
+          });
+          const remove=document.createElement("button");remove.type="button";
+          remove.className="tf-save";remove.textContent="Slet sted";
+          remove.style.background="var(--error-color,#b3261e)";
+          remove.addEventListener("click",async()=>{
+            if(!window.confirm("Slet dette fælles sted for alle familiemedlemmer?"))return;
+            remove.disabled=true;
+            await call("DELETE",{shared_id:place.id},"Fælles sted slettet.");
+            remove.disabled=false;
+          });
+          editActions.append(save,remove);edit.appendChild(editActions);
+          card.appendChild(edit);
+        }
+        sharedList.appendChild(card);
+      }
+      if(!sharedList.children.length){
+        const empty=document.createElement("p");empty.className="tf-empty";
+        empty.textContent="Ingen fælles steder endnu. Opret det første ovenfor.";
+        sharedList.appendChild(empty);
+      }
+      for(const place of data.places||[]){
+        const card=document.createElement("section");card.className="tf-person";
+        const heading=document.createElement("strong");
+        heading.textContent=place.name+" · "+(place.status==="suggested"?"Forslag":"Ophold");
+        const info=document.createElement("p");
+        info.textContent=place.visits+" besøg · "+place.minutes+" minutter";
+        const actions=document.createElement("div");actions.className="tf-card-actions";
+        const publish=document.createElement("button");publish.type="button";
+        publish.className="tf-save";publish.textContent="Del med familien";
+        publish.addEventListener("click",()=>fill(place));
+        actions.append(publish,openMaps(place));
+        card.append(heading,info,actions);
+        if(place.status!=="zone"){
+          const edit=document.createElement("details");
+          const editTitle=document.createElement("summary");editTitle.textContent="Ret eller fjern eget ophold";
+          edit.appendChild(editTitle);
+          const renameField=labelInput("Navn",place.name==="Ukendt sted"?"":place.name);
+          edit.appendChild(renameField.wrapper);
+          const editActions=document.createElement("div");editActions.className="tf-card-actions";
+          const rename=document.createElement("button");rename.type="button";
+          rename.className="tf-save";rename.textContent="Gem navn";
+          rename.addEventListener("click",async()=>{
+            rename.disabled=true;
+            await call("PUT",{name:renameField.input.value.trim(),
+              latitude:place.latitude,longitude:place.longitude},"Stednavn opdateret.");
+            rename.disabled=false;
+          });
+          const remove=document.createElement("button");remove.type="button";
+          remove.className="tf-save";remove.textContent="Fjern ophold";
+          remove.style.background="var(--error-color,#b3261e)";
+          remove.addEventListener("click",async()=>{
+            if(!window.confirm("Fjern dette indlærte ophold fra din personlige historik?"))return;
+            remove.disabled=true;
+            await call("DELETE",{latitude:place.latitude,longitude:place.longitude},
+              "Ophold fjernet.");
+            remove.disabled=false;
+          });
+          editActions.append(rename,remove);edit.appendChild(editActions);
+          card.appendChild(edit);
+        }
+        ownList.appendChild(card);
+      }
+      if(!ownList.children.length){
+        const empty=document.createElement("p");
+        empty.textContent="Der er endnu ingen indlærte ophold.";
+        ownList.appendChild(empty);
+      }
+      if(data.can_manage_all_places){
+        if(!adminDetails.isConnected)root.appendChild(adminDetails);
+        for(const place of data.admin_suggestions||[]){
+          const card=document.createElement("section");card.className="tf-person";
+          const heading=document.createElement("strong");
+          heading.textContent=place.person_name+" · "+place.name;
+          const info=document.createElement("p");
+          info.textContent=place.visits+" besøg · "+place.minutes+" minutter"+
+            (place.last?" · sidst "+place.last:"");
+          const actions=document.createElement("div");actions.className="tf-card-actions";
+          const publish=document.createElement("button");publish.type="button";
+          publish.className="tf-save";publish.textContent="Opret fælles sted";
+          publish.addEventListener("click",()=>fill(place));
+          const zone=document.createElement("button");zone.type="button";
+          zone.className="tf-save";zone.textContent="Opret HA-zone";
+          zone.addEventListener("click",async()=>{
+            const named=window.prompt("Navn på zonen",place.name==="Ukendt sted"?"":place.name);
+            if(named===null||!named.trim())return;
+            const radiusText=window.prompt("Zonens radius i meter (25–5000)","100");
+            if(radiusText===null)return;
+            const radius=Number(radiusText);
+            if(!Number.isInteger(radius)||radius<25||radius>5000){
+              this.message("Vælg en radius mellem 25 og 5000 meter.",true);return;
+            }
+            zone.disabled=true;
+            await call("POST",{person:place.person,name:named.trim(),radius,
+              latitude:place.latitude,longitude:place.longitude},"Home Assistant-zone oprettet.");
+            zone.disabled=false;
+          });
+          const rename=document.createElement("button");rename.type="button";
+          rename.className="tf-save";rename.textContent="Ret stednavn";
+          rename.addEventListener("click",async()=>{
+            const named=window.prompt("Ret navn for "+place.person_name,place.name==="Ukendt sted"?"":place.name);
+            if(named===null||!named.trim())return;
+            rename.disabled=true;
+            await call("PUT",{person:place.person,name:named.trim(),
+              latitude:place.latitude,longitude:place.longitude},"Opholdssted opdateret.");
+            rename.disabled=false;
+          });
+          actions.append(publish,zone,rename);
+          card.append(heading,info,actions);
+          adminList.appendChild(card);
+        }
+        if(!adminList.children.length)adminList.textContent="Ingen registrerede destinationer endnu.";
+      }else if(adminDetails.isConnected)adminDetails.remove();
+    };
+    position.addEventListener("click",async()=>{
+      position.disabled=true;
+      try{
+        const status=await this.hassInstance.callApi("GET","tiny_family/status");
+        const own=(status.people||[]).find(item=>item.person===status.viewer_person);
+        if(!own || own.stale || own.gps_health!=="fresh" ||
+           !Number.isFinite(own.latitude)||!Number.isFinite(own.longitude)){
+          this.message("Ingen frisk GPS-position fra din valgte telefon.",true);return;
+        }
+        choose(own.latitude,own.longitude);
+      }catch(error){this.message("Kunne ikke hente din GPS-position.",true);}
+      finally{position.disabled=false;}
+    });
+    form.addEventListener("submit",async event=>{
+      event.preventDefault();
+      const latitude=Number(lat.value),longitude=Number(lon.value);
+      if(!lat.value.trim()||!lon.value.trim()||
+         !Number.isFinite(latitude)||!Number.isFinite(longitude)||
+         latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180){
+        this.message("Vælg først stedet på kortet eller indtast gyldige koordinater.",true);
+        return;
+      }
+      submit.disabled=true;
+      if(await call("POST",{kind:"shared",name:name.value.trim(),
+           latitude,longitude},"Fælles sted er oprettet for hele familien.")){
+        name.value="";
+      }
+      submit.disabled=false;
+    });
     try{await load();}
-    catch(error){list.textContent="Steder kunne ikke indlæses: "+error.message;}
+    catch(error){this.message("Steder kunne ikke indlæses: "+this.errorText(error),true);}
   }
 
   async routes(root) {
     const title=document.createElement("h2");title.textContent="Familieruter – seneste 24 timer";
     root.appendChild(title);
     const info=document.createElement("p");info.className="tf-message";
-    info.textContent="Kun spor, som familiebrugerne må dele, vises. Registreringer under Ghost Mode er skjult for andre, også bagefter. GPS-pauser tegnes ikke som rejser. Kortfliser hentes fra OpenStreetMap, som derfor kan se det viste kortområde.";
+    info.textContent="Kun delbare GPS-spor vises. Historiske privatmarkerede spor beskyttes fortsat. Kortfliser kan hentes fra OpenStreetMap.";
     root.appendChild(info);
     const tools=document.createElement("div");tools.className="tf-fields";
     const people=document.createElement("select");
@@ -581,7 +819,7 @@ class TinyFamilyPanel extends HTMLElement {
         });
         const gaps=selected.reduce((total,p)=>
           total+Math.max(0,(p.segments||[]).length-1),0);
-        report.textContent=(count?"Viser "+count+" GPS-punkter.":"Ingen delbare spor i det valgte tidsrum. Kontroller GPS, tidsrummet og Ghost Mode.")+
+        report.textContent=(count?"Viser "+count+" GPS-punkter.":"Ingen delbare spor i det valgte tidsrum. Kontroller GPS og tidsrummet.")+
           (gaps?" · "+gaps+" adskilte rutestykker/GPS-pauser.":"")+
           (gpsStatus.length?" · GPS-status: "+gpsStatus.join("; ")+".":"")+
           " Spor er historiske, ikke en garanti for aktuel position.";
@@ -599,7 +837,7 @@ class TinyFamilyPanel extends HTMLElement {
   async family(root) {
     const heading=document.createElement("h2");heading.textContent="Familiekort";root.appendChild(heading);
     const help=document.createElement("p");help.className="tf-message";
-    help.textContent="Fælleskortet viser kun tilladte personpositioner og ruter. Forældede GPS-punkter markeres særskilt. Ghost Mode skjuler data i Tiny Family, men ændrer ikke Home Assistants egne Person-/tracker-entiteter.";
+    help.textContent="Her ser du familiens positioner, fælles steder og ruter. Forældede GPS-positioner markeres særskilt.";
     root.appendChild(help);
     const routesLabel=document.createElement("label");
     routesLabel.className="tf-message";
@@ -818,9 +1056,19 @@ class TinyFamilyPanel extends HTMLElement {
       }catch(error){this.message("Polygon kunne ikke slettes: "+error.message,true);}
       finally{polygonDelete.disabled=!polygonChoice.value;}
     });
+    const toolsPanel=document.createElement("details");
+    toolsPanel.className="tf-map-tools";
+    const toolsTitle=document.createElement("summary");
+    toolsTitle.textContent="Kortlag og avancerede kortværktøjer";
+    toolsPanel.appendChild(toolsTitle);
+    for(const element of [help,routesLabel,routeFilters,zonesLabel,polygonLabel,
+                          zoneInfo,zoneEditor,polygonEditor]){
+      toolsPanel.appendChild(element);
+    }
+    root.appendChild(toolsPanel);
     const mapElement=document.createElement("div");
     mapElement.className="tf-map";mapElement.style.marginBottom="15px";
-    root.appendChild(mapElement);
+    root.insertBefore(mapElement,toolsPanel);
     const list=document.createElement("div");list.className="tf-fields";root.appendChild(list);
     const refresh=document.createElement("button");refresh.className="tf-save";
     refresh.textContent="Opdater personer";
@@ -937,6 +1185,19 @@ class TinyFamilyPanel extends HTMLElement {
             zoneBounds.push(polygon.points[0]);
           }
         }
+        // Shared places are an explicitly published collection, not private GPS history.
+        const sharedData=await this.hassInstance.callApi("GET","tiny_family/places")
+          .catch(()=>({shared_places:[]}));
+        for(const place of sharedData.shared_places||[]){
+          if(!Number.isFinite(place.latitude)||!Number.isFinite(place.longitude))continue;
+          const marker=window.L.circleMarker([place.latitude,place.longitude],{
+            radius:7,color:"#ffffff",weight:2,fillColor:"#9c56c4",fillOpacity:1
+          }).addTo(map);
+          const label=document.createElement("span");
+          label.textContent=place.name;
+          marker.bindPopup(label);
+          zoneBounds.push([place.latitude,place.longitude]);
+        }
         if(routesToggle.checked){
           const routes=await this.hassInstance.callApi("GET","tiny_family/routes");
           if(this.active!=="live")return;
@@ -973,11 +1234,11 @@ class TinyFamilyPanel extends HTMLElement {
           const head=document.createElement("div");head.className="tf-card-head";
           const title=document.createElement("strong");title.textContent=person.name;
           const liveLabel=document.createElement("span");liveLabel.className="tf-chip";
-          liveLabel.textContent=person.ghost?"Ghost Mode – skjult":
+          liveLabel.textContent=person.ghost?"Tidligere privatmarkering":
             person.stale?"GPS forældet":person.gps_health==="fresh"?"Frisk GPS":"GPS ukendt";
           head.append(title,liveLabel);box.appendChild(head);
           const status=document.createElement("p");
-          status.textContent=person.ghost ? "Ghost Mode – position skjult" :
+          status.textContent=person.ghost ? "Position beskyttet af tidligere privatindstilling" :
             (person.status || "Ukendt")+" · "+(person.stale?"sidste position":"opdateret")+
             (person.battery_percent!=null?" · "+person.battery_percent+" % batteri":"")+
             (person.charging==="on"?" · oplader":"")+
@@ -1016,9 +1277,19 @@ class TinyFamilyPanel extends HTMLElement {
             const battery=person.battery_percent;
             const color=person.stale?"#888888":battery!=null&&battery<20?"#d64646":
               battery!=null&&battery<=50?"#d79b3f":"#1fb77e";
-            const circle=window.L.circleMarker(point,{radius:11,color:"#ffffff",weight:2,
-              fillColor:color,fillOpacity:0.95}).addTo(map);
-            circle.bindPopup(person.name);
+            const pin=document.createElement("span");
+            pin.className="tf-person-pin";
+            pin.textContent=String(person.name||"?").trim().split(/\s+/)
+              .slice(0,2).map(word=>word[0]||"").join("").toUpperCase();
+            pin.style.borderColor=color;
+            if(person.stale)pin.style.opacity="0.65";
+            const icon=window.L.divIcon({
+              className:"tf-person-icon",html:pin.outerHTML,
+              iconSize:[48,48],iconAnchor:[24,24]
+            });
+            const mapMarker=window.L.marker(point,{icon}).addTo(map);
+            const popup=document.createElement("span");popup.textContent=person.name;
+            mapMarker.bindPopup(popup);
             bounds.push(point);
             if(!person.stale){
               const navigate=document.createElement("a");
@@ -1087,7 +1358,7 @@ class TinyFamilyPanel extends HTMLElement {
     const trackingTitle=document.createElement("strong");
     trackingTitle.textContent="Sporing via din telefon";
     const trackingNote=document.createElement("p");trackingNote.className="tf-message";
-    trackingNote.textContent="Tiny Family bruger positionsopdateringer fra din tilknyttede Home Assistant Companion-telefon. Der er ingen GPS-pause eller Ghost Mode-knap i Tiny Family. Telefonens systemtilladelser og Home Assistants adgangsrettigheder gælder fortsat.";
+    trackingNote.textContent="Din valgte Home Assistant Companion-telefon leverer GPS, batteri, opladning og aktivitet. Hvis telefonen ikke sender data, vises de som utilgængelige.";
     sharing.append(trackingTitle,trackingNote);
     const routineLabel=document.createElement("label");
     const routineCheckbox=document.createElement("input");
@@ -1119,8 +1390,8 @@ class TinyFamilyPanel extends HTMLElement {
             "Synlige for familiemedlemmer med adgang"],
           ["Lærte steder og turarkiv","Kun min indloggede konto"],
           ["Beskeder","Kun afsender og konfigurerede modtagere"],
-          ["Tidligere privattilstand",mine.ghost_active
-            ?"Aktiv fra en tidligere opsætning – kontakt administrator":"Ingen"],
+          ["Privat historik fra ældre opsætning",mine.ghost_active
+            ?"Historiske privatmarkerede data er fortsat beskyttet":"Ingen"],
           ["Pushmodtagere",(mine.configured_phone_recipients||[]).join(", ")||"Ingen"],
         ];
         for(const [name,value] of lines){
@@ -1370,7 +1641,7 @@ class TinyFamilyPanel extends HTMLElement {
           :(item.label||"Ukendt sted");
         body.textContent=item.duration_min+" min · "+metrics+
           (item.gps_gap?" · GPS-afbrydelse":"")+
-          (item.private?" · registreret under Ghost Mode":"");
+          (item.private?" · historisk privatmarkeret":"");
         card.append(title,body);list.appendChild(card);
       }
       if(!list.children.length){
@@ -1483,7 +1754,7 @@ class TinyFamilyPanel extends HTMLElement {
       ["SOS", "Sender en hjælpanmodning til de konfigurerede telefoner. Dette er ikke en alarmcentral eller en erstatning for 112."],
       ["Beskedstatus", "Accepteret betyder, at Home Assistants notifikationstjeneste tog imod anmodningen, ikke at telefonen har modtaget beskeden. Læsekvittering kræver, at modtageren markerer beskeden som læst inde i Tiny Family. Ved netværksfejl skal du bekræfte et eventuelt nyt forsøg, da det kan give en dobbeltbesked."],
       ["Automatiske alarmer", "Administrator bestemmer pr. familiemedlem hvilke ankomst-, afgangs-, fart-, batteri- og GPS-advarsler der er aktive. Systemhistorikken viser registrerede hændelser, ikke bekræftet push-levering."],
-      ["GPS og sporing", "GPS-sporing styres via den valgte Companion-telefon. Tiny Family har ingen pause- eller Ghost-knap. Hvis telefonens GPS-tilladelse mangler, vises data som gamle eller utilgængelige."],
+      ["GPS og sporing", "GPS-sporing bruger den valgte Companion-telefon. Hvis GPS-tilladelsen mangler, vises positionen som forældet eller utilgængelig."],
       ["Android-widget", "Opret en Action Button-widget i Home Assistant Companion: handling = Kald tjeneste. Vælg person_timeline.mobile_checkin, person_timeline.mobile_heading_home eller person_timeline.mobile_sos."],
       ["iPhone og iPad", "Brug Home Assistant Companion-genveje eller en iOS-Genvej, der kalder de tilsvarende Tiny Family-tjenester med den indloggede brugers konto."],
       ["Svar direkte fra push", "Ved en Companion notify.mobile_app_*-modtager kan du skrive svar på telefonens notifikation. Svarnøglen gælder én gang i højst 24 timer og udløber ved HA-genstart/genindlæsning. Andre notify-enheder har almindelige beskeder uden hurtigsvar."],
@@ -1832,13 +2103,18 @@ class TinyFamilyPanel extends HTMLElement {
     const heading=document.createElement("h2");heading.textContent="Administration – Tiny Family";
     adminHeading.append(adminIcon,heading);root.appendChild(adminHeading);
     const info=document.createElement("p");info.className="tf-message";
-    info.textContent="Kun for administratorer: tilknyt familiemedlemmer til telefoner, og styr notifikationer, fartgrænser og zoner. Valg af telefon knytter også dens registrerede sensorer til personen.";
+    info.textContent="Administrationen samler familiens telefoner, notifikationer, fartgrænser og zoner. Vælg én Companion-telefon pr. person; dens registrerede sensorer tilknyttes automatisk.";
     root.appendChild(info);
     const zoneTools=document.createElement("button");
     zoneTools.type="button";zoneTools.className="tf-save";
     zoneTools.textContent="Åbn administratorværktøjer til zoner og polygoner på familiekortet";
     zoneTools.addEventListener("click",()=>this.show("live"));
     root.appendChild(zoneTools);
+    const placeTools=document.createElement("button");
+    placeTools.type="button";placeTools.className="tf-save";
+    placeTools.textContent="Se alle familiens indlærte destinationer og ophold";
+    placeTools.addEventListener("click",()=>this.show("places"));
+    root.appendChild(placeTools);
     const form = document.createElement("form");
     const autoLabel=document.createElement("label");
     autoLabel.className="tf-person";
@@ -1924,42 +2200,30 @@ class TinyFamilyPanel extends HTMLElement {
       const tracker = choice("Telefon (Home Assistant Companion / GPS)", this.settings.available_trackers || [], this.settings.trackers?.[person.id]);
       const detected=document.createElement("p");
       detected.className="tf-message";fields.appendChild(detected);
-      const advanced=document.createElement("details");
-      advanced.className="tf-advanced";
-      const advancedTitle=document.createElement("summary");
-      advancedTitle.textContent="Avanceret: kontrollér telefonens sensorer";
-      advanced.appendChild(advancedTitle);
-      const extra=document.createElement("div");
-      extra.className="tf-fields";advanced.appendChild(extra);
-      const battery = choice("Batteri", this.settings.available_batteries || [], this.settings.batteries?.[person.id], extra);
-      const charging = choice("Opladning (Companion)", this.settings.available_charging || [],
-                              this.settings.charging_sensors?.[person.id], extra);
-      const activity = choice("Telefonaktivitet (Companion)", this.settings.available_activities || [],
-                              this.settings.activity_sensors?.[person.id], extra);
-      const refreshPhone=initial=>{
+      // The selected Companion phone owns every sensor binding.
+      // No independent battery/activity drop-downs: the backend resolves
+      // them from the very same HA device registry entry.
+      const battery={value:""},charging={value:""},activity={value:""};
+      const refreshPhone=()=>{
         const auto=this.settings.device_sensors?.[tracker.value]||{};
-        for(const [field,input] of [
-          ["battery",battery],["charging",charging],["activity",activity]
-        ]){
-          if(auto[field] && [...input.options].some(o=>o.value===auto[field]))
-            input.value=auto[field];
-          else if(!initial)input.value="";
-        }
-        const matched=Object.keys(auto).filter(key=>auto[key]);
+        battery.value=auto.battery||"";
+        charging.value=auto.charging||"";
+        activity.value=auto.activity||"";
+        const found=Object.keys(auto).filter(key=>auto[key]);
         detected.textContent=tracker.value
-          ? (matched.length
-            ? "Automatisk tilknyttet fra samme telefon: "+matched.map(k=>({
-                battery:"batteri",charging:"opladning",activity:"aktivitet"
-              })[k]).join(", ")+". Manglende sensorer kan vælges under Avanceret."
-            : "Home Assistant fandt ingen registrerede Companion-sensorer til telefonen. Aktivér sensorerne på telefonen, eller vælg dem under Avanceret.")
-          : "Vælg en Companion-telefon for at tilknytte dens GPS og sensorer.";
+          ?found.length
+            ?"Sensorer fra denne telefon: "+found.map(key=>({
+               battery:"batteri",charging:"opladning",activity:"aktivitet"
+              })[key]||key).join(", ")
+            :"Ingen Companion-sensorer fundet på telefonen. Aktivér dem i Home Assistant Companion."
+          :"Vælg telefonen én gang. GPS og tilgængelige sensorer tilknyttes automatisk.";
       };
-      tracker.addEventListener("change",()=>refreshPhone(false));
-      refreshPhone(true);
+      tracker.addEventListener("change",refreshPhone);
+      refreshPhone();
       const colorLabel = document.createElement("label");colorLabel.textContent = "Farve";
       const color = document.createElement("input");color.type="color";color.value=this.settings.colors?.[person.id]||"#00a8a9";
       colorLabel.appendChild(color);fields.appendChild(colorLabel);
-      section.append(fields,advanced);form.appendChild(section);
+      section.append(fields);form.appendChild(section);
       const owner = choice("Home Assistant-bruger", this.settings.available_users || [],
                            this.settings.owners?.[person.id]);
       const target = choice("Companion push-modtager", this.settings.available_notify_targets || [],
@@ -2067,7 +2331,7 @@ class TinyFamilyPanel extends HTMLElement {
         for(const row of rows){
           row.checkbox.checked=selected.has(row.person);
           for(const [element,key] of [
-            [row.tracker,"trackers"],[row.battery,"batteries"]
+            [row.tracker,"trackers"]
           ]){
             const value=plan.settings[key]?.[row.person];
             if(value && [...element.options].some(option=>option.value===value))

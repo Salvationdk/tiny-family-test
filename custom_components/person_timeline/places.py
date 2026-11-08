@@ -82,7 +82,16 @@ def _predict(st):
     if travel < 180:
         return None
     best = None
-    for place in st.get("places") or []:
+    # Explicitly shared family places also count as known destinations.
+    # They do not enter personal visit histories or private learning records.
+    family_places = []
+    for shared in st.get("family_places") or []:
+        if isinstance(shared, dict):
+            family_places.append({
+                "lat": shared.get("latitude"), "lon": shared.get("longitude"),
+                "label": shared.get("name"), "visits": 0,
+            })
+    for place in list(st.get("places") or []) + family_places:
         try:
             d_now = _hav(lat, lon, place["lat"], place["lon"])
             d_before = _hav(bla, blo, place["lat"], place["lon"])

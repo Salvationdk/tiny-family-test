@@ -28,7 +28,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.discovery import async_load_platform
 from homeassistant.helpers.event import async_track_state_change_event, async_track_time_change, async_track_time_interval
 
-from .const import CARD_VERSION, DOMAIN, HISTORY_FILE, HISTORY_KEY, PLACES_FILE, STATIC_URL
+from .const import CARD_VERSION, DOMAIN, HISTORY_FILE, HISTORY_KEY, PLACES_FILE, SHARED_PLACES_FILE, STATIC_URL
 from .places import _predict, _record_place, _seed_zones, estimate_home_eta, estimate_destination_eta
 from .places_api import TinyFamilyPlacesView
 from .motion import update_motion
@@ -375,8 +375,14 @@ class TinyFamilySettingsView(HomeAssistantView):
                 raise ValueError("Notification target is not registered")
             # The selected Companion tracker is the source of its sensor bindings.
             # Never guess using a different phone's similarly named entity.
-            previous_trackers = {**entry.data, **entry.options}.get("trackers") or {}
-            for person, tracker in trackers.items():
+            # Each configured member has one authoritative Companion phone.
+            # Ignore caller-supplied sensor entity IDs, even if they point to
+            # another family member's battery/activity sensor.
+            batteries.clear()
+            charging_sensors.clear()
+            activity_sensors.clear()
+            for person in persons:
+                tracker = trackers.get(person)
                 if not tracker:
                     continue
                 found = companion_device_sensors(self.hass, tracker)
@@ -386,10 +392,6 @@ class TinyFamilySettingsView(HomeAssistantView):
                 ):
                     if found.get(key):
                         mapping[person] = found[key]
-                    elif previous_trackers.get(person) != tracker and not mapping.get(person):
-                        # No registry match: keep explicit manual fallback data,
-                        # but do not carry an old phone sensor into an empty field.
-                        mapping.pop(person, None)
         except (KeyError, ValueError, TypeError, AttributeError):
             return web.json_response({"message": "Invalid settings"}, status=400)
         options = dict(entry.options)
@@ -483,7 +485,8 @@ async def _async_setup_runtime(hass: HomeAssistant, config: dict) -> bool:
         hass.bus.async_listen("mobile_app_notification_action", _on_companion_reply)
     )
 
-    cfg = config.get(DOMAIN, {})
+    # Work with a runtime copy; keep legacy persisted options unchanged.
+    cfg = dict(config.get(DOMAIN, {}) or {})
     persons = cfg.get("persons") or []
     ghost_people = set(cfg.get("ghost_people") or [])
     location_opt_out = set(cfg.get("message_location_opt_out") or [])
@@ -504,6 +507,25 @@ async def _async_setup_runtime(hass: HomeAssistant, config: dict) -> bool:
     # The HA Companion app supplies that Person's GPS via its device_tracker.
     for person in persons:
         trackers[person] = trackers.get(person) or person
+    # Refresh phone-owned sensor mapping during startup as well as on save.
+    # This avoids stale sensor references after an upgrade or a phone switch.
+    for mapping_key in ("batteries", "charging_sensors", "activity_sensors"):
+        cfg[mapping_key] = {}
+    for person in persons:
+        tracker = trackers.get(person)
+        found = companion_device_sensors(hass, tracker)
+        for key, mapping_key in (
+            ("battery", "batteries"), ("charging", "charging_sensors"),
+            ("activity", "activity_sensors"),
+        ):
+            if found.get(key):
+                cfg[mapping_key][person] = found[key]
+    # Shared places load once, and each person's prediction engine sees
+    # the same in-memory list. Personal learned stays remain separate.
+    shared = await hass.async_add_executor_job(
+        _load_places, hass.config.path(SHARED_PLACES_FILE)
+    )
+    runtime["shared_places"] = shared if isinstance(shared, list) else []
     places_path = hass.config.path(PLACES_FILE)
     try:
         saved = await hass.async_add_executor_job(_load_places, places_path)
@@ -565,6 +587,7 @@ async def _async_setup_runtime(hass: HomeAssistant, config: dict) -> bool:
                                      "trip_active": False, "trip_start": None, "trip_last_move": None,
                                      "trip_dist_m": 0.0, "trip_max_speed": 0.0, "last_trip": "Ingen ture endnu",
                                      "places": list(saved.get(person, [])),
+                                     "family_places": runtime["shared_places"],
                                      "recent": [], "seeded": False,
                                      "destination": "", "dest_eta_min": 0, "dest_dist_m": 0.0,
                                      "destination_confidence": 0.0,

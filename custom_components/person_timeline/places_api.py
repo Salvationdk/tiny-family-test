@@ -2,14 +2,16 @@
 from __future__ import annotations
 
 import math
+import asyncio
+from uuid import uuid4
 from aiohttp import web
 from homeassistant.components.http import HomeAssistantView
 
 from .communications import own_person
 from datetime import datetime, timezone
-from .const import DOMAIN, PLACES_FILE, ZONE_SUGGEST_MIN_VISITS
+from .const import DOMAIN, PLACES_FILE, ZONE_SUGGEST_MIN_VISITS, SHARED_PLACES_FILE
 from .utils import _hav
-from .storage import _save_places
+from .storage import _save_places, _load_places
 from .sensors import _publish
 from .zones_api import zone_collection, validate_new_zone
 from .privacy import shared_map_zones
@@ -68,7 +70,14 @@ def match_place(places, lat, lon):
     return None
 
 
+
 class TinyFamilyPlacesView(HomeAssistantView):
+    """Personal learned places and explicitly published family places.
+
+    Private raw GPS points are not published automatically. Anyone linked to
+    the family may create a shared place; only its creator and HA admins may
+    edit or remove it. Admins may review all inferred place suggestions.
+    """
     url = "/api/tiny_family/places"
     name = "api:tiny_family:places"
     requires_auth = True
@@ -83,25 +92,97 @@ class TinyFamilyPlacesView(HomeAssistantView):
         cfg = {**entry.data, **entry.options}
         person = own_person(request["hass_user"].id, cfg.get("persons") or [],
                             cfg.get("owners") or {})
-        return entry, person, (self.hass.data.get(DOMAIN, {}).get(person)
-                               if person else None)
+        state = self.hass.data.get(DOMAIN, {}).get(person) if person else None
+        return entry, person, state
+
+    def allowed(self, request, entry, person):
+        return entry is not None and (person is not None or request["hass_user"].is_admin)
+
+    async def _shared(self):
+        runtime = self.hass.data.setdefault("tiny_family_runtime", {})
+        # Serialise lazy initialization to prevent two first requests from
+        # loading separate copies of the shared place collection.
+        lock = runtime.setdefault("shared_places_lock", asyncio.Lock())
+        async with lock:
+            if "shared_places" not in runtime:
+                raw = await self.hass.async_add_executor_job(
+                    _load_places, self.hass.config.path(SHARED_PLACES_FILE)
+                )
+                runtime["shared_places"] = raw if isinstance(raw, list) else []
+            return runtime["shared_places"]
+
+    async def _save_shared(self):
+        await self.hass.async_add_executor_job(
+            _save_places, self.hass.config.path(SHARED_PLACES_FILE),
+            self.hass.data["tiny_family_runtime"]["shared_places"],
+        )
+
+    @staticmethod
+    def _coordinates(payload):
+        try:
+            # Do not accept booleans as latitude/longitude.
+            if type(payload.get("latitude")) not in (int, float) or type(payload.get("longitude")) not in (int, float):
+                raise ValueError("Coordinates must be numeric")
+            lat, lon = float(payload["latitude"]), float(payload["longitude"])
+            if not math.isfinite(lat) or not math.isfinite(lon) or not (-90 <= lat <= 90 and -180 <= lon <= 180):
+                raise ValueError("Invalid coordinates")
+            return round(lat, 6), round(lon, 6)
+        except (ValueError, TypeError, KeyError, OverflowError):
+            raise ValueError("Invalid coordinates") from None
+
+    @staticmethod
+    def _name(payload):
+        name = payload.get("name")
+        if not isinstance(name, str) or not 1 <= len(name.strip()) <= 80:
+            raise ValueError("Name must be 1-80 characters")
+        return name.strip()
 
     async def get(self, request):
         entry, person, state = self.context(request)
         if entry is None:
             return web.json_response({"message": "Not configured"}, status=503)
-        if state is None:
+        if not self.allowed(request, entry, person):
             return web.json_response({"message": "Account not linked"}, status=403)
-        seen = state.get("gps_seen_at")
+        admin = bool(request["hass_user"].is_admin)
+        seen = state.get("gps_seen_at") if state else None
         age = (round(max(0, datetime.now(timezone.utc).timestamp() - seen) / 60)
                if isinstance(seen, (float, int)) else None)
+        shared = await self._shared()
+        common = [{
+            "id": place["id"], "name": place["name"],
+            "latitude": place["latitude"], "longitude": place["longitude"],
+            "created_by_name": place.get("created_by_name", "Familiemedlem"),
+            "can_edit": admin or place.get("created_by") == request["hass_user"].id,
+        } for place in shared if isinstance(place, dict) and
+            all(k in place for k in ("id", "name", "latitude", "longitude"))]
+        proposals = []
+        if admin:
+            cfg = {**entry.data, **entry.options}
+            for member in cfg.get("persons") or []:
+                member_state = self.hass.data.get(DOMAIN, {}).get(member)
+                if not member_state:
+                    continue
+                label = self.hass.states.get(member)
+                display = label.name if label is not None else member
+                for place in describe_places(self.hass, member_state.get("places")):
+                    if place["status"] in ("zone",):
+                        continue
+                    proposals.append({
+                        **place, "person": member, "person_name": display
+                    })
+            proposals.sort(key=lambda item: (-item["visits"], -item["minutes"]))
         return web.json_response({
-            "person": person, "places": describe_places(self.hass, state.get("places")),
-            "can_create_zone": bool(request["hass_user"].is_admin),
-            "ghost_active": person in ({**entry.data, **entry.options}.get("ghost_people") or []),
-            "gps_health": state.get("gps_health", "unknown"),
+            "person": person, "places": describe_places(self.hass, state.get("places")) if state else [],
+            "shared_places": common,
+            "admin_suggestions": proposals,
+            "can_create_zone": admin,
+            "can_manage_all_places": admin,
+            "gps_health": state.get("gps_health", "unknown") if state else "unknown",
             "gps_age_minutes": age,
         }, headers={"Cache-Control": "no-store, private"})
+
+    async def post(self, request):
+        return await self.write(request, "create")
 
     async def put(self, request):
         return await self.write(request, "rename")
@@ -109,54 +190,110 @@ class TinyFamilyPlacesView(HomeAssistantView):
     async def delete(self, request):
         return await self.write(request, "delete")
 
-    async def post(self, request):
-        return await self.write(request, "zone")
-
     async def write(self, request, action):
         entry, person, state = self.context(request)
         if entry is None:
             return web.json_response({"message": "Not configured"}, status=503)
-        if state is None:
+        if not self.allowed(request, entry, person):
             return web.json_response({"message": "Account not linked"}, status=403)
-        if action == "zone" and not request["hass_user"].is_admin:
-            return web.json_response({"message": "Administrator required"}, status=403)
         try:
             payload = await request.json()
             if not isinstance(payload, dict):
                 raise ValueError("Expected object")
-            lat, lon = payload.get("latitude"), payload.get("longitude")
-            pl = match_place(state.get("places"), lat, lon)
-            if pl is None:
-                return web.json_response({"message": "Place not found"}, status=404)
-            if describe_places(self.hass, [pl])[0]["status"] == "zone":
-                return web.json_response({"message": "Edit this HA zone on the family map"}, status=409)
-            name = payload.get("name")
-            if action != "delete" and (not isinstance(name, str)
-                                       or not 1 <= len(name.strip()) <= 80):
-                raise ValueError("Invalid name")
-            if action == "zone":
-                candidate = validate_new_zone({
-                    "name": name, "latitude": lat, "longitude": lon,
-                    "radius": payload.get("radius", 100),
-                })
-                if any(_hav(lat, lon, z["latitude"], z["longitude"]) < 10
-                       for z in shared_map_zones(self.hass)):
-                    return web.json_response({"message": "Zone already exists"}, status=409)
-                collection = zone_collection(self.hass)
-                if collection is None:
-                    return web.json_response({"message": "Zone storage unavailable"}, status=503)
-                await collection.async_create_item(candidate)
-                pl["label"], pl["source"] = name.strip(), "zone"
-            elif action == "rename":
-                pl["label"], pl["source"] = name.strip(), "named"
-            else:
-                state["places"].remove(pl)
-            await self.hass.async_add_executor_job(
-                _save_places, self.hass.config.path(PLACES_FILE),
-                {p: s.get("places") or [] for p, s in self.hass.data.get(DOMAIN, {}).items()},
-            )
-            _publish(self.hass, person)
-            return web.json_response({"saved": True, "action": action},
-                                     headers={"Cache-Control": "no-store"})
+            if payload.get("kind") == "shared" or "shared_id" in payload:
+                return await self._write_shared(request, payload, action, person)
+            # The old POST operation publishes one existing personal suggestion
+            # as a Home Assistant zone. It remains administrator-only.
+            return await self._write_personal(request, payload,
+                "zone" if action == "create" else action, person, state)
         except (ValueError, TypeError, KeyError, AttributeError):
             return web.json_response({"message": "Invalid place action"}, status=400)
+
+    async def _write_shared(self, request, payload, action, person):
+        admin = bool(request["hass_user"].is_admin)
+        shared = await self._shared()
+        user_id = request["hass_user"].id
+        lock = self.hass.data["tiny_family_runtime"]["shared_places_lock"]
+        async with lock:
+            if action == "create":
+                name = self._name(payload)
+                lat, lon = self._coordinates(payload)
+                if len(shared) >= 1000:
+                    return web.json_response({"message": "Too many shared places"}, status=409)
+                if any(_hav(lat, lon, float(p["latitude"]), float(p["longitude"])) < 10
+                       for p in shared):
+                    return web.json_response({"message": "Shared place already nearby"}, status=409)
+                person_state = self.hass.states.get(person) if person else None
+                place = {
+                    "id": uuid4().hex, "name": name, "latitude": lat, "longitude": lon,
+                    "created_by": user_id,
+                    "created_by_name": (person_state.name if person_state else "Administrator"),
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                }
+                shared.append(place)
+            else:
+                identifier = payload.get("shared_id")
+                if not isinstance(identifier, str) or len(identifier) != 32:
+                    raise ValueError("Invalid shared place ID")
+                place = next((p for p in shared if p.get("id") == identifier), None)
+                if place is None:
+                    return web.json_response({"message": "Place not found"}, status=404)
+                if not admin and place.get("created_by") != user_id:
+                    return web.json_response({"message": "Creator or administrator required"}, status=403)
+                if action == "delete":
+                    shared.remove(place)
+                else:
+                    place["name"] = self._name(payload)
+                    # Coordinate edits require both latitude and longitude.
+                    if "latitude" in payload or "longitude" in payload:
+                        place["latitude"], place["longitude"] = self._coordinates(payload)
+            await self._save_shared()
+        return web.json_response({"saved": True, "action": action},
+                                 headers={"Cache-Control": "no-store"})
+
+    async def _write_personal(self, request, payload, action, person, state):
+        admin = bool(request["hass_user"].is_admin)
+        if action == "zone" and not admin:
+            return web.json_response({"message": "Administrator required"}, status=403)
+        target = payload.get("person", person)
+        if not isinstance(target, str) or (target != person and not admin):
+            return web.json_response({"message": "Administrator required"}, status=403)
+        if admin and target != person:
+            entry = self.hass.data["tiny_family_runtime"]["entry"]
+            cfg = {**entry.data, **entry.options}
+            if target not in (cfg.get("persons") or []):
+                return web.json_response({"message": "Person not configured"}, status=404)
+            state = self.hass.data.get(DOMAIN, {}).get(target)
+        if state is None:
+            return web.json_response({"message": "Person not configured"}, status=404)
+        lat, lon = self._coordinates(payload)
+        pl = match_place(state.get("places"), lat, lon)
+        if pl is None:
+            return web.json_response({"message": "Place not found"}, status=404)
+        if describe_places(self.hass, [pl])[0]["status"] == "zone":
+            return web.json_response({"message": "Edit this HA zone on the family map"}, status=409)
+        if action == "zone":
+            name = self._name(payload)
+            candidate = validate_new_zone({
+                "name": name, "latitude": lat, "longitude": lon,
+                "radius": payload.get("radius", 100),
+            })
+            if any(_hav(lat, lon, z["latitude"], z["longitude"]) < 10
+                   for z in shared_map_zones(self.hass)):
+                return web.json_response({"message": "Zone already exists"}, status=409)
+            collection = zone_collection(self.hass)
+            if collection is None:
+                return web.json_response({"message": "Zone storage unavailable"}, status=503)
+            await collection.async_create_item(candidate)
+            pl["label"], pl["source"] = name, "zone"
+        elif action == "rename":
+            pl["label"], pl["source"] = self._name(payload), "named"
+        else:
+            state["places"].remove(pl)
+        await self.hass.async_add_executor_job(
+            _save_places, self.hass.config.path(PLACES_FILE),
+            {p: s.get("places") or [] for p, s in self.hass.data.get(DOMAIN, {}).items()},
+        )
+        _publish(self.hass, target)
+        return web.json_response({"saved": True, "action": action},
+                                 headers={"Cache-Control": "no-store"})
