@@ -207,6 +207,13 @@ class TinyFamilyPrivacyView(HomeAssistantView):
                 raise ValueError("Invalid privacy preference")
         except (ValueError, TypeError):
             return web.json_response({"message": "Use boolean privacy preferences"}, status=400)
+        # This version has no user-facing tracking pause or Ghost activation.
+        # Reject these actions at the API as well; allow only one-way cleanup
+        # for legacy opt-outs to avoid silently revealing old private routes.
+        if data.get("ghost") is True or data.get("share_position_in_messages") is False:
+            return web.json_response({
+                "message": "Tracking and sharing pauses are not available in Tiny Family"
+            }, status=403)
         config = {**entry.data, **entry.options}
         ghost = set(config.get("ghost_people") or [])
         no_location = set(config.get("message_location_opt_out") or [])

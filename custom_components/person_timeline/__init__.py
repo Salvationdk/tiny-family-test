@@ -52,6 +52,7 @@ from .mobile_actions import process_companion_reply
 from .communications import CommunicationError
 from .authz import require_permission
 from .communications import check_target
+from .device_binding import companion_device_sensors
 from .sensors import _publish, remove_generated_states
 from .automation_engine import ALERT_EVENTS, DEFAULT_ALERT_EVENTS
 from .storage import (
@@ -227,6 +228,9 @@ class TinyFamilySettingsView(HomeAssistantView):
                 {"id": s.entity_id, "name": s.attributes.get("friendly_name", s.entity_id)}
                 for s in self.hass.states.async_all("person")
             ], key=lambda x: x["name"]) if admin else []),
+            "device_sensors": ({s.entity_id: companion_device_sensors(self.hass, s.entity_id)
+                                for s in self.hass.states.async_all("device_tracker")}
+                               if admin else {}),
             "available_trackers": (sorted([
                 {"id": s.entity_id, "name": s.attributes.get("friendly_name", s.entity_id)}
                 for s in self.hass.states.async_all("device_tracker")
@@ -235,7 +239,7 @@ class TinyFamilySettingsView(HomeAssistantView):
                 {"id": s.entity_id, "name": s.name}
                 for domain in ("sensor", "binary_sensor")
                 for s in self.hass.states.async_all(domain)
-                if "charg" in s.entity_id or "plug" in s.entity_id
+                if "charg" in s.entity_id or "plug" in s.entity_id or "battery_state" in s.entity_id
             ], key=lambda x: x["name"]) if admin else []),
             "available_activities": (sorted([
                 {"id": s.entity_id, "name": s.name}
@@ -369,6 +373,23 @@ class TinyFamilySettingsView(HomeAssistantView):
                    (target and not check_target(target, services, notify_entities))
                    for target in notification_targets.values()):
                 raise ValueError("Notification target is not registered")
+            # The selected Companion tracker is the source of its sensor bindings.
+            # Never guess using a different phone's similarly named entity.
+            previous_trackers = {**entry.data, **entry.options}.get("trackers") or {}
+            for person, tracker in trackers.items():
+                if not tracker:
+                    continue
+                found = companion_device_sensors(self.hass, tracker)
+                for key, mapping in (
+                    ("battery", batteries), ("charging", charging_sensors),
+                    ("activity", activity_sensors),
+                ):
+                    if found.get(key):
+                        mapping[person] = found[key]
+                    elif previous_trackers.get(person) != tracker and not mapping.get(person):
+                        # No registry match: keep explicit manual fallback data,
+                        # but do not carry an old phone sensor into an empty field.
+                        mapping.pop(person, None)
         except (KeyError, ValueError, TypeError, AttributeError):
             return web.json_response({"message": "Invalid settings"}, status=400)
         options = dict(entry.options)

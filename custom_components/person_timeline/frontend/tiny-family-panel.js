@@ -1,14 +1,14 @@
 /* Tiny Family: own Home Assistant panel, independent of Lovelace. */
 const TF_VIEWS = [
-  ["today", "Min dag", ""],
-  ["live", "Personer", ""],
-  ["activity", "Ture og ophold", ""],
-  ["places", "Steder", ""],
-  ["routes", "Ruter", ""],
-  ["contact", "Beskeder", ""],
-  ["history", "Historik", ""],
-  ["editor", "Editor", ""],
-  ["help", "Hjælp", ""]
+  ["today", "Min dag", "mdi:home-outline"],
+  ["live", "Familiekort", "mdi:map-marker-multiple-outline"],
+  ["activity", "Ture og ophold", "mdi:walk"],
+  ["places", "Steder", "mdi:map-marker-radius-outline"],
+  ["routes", "Ruter", "mdi:map-outline"],
+  ["contact", "Beskeder", "mdi:message-text-outline"],
+  ["history", "Historik", "mdi:history"],
+  ["help", "Hjælp", "mdi:help-circle-outline"],
+  ["editor", "Administration", "mdi:shield-crown-outline"]
 ];
 class TinyFamilyPanel extends HTMLElement {
   constructor() { super(); this.active = "today"; this.booted = false; this.settings = null; }
@@ -52,7 +52,15 @@ class TinyFamilyPanel extends HTMLElement {
       .tf-head{display:flex;align-items:center;gap:10px;margin-bottom:18px}
       .tf-head h1{margin:0;font-size:24px}
       .tf-tabs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;max-width:100%}
-      .tf-tabs button{padding:12px 16px;border-radius:14px;border:1px solid var(--divider-color);color:var(--primary-text-color);background:var(--card-background-color);cursor:pointer}
+      .tf-tabs button{display:flex;align-items:center;justify-content:center;gap:7px;padding:12px 16px;min-height:44px;border-radius:14px;border:1px solid var(--divider-color);color:var(--primary-text-color);background:var(--card-background-color);cursor:pointer}
+      .tf-tabs button ha-icon{--mdc-icon-size:20px}
+      .tf-tabs button[data-view=editor]{border-color:var(--primary-color);font-weight:700}
+      .tf-admin-panel{border:2px solid var(--primary-color);border-radius:16px;padding:clamp(12px,2vw,20px);background:var(--card-background-color)}
+      .tf-admin-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+      .tf-admin-head ha-icon{color:var(--primary-color)}
+      .tf-advanced{padding:10px;border:1px solid var(--divider-color);border-radius:12px}
+      .tf-advanced summary{cursor:pointer;font-weight:600;padding:5px}
+      .tf-advanced .tf-fields{margin-top:10px}
       .tf-tabs button[aria-current=page]{border-color:var(--primary-color);color:var(--primary-color)}
       .tf-person{display:grid;gap:8px;padding:12px;background:var(--card-background-color);border:1px solid var(--divider-color);border-radius:12px;margin-bottom:10px}
       .tf-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,170px),1fr));gap:10px;max-width:100%}
@@ -62,11 +70,17 @@ class TinyFamilyPanel extends HTMLElement {
       .tf-message{margin:14px 0;color:var(--secondary-text-color)}
       @media(max-width:600px){
         .tf-wrap{padding:10px}.tf-head h1{font-size:21px}
-        .tf-tabs{display:flex;flex-wrap:nowrap;overflow-x:auto;overscroll-behavior-inline:contain;scroll-snap-type:x proximity;padding:0 0 8px}
-        .tf-tabs button{padding:10px 13px;font-size:13px;min-height:44px;flex:0 0 auto;scroll-snap-align:start}
-        .tf-fields,.tf-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}
-        .tf-person{padding:10px}.tf-map{height:min(52vh,390px)}
-        .tf-card-actions>*{flex:1 1 135px}
+        .tf-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;overflow:visible;padding:0 0 8px}
+        .tf-tabs button{display:flex;flex-direction:column;gap:3px;font-size:11px;line-height:1.2;padding:7px 2px;min-height:58px;white-space:normal;text-align:center;border-radius:10px}
+        .tf-tabs button ha-icon{--mdc-icon-size:21px}
+        .tf-tabs button[data-view=editor]{grid-column:1/-1;min-height:48px;flex-direction:row;font-size:13px}
+        .tf-fields{grid-template-columns:1fr}
+        .tf-metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+        .tf-stat{padding:10px}
+        .tf-person{padding:11px}.tf-map{height:min(57vh,440px);min-height:330px}
+        .tf-card-actions>*{flex:1 1 100%}
+        .tf-wrap .tf-save{width:100%}
+        .tf-admin-panel{padding:12px}
       }
       @media(max-width:360px){
         .tf-fields,.tf-metrics{grid-template-columns:1fr}
@@ -78,16 +92,22 @@ class TinyFamilyPanel extends HTMLElement {
       <p id="tf-message" class="tf-message" aria-live="polite"></p>
       <main id="tf-main"></main></section>`;
     const tabs = this.querySelector(".tf-tabs");
-    for (const [key, title] of TF_VIEWS) {
-      const button = document.createElement("button");
-      button.textContent = title;
-      button.dataset.view = key;
-      button.addEventListener("click", () => this.show(key));
-      tabs.appendChild(button);
-    }
     try {
-      // Panel views must use authenticated APIs instead of legacy HA history cards.
+      // Only an authenticated administrator gets the Administration tab.
       await this.refreshSettings();
+      for (const [key, title, icon] of TF_VIEWS) {
+        if (key === "editor" && !this.settings.editable) continue;
+        const button = document.createElement("button");
+        const pictogram=document.createElement("ha-icon");
+        pictogram.setAttribute("icon",icon);
+        pictogram.setAttribute("aria-hidden","true");
+        const caption=document.createElement("span");caption.textContent=title;
+        button.append(pictogram,caption);
+        button.dataset.view = key;
+        button.type="button";
+        button.addEventListener("click", () => this.show(key));
+        tabs.appendChild(button);
+      }
       try {
         const profile=await this.hassInstance.callApi("GET","tiny_family/status");
         this._viewerPerson=profile.viewer_person;
@@ -108,7 +128,7 @@ class TinyFamilyPanel extends HTMLElement {
   errorText(error) {
     const code = error?.body?.error_code || error?.error_code;
     const explanations={
-      no_recipient:"Ingen telefonmodtager er tilknyttet. Kontakt administrator i Editor.",
+      no_recipient:"Ingen telefonmodtager er tilknyttet. Kontakt en administrator.",
       invalid_recipient:"Modtageren er ikke længere tilknyttet. Opdater beskedlisten.",
       gps_unavailable:"Der er ingen frisk GPS-position. Beskeden kan sendes uden position.",
       notify_failed:"Ingen notifikationer blev accepteret. Kontrollér Companion-forbindelsen, og prøv igen.",
@@ -123,11 +143,13 @@ class TinyFamilyPanel extends HTMLElement {
   }
   show(key) {
     if (!this.booted) return;
+    if (key === "editor" && !this.settings?.editable) key = "today";
     this.active = key; this.card = null; this._todayPerson = null; this.message("");
     if(this._familyTimer){clearInterval(this._familyTimer);this._familyTimer=null;}
     if(this._familyMap){this._familyMap.remove();this._familyMap=null;}
     this.querySelectorAll("[data-view]").forEach(b => b.setAttribute("aria-current", b.dataset.view === key ? "page" : "false"));
     const root = this.querySelector("#tf-main");
+    root.classList.toggle("tf-admin-panel",key==="editor");
     root.replaceChildren();
     if (key === "editor") { this.editor(root); return; }
     if (key === "contact") { this.contact(root); return; }
@@ -1030,7 +1052,7 @@ class TinyFamilyPanel extends HTMLElement {
         }
         if(!list.children.length){
           const empty=document.createElement("p");empty.className="tf-empty";
-          empty.textContent="Ingen tilknyttede familiemedlemmer endnu. Tilknyt personer og HA-brugere i Editor.";
+          empty.textContent="Ingen tilknyttede familiemedlemmer endnu. Tilknyt personer og HA-brugere i Administration.";
           list.appendChild(empty);
         }
         if(bounds.length)map.fitBounds(bounds,{padding:[35,35],maxZoom:15});
@@ -1062,23 +1084,11 @@ class TinyFamilyPanel extends HTMLElement {
     root.appendChild(info);
     const sharing=document.createElement("section");sharing.className="tf-person";
     root.appendChild(sharing);
-    const ghostLabel=document.createElement("label");
-    const ghostCheckbox=document.createElement("input");ghostCheckbox.type="checkbox";
-    ghostLabel.append(ghostCheckbox,document.createTextNode(" Ghost Mode – skjul min position i Tiny Family"));
-    sharing.appendChild(ghostLabel);
-    const ghostNote=document.createElement("p");ghostNote.className="tf-message";
-    ghostNote.textContent="Ghost Mode skjuler din position for andre i Tiny Family. Home Assistants egne Person-entiteter kan stadig være tilgængelige via Home Assistant.";
-    sharing.appendChild(ghostNote);
-    const messagePositionLabel=document.createElement("label");
-    const messagePositionCheckbox=document.createElement("input");
-    messagePositionCheckbox.type="checkbox";
-    messagePositionLabel.append(messagePositionCheckbox,document.createTextNode(
-      " Medtag min aktuelle position ved Check-in, På vej hjem og SOS"));
-    sharing.appendChild(messagePositionLabel);
-    const messagePositionNote=document.createElement("p");
-    messagePositionNote.className="tf-message";
-    messagePositionNote.textContent="Kun gyldige, friske GPS-data deles. Slå dette fra, hvis positionen aldrig må medsendes i beskeder. Ghost Mode har altid forrang.";
-    sharing.appendChild(messagePositionNote);
+    const trackingTitle=document.createElement("strong");
+    trackingTitle.textContent="Sporing via din telefon";
+    const trackingNote=document.createElement("p");trackingNote.className="tf-message";
+    trackingNote.textContent="Tiny Family bruger positionsopdateringer fra din tilknyttede Home Assistant Companion-telefon. Der er ingen GPS-pause eller Ghost Mode-knap i Tiny Family. Telefonens systemtilladelser og Home Assistants adgangsrettigheder gælder fortsat.";
+    sharing.append(trackingTitle,trackingNote);
     const routineLabel=document.createElement("label");
     const routineCheckbox=document.createElement("input");
     routineCheckbox.type="checkbox";
@@ -1109,8 +1119,8 @@ class TinyFamilyPanel extends HTMLElement {
             "Synlige for familiemedlemmer med adgang"],
           ["Lærte steder og turarkiv","Kun min indloggede konto"],
           ["Beskeder","Kun afsender og konfigurerede modtagere"],
-          ["Ghost Mode",mine.ghost_allowed?"Tilladt af administrator":
-            "Ikke tilladt af administrator"],
+          ["Tidligere privattilstand",mine.ghost_active
+            ?"Aktiv fra en tidligere opsætning – kontakt administrator":"Ingen"],
           ["Pushmodtagere",(mine.configured_phone_recipients||[]).join(", ")||"Ingen"],
         ];
         for(const [name,value] of lines){
@@ -1121,7 +1131,7 @@ class TinyFamilyPanel extends HTMLElement {
         }
         const caveat=document.createElement("p");
         caveat.className="tf-message";
-        caveat.textContent="Bemærk: Andre Home Assistant-apps, administratorer, Person-/tracker-entiteter og Recorder kan stadig have adgang uden om Tiny Family. Ghost Mode stopper ikke GPS-indsamling i Companion.";
+        caveat.textContent="GPS indsamles kun, når Companion-appen og telefonens tilladelser gør det muligt. Home Assistants øvrige adgangsrettigheder og Recorder administreres separat.";
         permissionsBody.appendChild(caveat);
       }catch(error){permissionsBody.textContent="Delingsoversigten kunne ikke indlæses.";}
     };
@@ -1138,43 +1148,12 @@ class TinyFamilyPanel extends HTMLElement {
         this.message("Rutineindlæring kunne ikke ændres: "+error.message,true);
       }finally{routineCheckbox.disabled=false;}
     });
-    messagePositionCheckbox.addEventListener("change",async()=>{
-      messagePositionCheckbox.disabled=true;
-      try {
-        const value=await this.hassInstance.callApi("POST","tiny_family/privacy",{
-          share_position_in_messages:messagePositionCheckbox.checked
-        });
-        messagePositionCheckbox.checked=value.share_position_in_messages;
-        this.message("Positionsdeling i beskeder "+(value.share_position_in_messages?"aktiveret":"deaktiveret"));
-      } catch(error) {
-        messagePositionCheckbox.checked=!messagePositionCheckbox.checked;
-        this.message("Kunne ikke ændre positionsdeling: "+error.message,true);
-      } finally {messagePositionCheckbox.disabled=false;}
-    });
-    ghostCheckbox.addEventListener("change",async()=>{
-      ghostCheckbox.disabled=true;
-      try{
-        const value=await this.hassInstance.callApi("POST","tiny_family/privacy",{ghost:ghostCheckbox.checked});
-        ghostCheckbox.checked=value.ghost;
-        this.message("Ghost Mode "+(value.ghost?"aktiveret":"deaktiveret"));
-        await refreshPermissions();
-      }catch(error){
-        ghostCheckbox.checked=!ghostCheckbox.checked;
-        this.message("Kunne ikke ændre deling: "+error.message,true);
-      } finally {ghostCheckbox.disabled=false;}
-    });
     try{
       const privacy=await this.hassInstance.callApi("GET","tiny_family/privacy");
-      ghostCheckbox.checked=privacy.ghost;
-      ghostCheckbox.disabled=privacy.ghost_allowed!==true;
-      if(!privacy.ghost_allowed){
-        ghostNote.textContent="Administrator har ikke givet dig adgang til Ghost Mode. Du kan stadig slå positionsdeling i beskeder fra.";
-      }
-      messagePositionCheckbox.checked=privacy.share_position_in_messages!==false;
       routineCheckbox.checked=privacy.learn_my_routines===true;
       routineCheckbox.disabled=!privacy.routine_learning_available;
       if(!privacy.routine_learning_available){
-        routineNote.textContent="Administrator skal først aktivere lokal rutineindlæring i Editor.";
+        routineNote.textContent="Administrator skal først aktivere lokal rutineindlæring i Administration.";
       }
     }catch(error){sharing.remove();}
     if(sharing.isConnected)await refreshPermissions();
@@ -1261,7 +1240,20 @@ class TinyFamilyPanel extends HTMLElement {
     }catch(error){recentBody.textContent="Arkivet er ikke tilgængeligt endnu.";}
     const values = document.createElement("div");
     values.className = "tf-metrics";
-    root.appendChild(values);
+    // Show live status first on mobile instead of putting settings before it.
+    root.insertBefore(values,sharing);
+    const extraDetails=document.createElement("details");
+    extraDetails.className="tf-person tf-advanced";
+    const extraTitle=document.createElement("summary");
+    extraTitle.textContent="Flere aktivitets- og turdetaljer";
+    const extraMetrics=document.createElement("div");
+    extraMetrics.className="tf-metrics";
+    extraDetails.append(extraTitle,extraMetrics);
+    root.insertBefore(extraDetails,sharing);
+    const primaryMetrics=new Set([
+      "place","battery","charging","activity","speed",
+      "gpsHealth","gpsAge","homeEta"
+    ]);
     try {
       const data = await this.hassInstance.callApi("GET","tiny_family/communications");
       if (this.active !== "today") return;
@@ -1286,7 +1278,8 @@ class TinyFamilyPanel extends HTMLElement {
         const title = document.createElement("strong");title.textContent = label;
         const value = document.createElement("span");
         value.dataset.todayMetric = key;
-        row.append(title,value);values.appendChild(row);
+        row.append(title,value);
+        (primaryMetrics.has(key)?values:extraMetrics).appendChild(row);
       }
       try {
         const own=await this.hassInstance.callApi("GET","tiny_family/status");
@@ -1294,7 +1287,7 @@ class TinyFamilyPanel extends HTMLElement {
       }catch(error){this._todayPrivateProfile=null;}
       this.updateToday();
     } catch (error) {
-      info.textContent = "Din konto skal først knyttes til en person i Editor. " +
+      info.textContent = "Din konto skal først knyttes til en person i Administration. " +
         (error.message || String(error));
     }
   }
@@ -1483,24 +1476,24 @@ class TinyFamilyPanel extends HTMLElement {
     root.appendChild(title);
     const items = [
       ["Kom i gang", "Opret først personer i Home Assistant, og forbind telefonerne med Companion-appen."],
-      ["Editor", "En administrator vælger en person for hver Home Assistant-konto og en Companion-notifikationsmodtager for hver telefon."],
+      ["Administration", "Kun administratorer ser fanen Administration. Vælg person, Home Assistant-bruger og Companion-telefon; batteri, opladning og aktivitet hentes fra samme telefon, når sensorerne er registreret."],
       ["Min dag", "Viser den indloggede persons status fra Home Assistant. Manglende eller gamle data bliver ikke gættet."],
       ["Check-in", "Giver andre tilknyttede personer besked om, at du er okay. En frisk position kan medtages."],
       ["På vej hjem", "Sender en frivillig besked. ETA beregnes kun, når hastighed og position er tilstrækkelige."],
       ["SOS", "Sender en hjælpanmodning til de konfigurerede telefoner. Dette er ikke en alarmcentral eller en erstatning for 112."],
       ["Beskedstatus", "Accepteret betyder, at Home Assistants notifikationstjeneste tog imod anmodningen, ikke at telefonen har modtaget beskeden. Læsekvittering kræver, at modtageren markerer beskeden som læst inde i Tiny Family. Ved netværksfejl skal du bekræfte et eventuelt nyt forsøg, da det kan give en dobbeltbesked."],
       ["Automatiske alarmer", "Administrator bestemmer pr. familiemedlem hvilke ankomst-, afgangs-, fart-, batteri- og GPS-advarsler der er aktive. Systemhistorikken viser registrerede hændelser, ikke bekræftet push-levering."],
-      ["Ghost Mode", "Aktivér under Min dag. Din position skjules inde i Tiny Family, men Home Assistants egne Person- og enhedssporingsentiteter ændres ikke."],
+      ["GPS og sporing", "GPS-sporing styres via den valgte Companion-telefon. Tiny Family har ingen pause- eller Ghost-knap. Hvis telefonens GPS-tilladelse mangler, vises data som gamle eller utilgængelige."],
       ["Android-widget", "Opret en Action Button-widget i Home Assistant Companion: handling = Kald tjeneste. Vælg person_timeline.mobile_checkin, person_timeline.mobile_heading_home eller person_timeline.mobile_sos."],
       ["iPhone og iPad", "Brug Home Assistant Companion-genveje eller en iOS-Genvej, der kalder de tilsvarende Tiny Family-tjenester med den indloggede brugers konto."],
       ["Svar direkte fra push", "Ved en Companion notify.mobile_app_*-modtager kan du skrive svar på telefonens notifikation. Svarnøglen gælder én gang i højst 24 timer og udløber ved HA-genstart/genindlæsning. Andre notify-enheder har almindelige beskeder uden hurtigsvar."],
-      ["Privatliv ved beskeder", "Under Min dag kan du slå positionsdeling i Check-in, På vej hjem og SOS fra. Ghost Mode skjuler stadig positionen uanset valget. Almindelige fritekstbeskeder vedhæfter ikke GPS automatisk."],
+      ["Position ved beskeder", "Check-in, På vej hjem og SOS kan medtage en frisk GPS-position fra den valgte Companion-telefon. Almindelige fritekstbeskeder vedhæfter ikke GPS automatisk. Tidligere privatindstillinger fra gamle installationer bevares indtil migration."],
       ["Læsekvittering", "Modtageren kan trykke Markér som læst i Tiny Familys beskedhistorik. Dette bekræfter kun en handling inde i panelet, ikke at en pushbesked blev vist eller læst på telefonen."],
-      ["Automatiske beskeder", "Aktivér kun efter valg af personer, konti og telefonmodtagere i Editor. Batteri- og fartadvarsler kræver passende Companion-sensorer."],
+      ["Automatiske beskeder", "Aktivér kun efter valg af personer, konti og telefonmodtagere i Administration. Batteri- og fartadvarsler kræver passende Companion-sensorer."],
       ["Rutinegenkendelse", "Valgfri lokal læring af typiske afgangstider. Resultatet bruges kun efter mindst tre sammenlignelige afgangstider."],
       ["Privatliv", "Hver bruger kan kun se sin egen beskedhistorik i Tiny Family. Der er stadig selvstændige Home Assistant-rettigheder til andre entiteter."],
     ];
-    items.push(["GPS-datakvalitet", "Når telefonen ikke har sendt et GPS-fix i 15 minutter, markeres data som forældede. Aktive ture og bevægelsesstatus nulstilles uden at opfinde en afsluttet tur. Eventuelle GPS-advarsler aktiveres separat i Editor."]);
+    items.push(["GPS-datakvalitet", "Når telefonen ikke har sendt et GPS-fix i 15 minutter, markeres data som forældede. Aktive ture og bevægelsesstatus nulstilles uden at opfinde en afsluttet tur. Eventuelle GPS-advarsler aktiveres separat i Administration."]);
     for(const [heading,body] of items) {
       const box = document.createElement("section");box.className="tf-person";
       const h = document.createElement("strong");h.textContent=heading;
@@ -1741,7 +1734,7 @@ class TinyFamilyPanel extends HTMLElement {
         }
         note.textContent = note.textContent || (response.recipients_configured ?
           "Klar til at kontakte "+response.recipients_configured+" tilknyttet(e) telefonmodtager(e)." :
-          "Ingen andre telefonmodtagere er konfigureret. Administrator skal vælge Companion-modtagere i Editor.");
+          "Ingen andre telefonmodtagere er konfigureret. Administrator skal vælge Companion-modtagere i Administration.");
         if(this._composeRecipient){
           const chosen=this._composeRecipient;
           this._composeRecipient=null;
@@ -1749,7 +1742,7 @@ class TinyFamilyPanel extends HTMLElement {
             recipientSelect.value=chosen;
             input.focus();
           }else{
-            note.textContent="Den valgte person har ingen tilknyttet beskedmodtager. Kontakt administrator i Editor.";
+            note.textContent="Den valgte person har ingen tilknyttet beskedmodtager. Kontakt administrator i Administration.";
             // Never fall back to 'everyone' when direct messaging was requested.
             recipientSelect.value="";
             for(const {button,action} of buttons){
@@ -1821,12 +1814,12 @@ class TinyFamilyPanel extends HTMLElement {
         }
         if(!history.children.length){
           const empty=document.createElement("p");empty.className="tf-empty";
-          empty.textContent="Ingen beskeder endnu. Hvis du ikke kan sende, skal administrator tilknytte telefonmodtagere i Editor.";
+          empty.textContent="Ingen beskeder endnu. Hvis du ikke kan sende, skal administrator tilknytte telefonmodtagere i Administration.";
           history.appendChild(empty);
         }
       } catch(error) {
         note.textContent = "Beskeder kunne ikke indlæses: "+this.errorText(error)+
-          ". Kontroller din person- og telefonbinding i Editor.";
+          ". Kontroller din person- og telefonbinding i Administration.";
       }
     };
     await loadHistory();
@@ -1834,11 +1827,18 @@ class TinyFamilyPanel extends HTMLElement {
 
   editor(root) {
     if (!this.settings.editable) { root.textContent = "Kun administratorer kan ændre indstillinger."; return; }
-    const heading = document.createElement("h2");
-    heading.textContent = "Familie og visning"; root.appendChild(heading);
-    const info = document.createElement("p");
-    info.textContent = "Vælg familiemedlemmer og tilknyt eventuelt GPS-tracker, batterisensor og farve.";
+    const adminHeading=document.createElement("div");adminHeading.className="tf-admin-head";
+    const adminIcon=document.createElement("ha-icon");adminIcon.setAttribute("icon","mdi:shield-crown");
+    const heading=document.createElement("h2");heading.textContent="Administration – Tiny Family";
+    adminHeading.append(adminIcon,heading);root.appendChild(adminHeading);
+    const info=document.createElement("p");info.className="tf-message";
+    info.textContent="Kun for administratorer: tilknyt familiemedlemmer til telefoner, og styr notifikationer, fartgrænser og zoner. Valg af telefon knytter også dens registrerede sensorer til personen.";
     root.appendChild(info);
+    const zoneTools=document.createElement("button");
+    zoneTools.type="button";zoneTools.className="tf-save";
+    zoneTools.textContent="Åbn administratorværktøjer til zoner og polygoner på familiekortet";
+    zoneTools.addEventListener("click",()=>this.show("live"));
+    root.appendChild(zoneTools);
     const form = document.createElement("form");
     const autoLabel=document.createElement("label");
     autoLabel.className="tf-person";
@@ -1907,7 +1907,7 @@ class TinyFamilyPanel extends HTMLElement {
       section.appendChild(label);
       const fields = document.createElement("div");
       fields.className = "tf-fields";
-      const choice = (name, items, current) => {
+      const choice = (name, items, current, container=fields) => {
         const wrap = document.createElement("label");
         wrap.appendChild(document.createTextNode(name));
         const select = document.createElement("select");
@@ -1918,19 +1918,48 @@ class TinyFamilyPanel extends HTMLElement {
           option.value = item.id; option.textContent = item.name; select.appendChild(option);
         }
         select.value = current || "";
-        wrap.appendChild(select);fields.appendChild(wrap);
+        wrap.appendChild(select);container.appendChild(wrap);
         return select;
       };
-      const tracker = choice("GPS-tracker", this.settings.available_trackers || [], this.settings.trackers?.[person.id]);
-      const battery = choice("Batteri", this.settings.available_batteries || [], this.settings.batteries?.[person.id]);
+      const tracker = choice("Telefon (Home Assistant Companion / GPS)", this.settings.available_trackers || [], this.settings.trackers?.[person.id]);
+      const detected=document.createElement("p");
+      detected.className="tf-message";fields.appendChild(detected);
+      const advanced=document.createElement("details");
+      advanced.className="tf-advanced";
+      const advancedTitle=document.createElement("summary");
+      advancedTitle.textContent="Avanceret: kontrollér telefonens sensorer";
+      advanced.appendChild(advancedTitle);
+      const extra=document.createElement("div");
+      extra.className="tf-fields";advanced.appendChild(extra);
+      const battery = choice("Batteri", this.settings.available_batteries || [], this.settings.batteries?.[person.id], extra);
       const charging = choice("Opladning (Companion)", this.settings.available_charging || [],
-                              this.settings.charging_sensors?.[person.id]);
+                              this.settings.charging_sensors?.[person.id], extra);
       const activity = choice("Telefonaktivitet (Companion)", this.settings.available_activities || [],
-                              this.settings.activity_sensors?.[person.id]);
+                              this.settings.activity_sensors?.[person.id], extra);
+      const refreshPhone=initial=>{
+        const auto=this.settings.device_sensors?.[tracker.value]||{};
+        for(const [field,input] of [
+          ["battery",battery],["charging",charging],["activity",activity]
+        ]){
+          if(auto[field] && [...input.options].some(o=>o.value===auto[field]))
+            input.value=auto[field];
+          else if(!initial)input.value="";
+        }
+        const matched=Object.keys(auto).filter(key=>auto[key]);
+        detected.textContent=tracker.value
+          ? (matched.length
+            ? "Automatisk tilknyttet fra samme telefon: "+matched.map(k=>({
+                battery:"batteri",charging:"opladning",activity:"aktivitet"
+              })[k]).join(", ")+". Manglende sensorer kan vælges under Avanceret."
+            : "Home Assistant fandt ingen registrerede Companion-sensorer til telefonen. Aktivér sensorerne på telefonen, eller vælg dem under Avanceret.")
+          : "Vælg en Companion-telefon for at tilknytte dens GPS og sensorer.";
+      };
+      tracker.addEventListener("change",()=>refreshPhone(false));
+      refreshPhone(true);
       const colorLabel = document.createElement("label");colorLabel.textContent = "Farve";
       const color = document.createElement("input");color.type="color";color.value=this.settings.colors?.[person.id]||"#00a8a9";
       colorLabel.appendChild(color);fields.appendChild(colorLabel);
-      section.appendChild(fields);form.appendChild(section);
+      section.append(fields,advanced);form.appendChild(section);
       const owner = choice("Home Assistant-bruger", this.settings.available_users || [],
                            this.settings.owners?.[person.id]);
       const target = choice("Companion push-modtager", this.settings.available_notify_targets || [],
@@ -1969,15 +1998,8 @@ class TinyFamilyPanel extends HTMLElement {
           checkbox.disabled=useGlobalEvents.checked;
       });
       fields.appendChild(personEventsBox);
-      const ghostLabel=document.createElement("label");
-      const ghostAllowed=document.createElement("input");
-      ghostAllowed.type="checkbox";
-      ghostAllowed.checked=(this.settings.ghost_allowed_people || []).includes(person.id);
-      ghostLabel.append(ghostAllowed,document.createTextNode(
-        " Må bruge Ghost Mode (skjul position på Tiny Family-fælleskortet)"));
-      fields.appendChild(ghostLabel);
       rows.push({person:person.id,checkbox,tracker,battery,charging,activity,color,
-                 owner,target,ghostAllowed,personSpeed,useGlobalEvents,individualEvents});
+                 owner,target,personSpeed,useGlobalEvents,individualEvents,refreshPhone});
     }
     const migrateLabel=document.createElement("label");
     migrateLabel.className="tf-person";
@@ -2051,6 +2073,7 @@ class TinyFamilyPanel extends HTMLElement {
             if(value && [...element.options].some(option=>option.value===value))
               element.value=value;
           }
+          row.refreshPhone(false);
           const color=plan.settings.colors?.[row.person];
           if(typeof color==="string" && /^#[0-9a-fA-F]{6}$/.test(color))
             row.color.value=color;
@@ -2077,7 +2100,7 @@ class TinyFamilyPanel extends HTMLElement {
       }
       save.disabled=true;this.message("Gemmer …");
       const persons=[],trackers={},batteries={},charging_sensors={},activity_sensors={},
-            colors={},owners={},notification_targets={},ghost_allowed_people=[],
+            colors={},owners={},notification_targets={},
             speed_limits_kmh={},person_notification_events={};
       for(const row of rows) if(row.checkbox.checked) {
         persons.push(row.person);
@@ -2088,7 +2111,6 @@ class TinyFamilyPanel extends HTMLElement {
         colors[row.person]=row.color.value;
         if(row.owner.value) owners[row.person]=row.owner.value;
         if(row.target.value) notification_targets[row.person]=row.target.value;
-        if(row.ghostAllowed.checked) ghost_allowed_people.push(row.person);
         if(row.personSpeed.value!=="") speed_limits_kmh[row.person]=Number(row.personSpeed.value);
         if(!row.useGlobalEvents.checked){
           person_notification_events[row.person]=
@@ -2098,7 +2120,7 @@ class TinyFamilyPanel extends HTMLElement {
       try {
         await this.hassInstance.callApi("POST","tiny_family/settings",{
           persons,trackers,batteries,charging_sensors,activity_sensors,
-          colors,owners,notification_targets,ghost_allowed_people,
+          colors,owners,notification_targets,
           speed_limit_kmh:Number(speedLimit.value),
           speed_limits_kmh,person_notification_events,
           notification_events:Object.keys(alertOptions).filter(key=>alertOptions[key].checked),
@@ -2126,8 +2148,7 @@ class TinyFamilyPanel extends HTMLElement {
         const item=document.createElement("p");
         const status=row.ghost_active?"Ghost aktiv":"Synlig";
         const people=row.tiny_family_location_viewers.join(", ")||"ingen";
-        item.textContent=row.name+" · "+status+" · Ghost tilladt: "+
-          (row.ghost_allowed?"ja":"nej")+" · fartgrænse "+
+        item.textContent=row.name+" · "+status+" · fartgrænse "+
           row.speed_alert_kmh+" km/t · Tiny Family-visning: "+people;
         overview.appendChild(item);
       }
