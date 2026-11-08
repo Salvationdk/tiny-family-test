@@ -616,6 +616,34 @@ class TinyFamilyPanel extends HTMLElement {
         publish.addEventListener("click",()=>fill(place));
         actions.append(publish,openMaps(place));
         card.append(heading,info,actions);
+        if(place.status!=="zone"){
+          const edit=document.createElement("details");
+          const editTitle=document.createElement("summary");editTitle.textContent="Ret eller fjern eget ophold";
+          edit.appendChild(editTitle);
+          const renameField=labelInput("Navn",place.name==="Ukendt sted"?"":place.name);
+          edit.appendChild(renameField.wrapper);
+          const editActions=document.createElement("div");editActions.className="tf-card-actions";
+          const rename=document.createElement("button");rename.type="button";
+          rename.className="tf-save";rename.textContent="Gem navn";
+          rename.addEventListener("click",async()=>{
+            rename.disabled=true;
+            await call("PUT",{name:renameField.input.value.trim(),
+              latitude:place.latitude,longitude:place.longitude},"Stednavn opdateret.");
+            rename.disabled=false;
+          });
+          const remove=document.createElement("button");remove.type="button";
+          remove.className="tf-save";remove.textContent="Fjern ophold";
+          remove.style.background="var(--error-color,#b3261e)";
+          remove.addEventListener("click",async()=>{
+            if(!window.confirm("Fjern dette indlærte ophold fra din personlige historik?"))return;
+            remove.disabled=true;
+            await call("DELETE",{latitude:place.latitude,longitude:place.longitude},
+              "Ophold fjernet.");
+            remove.disabled=false;
+          });
+          editActions.append(rename,remove);edit.appendChild(editActions);
+          card.appendChild(edit);
+        }
         ownList.appendChild(card);
       }
       if(!ownList.children.length){
