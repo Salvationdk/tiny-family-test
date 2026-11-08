@@ -1,17 +1,18 @@
 /* Tiny Family: own Home Assistant panel, independent of Lovelace. */
 const TF_VIEWS = [
-  ["today", "Min dag", "mdi:home-outline"],
-  ["live", "Familiekort", "mdi:map-marker-multiple-outline"],
-  ["activity", "Ture og ophold", "mdi:walk"],
+  ["live", "Kort", "mdi:map-marker-multiple-outline"],
   ["places", "Steder", "mdi:map-marker-radius-outline"],
-  ["routes", "Ruter", "mdi:map-outline"],
-  ["contact", "Beskeder", "mdi:message-text-outline"],
-  ["history", "Historik", "mdi:history"],
-  ["help", "Hjælp", "mdi:help-circle-outline"],
-  ["editor", "Administration", "mdi:shield-crown-outline"]
+  ["activity", "Aktivitet", "mdi:walk"],
+  ["contact", "Beskeder", "mdi:message-text-outline"]
+];
+const TF_MORE_VIEWS = [
+  ["today", "Min status", "mdi:home-outline"],
+  ["routes", "GPS-ruter", "mdi:map-outline"],
+  ["history", "Hændelser", "mdi:history"],
+  ["help", "Hjælp", "mdi:help-circle-outline"]
 ];
 class TinyFamilyPanel extends HTMLElement {
-  constructor() { super(); this.active = "today"; this.booted = false; this.settings = null; }
+  constructor() { super(); this.active = "live"; this.booted = false; this.settings = null; }
   set hass(value) {
     this.hassInstance = value;
     if (this.isConnected && !this.booted) this.initialize();
@@ -49,7 +50,24 @@ class TinyFamilyPanel extends HTMLElement {
       .tf-empty{padding:18px;border:1px dashed var(--divider-color);border-radius:12px;color:var(--secondary-text-color)}
       .tf-wrap a{color:var(--primary-color)}
       .tf-person p{margin:4px 0;overflow-wrap:anywhere}
-      .tf-head{display:flex;align-items:center;gap:10px;margin-bottom:18px}
+      .tf-head{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+      .tf-head h1{flex:1;min-width:0}
+      .tf-header-action{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:44px;min-width:44px;padding:8px;border:1px solid var(--divider-color);border-radius:12px;background:var(--card-background-color);color:var(--primary-text-color);cursor:pointer}
+      .tf-more{position:relative}
+      .tf-more summary{list-style:none;cursor:pointer}
+      .tf-more summary::-webkit-details-marker{display:none}
+      .tf-more-menu{position:absolute;z-index:120;right:0;top:calc(100% + 6px);width:210px;max-width:calc(100vw - 30px);display:grid;gap:4px;padding:8px;border-radius:14px;border:1px solid var(--divider-color);background:var(--card-background-color);box-shadow:0 12px 30px rgba(0,0,0,.2)}
+      .tf-more-menu button{display:flex;align-items:center;gap:8px;text-align:left;min-height:43px;padding:8px 10px;border:0;border-radius:9px;color:var(--primary-text-color);background:transparent}
+      .tf-map-tools{border:1px solid var(--divider-color);border-radius:12px;padding:8px 12px;margin:0 0 12px;background:var(--card-background-color)}
+      .tf-map-tools summary{cursor:pointer;font-weight:600;padding:6px 0}
+      .tf-map-tools>*:not(summary){margin-top:10px}
+      .tf-shared-place-form{display:grid;gap:10px}
+      .tf-shared-place-form label{display:grid;gap:5px}
+      .tf-shared-place-form input{width:100%;padding:10px;border:1px solid var(--divider-color);border-radius:9px;background:var(--primary-background-color);color:var(--primary-text-color)}
+      .tf-shared-place-actions{display:flex;flex-wrap:wrap;gap:8px}
+      .tf-shared-place-actions>*{flex:1 1 150px}
+      .tf-place-group{margin:15px 0}
+      .tf-place-group>summary{padding:10px 0;cursor:pointer;font-weight:600}
       .tf-head h1{margin:0;font-size:24px}
       .tf-tabs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;max-width:100%}
       .tf-tabs button{display:flex;align-items:center;justify-content:center;gap:7px;padding:12px 16px;min-height:44px;border-radius:14px;border:1px solid var(--divider-color);color:var(--primary-text-color);background:var(--card-background-color);cursor:pointer}
@@ -69,15 +87,18 @@ class TinyFamilyPanel extends HTMLElement {
       .tf-save{background:var(--primary-color);color:var(--text-primary-color,#fff);border:0;border-radius:10px;padding:12px 18px;min-height:44px;cursor:pointer;overflow-wrap:anywhere}
       .tf-message{margin:14px 0;color:var(--secondary-text-color)}
       @media(max-width:600px){
-        .tf-wrap{padding:10px}.tf-head h1{font-size:21px}
-        .tf-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;overflow:visible;padding:0 0 8px}
+        .tf-wrap{padding:10px 10px calc(100px + env(safe-area-inset-bottom))}.tf-head h1{font-size:21px}
+        .tf-head{margin-bottom:8px}
+        .tf-tabs{position:fixed;left:0;right:0;bottom:0;z-index:100;background:var(--card-background-color);border-top:1px solid var(--divider-color);padding:7px 8px calc(7px + env(safe-area-inset-bottom));box-shadow:0 -4px 20px rgba(0,0,0,.08)}
+        .tf-family-view>.tf-map{height:calc(100dvh - 210px);min-height:380px;max-height:750px;border-radius:18px}
+        .tf-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;overflow:visible}
         .tf-tabs button{display:flex;flex-direction:column;gap:3px;font-size:11px;line-height:1.2;padding:7px 2px;min-height:58px;white-space:normal;text-align:center;border-radius:10px}
         .tf-tabs button ha-icon{--mdc-icon-size:21px}
-        .tf-tabs button[data-view=editor]{grid-column:1/-1;min-height:48px;flex-direction:row;font-size:13px}
         .tf-fields{grid-template-columns:1fr}
         .tf-metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
         .tf-stat{padding:10px}
         .tf-person{padding:11px}.tf-map{height:min(57vh,440px);min-height:330px}
+        .tf-family-view>.tf-map{height:calc(100dvh - 210px);min-height:380px;max-height:750px}
         .tf-card-actions>*{flex:1 1 100%}
         .tf-wrap .tf-save{width:100%}
         .tf-admin-panel{padding:12px}
@@ -87,7 +108,7 @@ class TinyFamilyPanel extends HTMLElement {
       }
       @media(prefers-reduced-motion:reduce){.tf-tabs{scroll-behavior:auto}}
       </style>
-      <section class="tf-wrap"><header class="tf-head"><ha-icon icon="mdi:account-group"></ha-icon><h1>Tiny Family</h1></header>
+      <section class="tf-wrap"><header class="tf-head"><ha-icon icon="mdi:account-group"></ha-icon><h1>Tiny Family</h1><div class="tf-admin-access"></div><details class="tf-more"><summary class="tf-header-action" aria-label="Flere funktioner"><ha-icon icon="mdi:dots-horizontal"></ha-icon></summary><div class="tf-more-menu"></div></details></header>
       <nav class="tf-tabs" aria-label="Tiny Family"></nav>
       <p id="tf-message" class="tf-message" aria-live="polite"></p>
       <main id="tf-main"></main></section>`;
@@ -96,7 +117,6 @@ class TinyFamilyPanel extends HTMLElement {
       // Only an authenticated administrator gets the Administration tab.
       await this.refreshSettings();
       for (const [key, title, icon] of TF_VIEWS) {
-        if (key === "editor" && !this.settings.editable) continue;
         const button = document.createElement("button");
         const pictogram=document.createElement("ha-icon");
         pictogram.setAttribute("icon",icon);
@@ -107,6 +127,31 @@ class TinyFamilyPanel extends HTMLElement {
         button.type="button";
         button.addEventListener("click", () => this.show(key));
         tabs.appendChild(button);
+      }
+      const moreMenu=this.querySelector(".tf-more-menu");
+      for(const [key,title,icon] of TF_MORE_VIEWS){
+        const button=document.createElement("button");
+        button.type="button";
+        const pictogram=document.createElement("ha-icon");
+        pictogram.setAttribute("icon",icon);
+        button.append(pictogram,document.createTextNode(title));
+        button.addEventListener("click",()=>{
+          this.querySelector(".tf-more").open=false;
+          this.show(key);
+        });
+        moreMenu.appendChild(button);
+      }
+      if(this.settings.editable){
+        const adminButton=document.createElement("button");
+        adminButton.type="button";
+        adminButton.className="tf-header-action";
+        adminButton.title="Administration";
+        adminButton.setAttribute("aria-label","Åbn administration");
+        const shield=document.createElement("ha-icon");
+        shield.setAttribute("icon","mdi:shield-crown-outline");
+        adminButton.append(shield);
+        adminButton.addEventListener("click",()=>this.show("editor"));
+        this.querySelector(".tf-admin-access").appendChild(adminButton);
       }
       try {
         const profile=await this.hassInstance.callApi("GET","tiny_family/status");
@@ -143,13 +188,14 @@ class TinyFamilyPanel extends HTMLElement {
   }
   show(key) {
     if (!this.booted) return;
-    if (key === "editor" && !this.settings?.editable) key = "today";
+    if (key === "editor" && !this.settings?.editable) key = "live";
     this.active = key; this.card = null; this._todayPerson = null; this.message("");
     if(this._familyTimer){clearInterval(this._familyTimer);this._familyTimer=null;}
     if(this._familyMap){this._familyMap.remove();this._familyMap=null;}
     this.querySelectorAll("[data-view]").forEach(b => b.setAttribute("aria-current", b.dataset.view === key ? "page" : "false"));
     const root = this.querySelector("#tf-main");
     root.classList.toggle("tf-admin-panel",key==="editor");
+    root.classList.toggle("tf-family-view",key==="live");
     root.replaceChildren();
     if (key === "editor") { this.editor(root); return; }
     if (key === "contact") { this.contact(root); return; }
@@ -496,7 +542,7 @@ class TinyFamilyPanel extends HTMLElement {
     const title=document.createElement("h2");title.textContent="Familieruter – seneste 24 timer";
     root.appendChild(title);
     const info=document.createElement("p");info.className="tf-message";
-    info.textContent="Kun spor, som familiebrugerne må dele, vises. Registreringer under Ghost Mode er skjult for andre, også bagefter. GPS-pauser tegnes ikke som rejser. Kortfliser hentes fra OpenStreetMap, som derfor kan se det viste kortområde.";
+    info.textContent="Kun delbare GPS-spor vises. Historiske privatmarkerede spor beskyttes fortsat. Kortfliser kan hentes fra OpenStreetMap.";
     root.appendChild(info);
     const tools=document.createElement("div");tools.className="tf-fields";
     const people=document.createElement("select");
@@ -599,7 +645,7 @@ class TinyFamilyPanel extends HTMLElement {
   async family(root) {
     const heading=document.createElement("h2");heading.textContent="Familiekort";root.appendChild(heading);
     const help=document.createElement("p");help.className="tf-message";
-    help.textContent="Fælleskortet viser kun tilladte personpositioner og ruter. Forældede GPS-punkter markeres særskilt. Ghost Mode skjuler data i Tiny Family, men ændrer ikke Home Assistants egne Person-/tracker-entiteter.";
+    help.textContent="Her ser du familiens positioner, fælles steder og ruter. Forældede GPS-positioner markeres særskilt.";
     root.appendChild(help);
     const routesLabel=document.createElement("label");
     routesLabel.className="tf-message";
@@ -818,9 +864,19 @@ class TinyFamilyPanel extends HTMLElement {
       }catch(error){this.message("Polygon kunne ikke slettes: "+error.message,true);}
       finally{polygonDelete.disabled=!polygonChoice.value;}
     });
+    const toolsPanel=document.createElement("details");
+    toolsPanel.className="tf-map-tools";
+    const toolsTitle=document.createElement("summary");
+    toolsTitle.textContent="Kortlag og avancerede kortværktøjer";
+    toolsPanel.appendChild(toolsTitle);
+    for(const element of [help,routesLabel,routeFilters,zonesLabel,polygonLabel,
+                          zoneInfo,zoneEditor,polygonEditor]){
+      toolsPanel.appendChild(element);
+    }
+    root.appendChild(toolsPanel);
     const mapElement=document.createElement("div");
     mapElement.className="tf-map";mapElement.style.marginBottom="15px";
-    root.appendChild(mapElement);
+    root.insertBefore(mapElement,toolsPanel);
     const list=document.createElement("div");list.className="tf-fields";root.appendChild(list);
     const refresh=document.createElement("button");refresh.className="tf-save";
     refresh.textContent="Opdater personer";
@@ -936,6 +992,19 @@ class TinyFamilyPanel extends HTMLElement {
             shape.bindTooltip(polygon.name);
             zoneBounds.push(polygon.points[0]);
           }
+        }
+        // Shared places are an explicitly published collection, not private GPS history.
+        const sharedData=await this.hassInstance.callApi("GET","tiny_family/places")
+          .catch(()=>({shared_places:[]}));
+        for(const place of sharedData.shared_places||[]){
+          if(!Number.isFinite(place.latitude)||!Number.isFinite(place.longitude))continue;
+          const marker=window.L.circleMarker([place.latitude,place.longitude],{
+            radius:7,color:"#ffffff",weight:2,fillColor:"#9c56c4",fillOpacity:1
+          }).addTo(map);
+          const label=document.createElement("span");
+          label.textContent=place.name;
+          marker.bindPopup(label);
+          zoneBounds.push([place.latitude,place.longitude]);
         }
         if(routesToggle.checked){
           const routes=await this.hassInstance.callApi("GET","tiny_family/routes");
@@ -1087,7 +1156,7 @@ class TinyFamilyPanel extends HTMLElement {
     const trackingTitle=document.createElement("strong");
     trackingTitle.textContent="Sporing via din telefon";
     const trackingNote=document.createElement("p");trackingNote.className="tf-message";
-    trackingNote.textContent="Tiny Family bruger positionsopdateringer fra din tilknyttede Home Assistant Companion-telefon. Der er ingen GPS-pause eller Ghost Mode-knap i Tiny Family. Telefonens systemtilladelser og Home Assistants adgangsrettigheder gælder fortsat.";
+    trackingNote.textContent="Din valgte Home Assistant Companion-telefon leverer GPS, batteri, opladning og aktivitet. Hvis telefonen ikke sender data, vises de som utilgængelige.";
     sharing.append(trackingTitle,trackingNote);
     const routineLabel=document.createElement("label");
     const routineCheckbox=document.createElement("input");
@@ -1119,8 +1188,8 @@ class TinyFamilyPanel extends HTMLElement {
             "Synlige for familiemedlemmer med adgang"],
           ["Lærte steder og turarkiv","Kun min indloggede konto"],
           ["Beskeder","Kun afsender og konfigurerede modtagere"],
-          ["Tidligere privattilstand",mine.ghost_active
-            ?"Aktiv fra en tidligere opsætning – kontakt administrator":"Ingen"],
+          ["Privat historik fra ældre opsætning",mine.ghost_active
+            ?"Historiske privatmarkerede data er fortsat beskyttet":"Ingen"],
           ["Pushmodtagere",(mine.configured_phone_recipients||[]).join(", ")||"Ingen"],
         ];
         for(const [name,value] of lines){
@@ -1832,7 +1901,7 @@ class TinyFamilyPanel extends HTMLElement {
     const heading=document.createElement("h2");heading.textContent="Administration – Tiny Family";
     adminHeading.append(adminIcon,heading);root.appendChild(adminHeading);
     const info=document.createElement("p");info.className="tf-message";
-    info.textContent="Kun for administratorer: tilknyt familiemedlemmer til telefoner, og styr notifikationer, fartgrænser og zoner. Valg af telefon knytter også dens registrerede sensorer til personen.";
+    info.textContent="Administrationen samler familiens telefoner, notifikationer, fartgrænser og zoner. Vælg én Companion-telefon pr. person; dens registrerede sensorer tilknyttes automatisk.";
     root.appendChild(info);
     const zoneTools=document.createElement("button");
     zoneTools.type="button";zoneTools.className="tf-save";
