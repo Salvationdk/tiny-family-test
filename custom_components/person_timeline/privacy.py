@@ -113,6 +113,18 @@ def public_profile(hass, person: str, config: dict, now: datetime,
         charging_entity=(config.get("charging_sensors") or {}).get(person),
         activity_entity=(config.get("activity_sensors") or {}).get(person),
     ))
+    # Live map badges are derived from the assigned phone's tracked motion.
+    # Never present an old GPS speed or stay duration as a live reading.
+    if not result["stale"] and result["gps_health"] == "fresh":
+        speed = runtime_state.get("speed_kmh")
+        if type(speed) in (int, float) and math.isfinite(speed) and 0 <= speed <= 200:
+            result["speed_kmh"] = round(speed)
+        movement = runtime_state.get("movement_state", "unknown")
+        result["movement"] = movement
+        stay_start = runtime_state.get("stay_start")
+        if (movement == "stationary" and type(stay_start) in (int, float)
+                and math.isfinite(stay_start) and 0 < stay_start <= now.timestamp()):
+            result["stay_minutes"] = int((now.timestamp() - stay_start) // 60)
     result["destination_confidence"] = round(
         runtime_state.get("destination_confidence", 0.0) * 100
     )
