@@ -1,10 +1,17 @@
-# Tiny Family — offentlig testversion 0.6.8
+# Tiny Family — offentlig testversion 0.6.9
 
 Tiny Family er en Home Assistant-integration til familiekort, GPS-ruter, opdagelse af steder, 30-dages turhistorik, beskeder, SOS og familieadvarsler.
 
 **Testversion:** Integrationen er stadig under praktisk afprøvning. SOS er ikke en certificeret nødtjeneste, og Home Assistant-notifikationer garanterer ikke levering på en telefon.
 
-## Nyt i 0.6.8 – Zenly-inspireret mobilvisning
+## Nyt i 0.6.9 – Tiny Neon på kortet
+- Personmarkører viser aktuel hastighed (km/t), batteriprocent og registreret opholdstid på familiekortet.
+- Hastighed og opholdstid skjules, når GPS-positionen er forældet; ukendte målinger mærkes som utilgængelige.
+- Markørerne bruger den afdæmpede **Tiny Neon**-stil (cyan/lilla) i både lyst og mørkt Home Assistant-tema.
+- Oprettelse af fælles steder ligger i et sammenklappeligt kortpanel, som først indlæser kortet, når det åbnes.
+- Beskeder har kompakte handlinger og tekniske leveringsdetaljer under et udvideligt afsnit.
+
+## Fra 0.6.8 – Zenly-inspireret mobilvisning
 - Fire faner: **Kort**, **Steder**, **Aktivitet** og **Beskeder**. Kortet åbner først, og administration findes via skjoldikonet.
 - Vælg én Companion-telefon pr. person. GPS, batteri, opladning og aktivitet tilknyttes automatisk fra **samme** Home Assistant-enhed, uden særskilte sensorvalg.
 - Et familiemedlem kan oprette fælles steder fra et kortpunkt, koordinater eller frisk telefon-GPS. Stederne bliver synlige for alle tilknyttede familiemedlemmer på kortet.
@@ -33,6 +40,6 @@ Ghost Mode fra tidligere installationer ændrer ikke Home Assistants `person`, `
 
 ## Teknisk
 
-Home Assistant-domæne: `person_timeline`. Version: `0.6.7`. Integrationens filer ligger i `custom_components/person_timeline/`.
+Home Assistant-domæne: `person_timeline`. Version: `0.6.9`. Integrationens filer ligger i `custom_components/person_timeline/`.
 
 Dette offentlige testrepository indeholder kun installationskode og dokumentation, ikke den private udviklingshistorik, personlige GPS-ruter, telefonnumre eller Home Assistant-konfigurationsdata.
