@@ -131,13 +131,15 @@ def persist_archive(path, samples=(), activity=None):
 
 
 def enqueue_fix(pending, *, person, ts, lat, lon, speed_kmh, battery,
-                movement, accuracy, stay_min, gap, private):
+                movement, accuracy, stay_min, gap, private, last_samples=None):
     """Keep real fixes without dropping every point inside a fixed 30 s window."""
     if not isinstance(person, str) or not all(
         type(v) in (float, int) and isfinite(v) for v in (ts, lat, lon)
     ) or not (-90 <= lat <= 90 and -180 <= lon <= 180):
         return False
-    last = next((p for p in reversed(pending) if p["person"] == person), None)
+    last = (last_samples or {}).get(person)
+    if last is None:
+        last = next((p for p in reversed(pending) if p["person"] == person), None)
     if last and ts <= last["ts"]:
         return False
     if last and not gap and last["private"] == bool(private):
@@ -149,7 +151,7 @@ def enqueue_fix(pending, *, person, ts, lat, lon, speed_kmh, battery,
     def finite_optional(value, low, high):
         return (float(value) if type(value) in (float, int)
                 and isfinite(value) and low <= value <= high else None)
-    pending.append({
+    sample={
         "person":person,"ts":float(ts),"lat":round(lat,6),"lon":round(lon,6),
         "speed":finite_optional(speed_kmh,0,200),
         "battery":(int(battery) if type(battery) in (int,float) and
@@ -159,8 +161,53 @@ def enqueue_fix(pending, *, person, ts, lat, lon, speed_kmh, battery,
         "stay_min":(int(stay_min) if type(stay_min) in (int,float)
                    and isfinite(stay_min) and 0 <= stay_min <= 86400 else None),
         "gap":bool(gap),"private":bool(private),
-    })
+    }
+    pending.append(sample)
+    if last_samples is not None:
+        last_samples[person]=sample
     return True
+
+
+def archive_stats(path, person):
+    """Summary of retained history for the signed-in account only."""
+    conn=_connect(path)
+    try:
+        fixes=conn.execute("SELECT COUNT(*) FROM fixes WHERE person=?",(person,)).fetchone()[0]
+        events=conn.execute("SELECT COUNT(*) FROM events WHERE person=?",(person,)).fetchone()[0]
+        return {"fixes":fixes,"events":events}
+    finally:
+        conn.close()
+
+
+def delete_archive(path, person, *, routes=False, activities=False):
+    """Erase selected local data by person, leaving all other family data."""
+    conn=_connect(path)
+    deleted={"fixes":0,"events":0}
+    try:
+        with conn:
+            if routes:
+                deleted["fixes"]=conn.execute(
+                    "DELETE FROM fixes WHERE person=?",(person,)
+                ).rowcount
+            if activities:
+                deleted["events"]=conn.execute(
+                    "DELETE FROM events WHERE person=?",(person,)
+                ).rowcount
+        return deleted
+    finally:
+        conn.close()
+
+
+def archived_dates(path, person, *, limit=RETENTION_DAYS):
+    """Available dates for a person's archive, without returning GPS points."""
+    conn=_connect(path)
+    try:
+        rows=conn.execute("""SELECT DISTINCT date(ts, 'unixepoch') AS day
+          FROM fixes WHERE person=? ORDER BY day DESC LIMIT ?""",
+          (person, min(limit,RETENTION_DAYS))).fetchall()
+        return [row[0] for row in rows]
+    finally:
+        conn.close()
 
 
 def _distance_m(a, b):
