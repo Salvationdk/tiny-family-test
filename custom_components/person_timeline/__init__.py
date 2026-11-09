@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -38,6 +40,7 @@ from .privacy import TinyFamilyStatusView, TinyFamilyPrivacyView
 from .sharing import TinyFamilySharingView
 from .zones_api import TinyFamilyZonesView
 from .routes import TinyFamilyRoutesView, record_route, prune_routes
+from .timeline import TinyFamilyTimelineView, initialize_archive, persist_archive, enqueue_fix
 from .activity import TinyFamilyActivityView, add_activity, prune_activity, archive_interrupted_trip
 from .geofences import TinyFamilyGeofencesView, polygon_zone, validate_polygon
 from .personal_data import TinyFamilyPersonalDataView
@@ -74,6 +77,7 @@ CONFIG_SCHEMA = vol.Schema({
 }, extra=vol.ALLOW_EXTRA)
 
 RUNTIME_KEY = "tiny_family_runtime"
+_LOGGER = logging.getLogger(__name__)
 PANEL_URL = "tiny-family"
 
 
@@ -155,6 +159,12 @@ async def async_unload_entry(hass: HomeAssistant, entry) -> bool:
     for unsubscribe in runtime.pop("unsubscribers", []):
         unsubscribe()
     previous_config = runtime.get("live_config") or {}
+    timeline_flush = runtime.pop("timeline_flush", None)
+    if timeline_flush is not None:
+        await timeline_flush()
+    runtime.pop("timeline_pending", None)
+    runtime.pop("timeline_path", None)
+    runtime.pop("timeline_lock", None)
     if isinstance(runtime.get("routes"), dict):
         await hass.async_add_executor_job(
             _save_places, hass.config.path("tiny_family_routes.json"),
@@ -462,6 +472,7 @@ async def _async_setup_runtime(hass: HomeAssistant, config: dict) -> bool:
         hass.http.register_view(TinyFamilySharingView(hass))
         hass.http.register_view(TinyFamilyZonesView(hass))
         hass.http.register_view(TinyFamilyRoutesView(hass))
+        hass.http.register_view(TinyFamilyTimelineView(hass))
         hass.http.register_view(TinyFamilyActivityView(hass))
         hass.http.register_view(TinyFamilyPlacesView(hass))
         hass.http.register_view(TinyFamilyGeofencesView(hass))
@@ -568,6 +579,43 @@ async def _async_setup_runtime(hass: HomeAssistant, config: dict) -> bool:
         activity_data = {}
     prune_activity(activity_data, datetime.now(tz=timezone.utc).timestamp())
     runtime["activity"] = activity_data
+    # Migrate remaining 24 h route points and 30-day activity summaries,
+    # then keep daily GPS samples in a durable local SQLite archive.
+    timeline_path = hass.config.path("tiny_family_timeline.sqlite3")
+    await hass.async_add_executor_job(
+        initialize_archive, timeline_path, routes_data, activity_data
+    )
+    runtime["timeline_path"] = timeline_path
+    runtime["timeline_pending"] = []
+    runtime["timeline_lock"] = asyncio.Lock()
+    runtime["timeline_event_fingerprint"] = None
+
+    async def _flush_timeline(_=None):
+        async with runtime["timeline_lock"]:
+            pending = runtime["timeline_pending"]
+            batch = list(pending)
+            del pending[:]
+            fingerprint = tuple(
+                (p, len(rows), rows[-1].get("id") if rows else None)
+                for p, rows in sorted(activity_data.items())
+            )
+            events = activity_data if fingerprint != runtime["timeline_event_fingerprint"] else None
+            if not batch and events is None:
+                return
+            # Copy event lists while still on HA's event loop.
+            snapshot = ({p: [dict(item) for item in rows] for p, rows in events.items()}
+                        if events is not None else None)
+            try:
+                await hass.async_add_executor_job(persist_archive, timeline_path, batch, snapshot)
+                runtime["timeline_event_fingerprint"] = fingerprint
+            except Exception:
+                pending[:0] = batch
+                _LOGGER.exception("Tiny Family timeline archive could not be saved")
+
+    runtime["timeline_flush"] = _flush_timeline
+    runtime["unsubscribers"].append(
+        async_track_time_interval(hass, _flush_timeline, timedelta(seconds=30))
+    )
     geofences_file = hass.config.path("tiny_family_geofences.json")
     saved_polygons = await hass.async_add_executor_job(_load_places, geofences_file)
     polygons = []
@@ -733,11 +781,12 @@ async def _async_setup_runtime(hass: HomeAssistant, config: dict) -> bool:
                 d = None  # Never add a jump across the GPS outage to a trip.
             st["gps_health"] = "fresh"
             st["gps_seen_at"] = t
+            timeline_gap = quality == "gap" or bool(st.pop("route_gap_pending", False))
             record_route(
                 routes_data, person, ts=t, lat=lat, lon=lon,
-                private=person in ghost_people,
-                gap=(quality == "gap" or bool(st.pop("route_gap_pending", False))),
+                private=person in ghost_people, gap=timeline_gap,
             )
+            speed_observed = raw_speed is not None
             dt_h = ((t - st["last_t"]) / 3600
                     if st.get("last_t") is not None else 0)
             distance_step = 0.0
@@ -749,6 +798,7 @@ async def _async_setup_runtime(hass: HomeAssistant, config: dict) -> bool:
                         estimated = d / (dt_h * 3600)
                         if estimated < 200 / 3.6:
                             speed = estimated
+                            speed_observed = True
                 if (dt_h > 0 and (d / 1000 / dt_h) <= 200 and
                         d >= max(20.0, 1.5 * (accuracy or 0))):
                     distance_step = d
@@ -799,6 +849,21 @@ async def _async_setup_runtime(hass: HomeAssistant, config: dict) -> bool:
             )
             st["speed_kmh"] = round(speed * 3.6, 1)
             st["max_speed"] = max(st["max_speed"], speed)
+            battery_entity = (cfg.get("batteries") or {}).get(person)
+            battery_state = hass.states.get(battery_entity) if battery_entity else None
+            try:
+                battery_pct = float(battery_state.state) if battery_state else None
+            except (ValueError, TypeError, OverflowError):
+                battery_pct = None
+            enqueue_fix(
+                runtime["timeline_pending"], person=person, ts=t, lat=lat, lon=lon,
+                speed_kmh=(st["speed_kmh"] if speed_observed else None),
+                battery=battery_pct, movement=st.get("movement_state", "unknown"),
+                accuracy=accuracy, stay_min=st.get("current_stay_min"),
+                gap=timeline_gap, private=person in ghost_people,
+            )
+            if len(runtime["timeline_pending"]) >= 100:
+                await _flush_timeline()
             if person not in ghost_people:
                 zone = (polygon_zone(polygons, lat, lon)
                         or _nearest_zone_label(hass, lat, lon))
