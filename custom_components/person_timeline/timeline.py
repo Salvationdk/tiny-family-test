@@ -7,10 +7,11 @@ The SQLite database resides in Home Assistant's configuration directory.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone, date
+from functools import partial
 from math import asin, cos, isfinite, radians, sin, sqrt
 from pathlib import Path
 import sqlite3
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from aiohttp import web
 from homeassistant.components.http import HomeAssistantView
@@ -139,7 +140,7 @@ def enqueue_fix(pending, *, person, ts, lat, lon, speed_kmh, battery,
     last = next((p for p in reversed(pending) if p["person"] == person), None)
     if last and ts <= last["ts"]:
         return False
-    if last and not gap and not last["private"] != bool(private):
+    if last and not gap and last["private"] == bool(private):
         interval = ts - last["ts"]
         # Preserve bends/changes of movement, but coalesce stationary jitter.
         min_interval = MIN_STATIONARY_INTERVAL if movement == "stationary" else MIN_MOVING_INTERVAL
@@ -285,11 +286,10 @@ class TinyFamilyTimelineView(HomeAssistantView):
         except ValueError:
             return web.json_response({"message":"Date outside retained archive"},status=400)
         try:
-            data=await self.hass.async_add_executor_job(
-                query_day,runtime["timeline_path"],person,start,end,
-                viewer=viewer
-            )
-        except (OSError,sqlite3.Error):
+            data=await self.hass.async_add_executor_job(partial(
+                query_day,runtime["timeline_path"],person,start,end,viewer=viewer
+            ))
+        except (OSError,sqlite3.Error,KeyError):
             return web.json_response({"message":"Timeline storage unavailable"},status=503)
         # Recent pending samples have not reached the next scheduled flush.
         # They use the same privacy filter as persisted rows.
