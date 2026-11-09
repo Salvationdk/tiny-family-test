@@ -50,7 +50,7 @@ from .history_api import TinyFamilyHistoryView
 from .family_actions import send_from_user
 from .mobile_actions import process_companion_reply
 from .communications import CommunicationError
-from .authz import require_permission
+from .authz import require_permission, require_history_log_permission
 from .communications import check_target
 from .device_binding import companion_device_sensors
 from .sensors import _publish, remove_generated_states
@@ -1055,9 +1055,7 @@ async def _async_setup_runtime(hass: HomeAssistant, config: dict) -> bool:
         # service only appends a bounded system-history entry; it does not
         # impersonate a family member, send push messages or edit zones.
         # Interactive calls still require an authenticated administrator.
-        user_id = getattr(getattr(call, "context", None), "user_id", None)
-        if user_id is not None:
-            await require_permission(hass, cfg, call)
+        await require_history_log_permission(hass, cfg, call)
         category = call.data.get("kategori") or "Besked"
         message = call.data.get("tekst") or ""
         if not isinstance(category, str) or not isinstance(message, str):
