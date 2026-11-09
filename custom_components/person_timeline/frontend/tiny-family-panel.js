@@ -1155,8 +1155,143 @@ class TinyFamilyPanel extends HTMLElement {
     const refresh=document.createElement("button");refresh.className="tf-save";
     refresh.textContent="Opdater personer";
     root.appendChild(refresh);
-    let drawing=false;
+    // Person, date and the full 24-hour scrubber stay ON the map on mobile.
+    const dock=document.createElement("section");
+    dock.className="tf-timeline-dock";
+    dock.setAttribute("aria-label","Familiens tidslinje");
+    dock.innerHTML=`
+      <div class="tf-dock-main">
+        <button type="button" data-mode="live" aria-pressed="true">● Nu</button>
+        <button type="button" data-mode="history" aria-pressed="false">◷ Tidslinje</button>
+        <select data-role="timeline-person" aria-label="Vælg person"></select>
+      </div>
+      <div class="tf-history-controls" hidden>
+        <div class="tf-day-nav">
+          <button type="button" data-role="prev-day" aria-label="Forrige dato">‹</button>
+          <input data-role="timeline-date" type="date" aria-label="Dato for historik">
+          <button type="button" data-role="next-day" aria-label="Næste dato">›</button>
+        </div>
+        <input type="range" data-role="timeline-minute" min="0" max="1439"
+          step="1" value="1439" aria-label="Gå gennem dagens GPS-tidslinje">
+        <div class="tf-history-info"><strong data-role="timeline-time">—</strong>
+          <span data-role="timeline-stats">Vælg dato og person</span></div>
+        <div class="tf-timeline-warning" data-role="timeline-summary"></div>
+      </div>`;
+    root.appendChild(dock);
+    const liveTab=dock.querySelector('[data-mode="live"]');
+    const historyTab=dock.querySelector('[data-mode="history"]');
+    const historyControls=dock.querySelector(".tf-history-controls");
+    const dockPerson=dock.querySelector('[data-role="timeline-person"]');
+    const dockDate=dock.querySelector('[data-role="timeline-date"]');
+    const minuteSlider=dock.querySelector('[data-role="timeline-minute"]');
+    const timeLabel=dock.querySelector('[data-role="timeline-time"]');
+    const statsLabel=dock.querySelector('[data-role="timeline-stats"]');
+    const summaryLabel=dock.querySelector('[data-role="timeline-summary"]');
+    const localDate=d=>new Intl.DateTimeFormat("sv-SE",{
+      timeZone:this.hassInstance.config.time_zone||undefined,
+      year:"numeric",month:"2-digit",day:"2-digit"
+    }).format(d);
+    dockDate.value=localDate(new Date());
+    dockDate.max=dockDate.value;
+    dockDate.min=localDate(new Date(Date.now()-364*86400000));
+    let timelineMode=false,timelineData=null,timelineMarker=null,activeMap=null;
+    let timelineRequest=0,timelineRevision=0;
+    let drawing=false,pendingRedraw=false;
     let previousSignature="";
+    const chooseMode=mode=>{
+      timelineMode=mode==="history";
+      liveTab.setAttribute("aria-pressed",String(!timelineMode));
+      historyTab.setAttribute("aria-pressed",String(timelineMode));
+      historyControls.hidden=!timelineMode;
+    };
+    const updateCursor=()=>{
+      if(!timelineMode||!timelineData)return;
+      const desired=timelineData.start+Number(minuteSlider.value)*60;
+      const prettyTime=ts=>new Date(ts*1000).toLocaleTimeString("da-DK",{
+        hour:"2-digit",minute:"2-digit",
+        timeZone:timelineData.timezone||undefined
+      });
+      timeLabel.textContent=prettyTime(desired);
+      let closest=null;
+      for(const segment of timelineData.segments||[]){
+        for(const fix of segment){
+          if(fix.t<=desired && (!closest || fix.t>closest.t))closest=fix;
+        }
+      }
+      if(!closest || desired-closest.t>300){
+        statsLabel.textContent="Ingen GPS-måling på dette tidspunkt";
+        if(timelineMarker && activeMap){activeMap.removeLayer(timelineMarker);timelineMarker=null;}
+        return;
+      }
+      const metrics=[];
+      if(Number.isFinite(closest.speed))metrics.push(Math.round(closest.speed)+" km/t");
+      if(Number.isFinite(closest.battery))metrics.push(Math.round(closest.battery)+" % batteri");
+      if(closest.movement==="stationary" && Number.isFinite(closest.stay_min) &&
+          closest.stay_min>=0)metrics.push("Ophold "+closest.stay_min+" min");
+      statsLabel.textContent=prettyTime(closest.t)+" · "+(metrics.join(" · ")||"Position målt");
+      if(activeMap){
+        const loc=[closest.lat,closest.lon];
+        if(!timelineMarker){
+          timelineMarker=window.L.circleMarker(loc,{
+            radius:11,color:"#ffffff",weight:3,fillColor:"#19d8df",
+            fillOpacity:1
+          }).addTo(activeMap);
+        }else timelineMarker.setLatLng(loc);
+        activeMap.panTo(loc,{animate:false});
+      }
+    };
+    const loadTimeline=async()=>{
+      chooseMode("history");
+      const person=dockPerson.value||this._viewerPerson;
+      if(!person){summaryLabel.textContent="Ingen tilknyttet person.";return;}
+      const requestId=++timelineRequest;
+      timeLabel.textContent="Henter tidslinje…";
+      try{
+        const url="tiny_family/timeline?person="+encodeURIComponent(person)+
+          "&date="+encodeURIComponent(dockDate.value);
+        const result=await this.hassInstance.callApi("GET",url);
+        if(requestId!==timelineRequest||this.active!=="live")return;
+        timelineData=result;
+        timelineRevision++;
+        minuteSlider.max=String(Math.max(0,Math.floor((result.end-result.start)/60)-1));
+        minuteSlider.value=minuteSlider.max;
+        const sum=result.summary||{};
+        summaryLabel.textContent=(result.points_count||0)+" målepunkter · "+
+          (Number.isFinite(sum.distance_km)?sum.distance_km+" km":"ukendt distance")+
+          (Number.isFinite(sum.max_speed_kmh)?" · top "+sum.max_speed_kmh+" km/t":"")+
+          (result.gaps?" · "+result.gaps+" GPS-afbrud":"")+
+          " · Registrerede punkter, ikke vejberegning";
+        previousSignature="";
+        await draw();
+      }catch(error){
+        if(requestId!==timelineRequest)return;
+        timelineData=null;
+        summaryLabel.textContent="Kunne ikke hente historik: "+this.errorText(error);
+        previousSignature="";
+        await draw();
+      }
+    };
+    liveTab.addEventListener("click",()=>{
+      timelineRequest++;timelineData=null;timelineRevision++;
+      chooseMode("live");previousSignature="";draw();
+    });
+    historyTab.addEventListener("click",loadTimeline);
+    dockPerson.addEventListener("change",()=>{
+      if(timelineMode)loadTimeline();
+      else {previousSignature="";draw();}
+    });
+    dockDate.addEventListener("change",loadTimeline);
+    minuteSlider.addEventListener("input",updateCursor);
+    const moveDay=direction=>{
+      const parts=dockDate.value.split("-").map(Number);
+      const next=new Date(Date.UTC(parts[0],parts[1]-1,parts[2]+direction))
+        .toISOString().slice(0,10);
+      if(next>=dockDate.min && next<=dockDate.max){
+        dockDate.value=next;loadTimeline();
+      }
+    };
+    dock.querySelector('[data-role="prev-day"]').addEventListener("click",()=>moveDay(-1));
+    dock.querySelector('[data-role="next-day"]').addEventListener("click",()=>moveDay(1));
     const draw=async()=>{
       if(drawing || this.active!=="live" || !this.isConnected)return;
       drawing=true;
