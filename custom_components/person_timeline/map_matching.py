@@ -93,7 +93,7 @@ def _chunks(raw_segments):
                 current = [item]  # overlap one real fix across API batches
         if len(current) >= 3:
             chunks.append(current)
-    return chunks[:MAX_CHUNKS]
+    return chunks
 
 
 def build_match_request(base, points):
@@ -167,7 +167,9 @@ async def match_day(hass, server, raw_segments):
     server = validate_match_server(server)
     if not server:
         return [], "disabled"
-    chunks = _chunks(raw_segments)
+    all_chunks = _chunks(raw_segments)
+    truncated = len(all_chunks) > MAX_CHUNKS
+    chunks = all_chunks[:MAX_CHUNKS]
     if not chunks:
         return [], "not_enough_points"
     session=async_get_clientsession(hass)
@@ -202,5 +204,5 @@ async def match_day(hass, server, raw_segments):
                     failed+=1
     except TimeoutError:
         failed+=1
-    return result, ("matched" if result and not failed else
+    return result, ("matched" if result and not failed and not truncated else
                     "partial" if result else "unavailable")
