@@ -97,6 +97,23 @@ class TinyFamilyPanel extends HTMLElement {
       .tf-shared-place-actions>*{flex:1 1 150px}
       .tf-place-group{margin:15px 0}
       .tf-place-group>summary{padding:10px 0;cursor:pointer;font-weight:600}
+      /* Tiny Neon timeline: frosted bottom dock, real daily samples, no page scroll. */
+      .tf-timeline-dock{position:relative;z-index:700;max-width:850px;padding:10px 12px;border:1px solid rgba(66,220,230,.55);border-radius:17px;background:rgba(20,28,44,.94);color:#effbff;box-shadow:0 8px 22px rgba(0,0,0,.23),0 0 16px rgba(50,188,217,.17);font-size:13px}
+      .tf-dock-main{display:flex;gap:7px;align-items:center}
+      .tf-timeline-dock button,.tf-timeline-dock select,.tf-timeline-dock input[type=date]{border:1px solid rgba(101,209,224,.5);border-radius:10px;background:rgba(12,23,37,.93);color:#fff;min-height:40px;padding:6px 9px;font-size:13px}
+      .tf-timeline-dock button[aria-pressed=true]{background:linear-gradient(125deg,#079eac,#6556b0);border-color:#72e9e7}
+      .tf-timeline-dock select{min-width:0;flex:1;max-width:100%;text-overflow:ellipsis}
+      .tf-history-controls{display:grid;gap:7px;margin-top:9px}
+      .tf-history-controls[hidden]{display:none}
+      .tf-day-nav{display:grid;grid-template-columns:44px minmax(0,1fr) 44px;gap:6px}
+      .tf-day-nav input{width:100%;min-width:0;box-sizing:border-box;color-scheme:dark}
+      .tf-day-nav button{font-size:18px}
+      .tf-timeline-dock input[type=range]{width:100%;margin:2px 0 0;accent-color:#39d9e4;touch-action:pan-y;min-height:23px}
+      .tf-history-info{display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;line-height:1.25}
+      .tf-history-info span{color:#d0e1f0}
+      .tf-history-info strong{color:#a6f5f2}
+      .tf-timeline-warning{font-size:11px;color:#ddcfed}
+      .tf-timeline-dock .tf-mini{font-size:12px;padding:5px 7px}
       .tf-head h1{margin:0;font-size:24px}
       .tf-tabs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;max-width:100%}
       .tf-tabs button{display:flex;align-items:center;justify-content:center;gap:7px;padding:12px 16px;min-height:44px;border-radius:14px;border:1px solid var(--divider-color);color:var(--primary-text-color);background:var(--card-background-color);cursor:pointer}
@@ -119,7 +136,18 @@ class TinyFamilyPanel extends HTMLElement {
         .tf-wrap{padding:10px 10px calc(100px + env(safe-area-inset-bottom))}.tf-head h1{font-size:21px}
         .tf-head{margin-bottom:8px}
         .tf-tabs{position:fixed;left:0;right:0;bottom:0;z-index:100;background:var(--card-background-color);border-top:1px solid var(--divider-color);padding:7px 8px calc(7px + env(safe-area-inset-bottom));box-shadow:0 -4px 20px rgba(0,0,0,.08)}
-        .tf-family-view>.tf-map{height:calc(100dvh - 210px);min-height:380px;max-height:750px;border-radius:18px}
+        #tf-main.tf-family-view{position:relative;height:calc(100dvh - 167px - env(safe-area-inset-bottom));min-height:330px;overflow:hidden;margin:0}
+        #tf-main.tf-family-view>h2,#tf-main.tf-family-view>.tf-map-tools,
+        #tf-main.tf-family-view>.tf-fields,#tf-main.tf-family-view>.tf-save{display:none}
+        #tf-main.tf-family-view>.tf-map{height:100%;min-height:0;max-height:none;width:100%;margin:0!important;border-radius:16px}
+        #tf-main.tf-family-view>.tf-timeline-dock{position:absolute;left:8px;right:8px;bottom:9px;max-width:none}
+        .tf-wrap:has(#tf-main.tf-family-view){height:calc(100dvh - 12px);overflow:hidden;padding-bottom:0}
+        .tf-wrap:has(#tf-main.tf-family-view) .tf-head{margin:0 0 7px}
+        .tf-wrap:has(#tf-main.tf-family-view) #tf-message:empty{display:none}
+        .tf-wrap:has(#tf-main.tf-family-view) .tf-tabs{margin:0}
+        .tf-history-info{font-size:11px}
+        .tf-timeline-dock{padding:8px 9px}
+        .tf-timeline-dock button,.tf-timeline-dock select{min-height:38px;padding:5px 6px}
         .tf-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;overflow:visible}
         .tf-tabs button{display:flex;flex-direction:column;gap:3px;font-size:11px;line-height:1.2;padding:7px 2px;min-height:58px;white-space:normal;text-align:center;border-radius:10px}
         .tf-tabs button ha-icon{--mdc-icon-size:21px}
@@ -127,7 +155,7 @@ class TinyFamilyPanel extends HTMLElement {
         .tf-metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
         .tf-stat{padding:10px}
         .tf-person{padding:11px}.tf-map{height:min(57vh,440px);min-height:330px}
-        .tf-family-view>.tf-map{height:calc(100dvh - 210px);min-height:380px;max-height:750px}
+        #tf-main.tf-family-view>.tf-map{height:100%;min-height:0;max-height:none}
         .tf-card-actions>*{flex:1 1 100%}
         .tf-wrap .tf-save{width:100%}
         .tf-admin-panel{padding:12px}
@@ -218,6 +246,11 @@ class TinyFamilyPanel extends HTMLElement {
   show(key) {
     if (!this.booted) return;
     if (key === "editor" && !this.settings?.editable) key = "live";
+    if (key === "routes"){
+      this._timelineRequestedPerson=this._routeFilterPerson||this._viewerPerson;
+      this._routeFilterPerson=null;
+      key="live";
+    }
     this.active = key; this.card = null; this._todayPerson = null; this.message("");
     if(this._familyTimer){clearInterval(this._familyTimer);this._familyTimer=null;}
     if(this._familyMap){this._familyMap.remove();this._familyMap=null;}
