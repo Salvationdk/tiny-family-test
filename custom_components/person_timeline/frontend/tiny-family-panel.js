@@ -119,6 +119,11 @@ class TinyFamilyPanel extends HTMLElement {
       .tf-history-info span{color:#d0e1f0}
       .tf-history-info strong{color:#a6f5f2}
       .tf-timeline-warning{font-size:11px;color:#ddcfed}
+      .tf-road-matching{display:flex;align-items:center;gap:7px;min-height:28px;color:#dcf5fd;font-size:12px;cursor:pointer}
+      .tf-road-matching input{width:17px;height:17px;accent-color:#38d2dd;flex:none}
+      .tf-road-matching[hidden]{display:none}
+      .tf-road-match-status{color:#adf0ed;font-size:11px;line-height:1.25}
+      .tf-osrm-setting input[type=url]{display:block;width:100%;min-width:0;max-width:100%;box-sizing:border-box;padding:10px;border:1px solid var(--divider-color);border-radius:9px;background:var(--primary-background-color);color:var(--primary-text-color);margin:6px 0}
       .tf-timeline-dock .tf-mini{font-size:12px;padding:5px 7px}
       .tf-head h1{margin:0;font-size:24px}
       .tf-tabs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;max-width:100%}
@@ -1185,6 +1190,11 @@ class TinyFamilyPanel extends HTMLElement {
         </div>
         <div class="tf-history-info"><strong data-role="timeline-time">—</strong>
           <span data-role="timeline-stats">Vælg dato og person</span></div>
+        <label class="tf-road-matching" data-role="road-matching-label" hidden>
+          <input type="checkbox" data-role="road-matching-toggle">
+          Følg vejene (sender GPS til valgt OSRM-server)
+        </label>
+        <div class="tf-road-match-status" data-role="road-matching-status" aria-live="polite"></div>
         <div class="tf-event-strip" data-role="timeline-events" hidden></div>
         <div class="tf-timeline-warning" data-role="timeline-summary"></div>
       </div>`;
@@ -1207,6 +1217,10 @@ class TinyFamilyPanel extends HTMLElement {
     const timeLabel=dock.querySelector('[data-role="timeline-time"]');
     const statsLabel=dock.querySelector('[data-role="timeline-stats"]');
     const summaryLabel=dock.querySelector('[data-role="timeline-summary"]');
+    const roadMatchLabel=dock.querySelector('[data-role="road-matching-label"]');
+    const roadMatchToggle=dock.querySelector('[data-role="road-matching-toggle"]');
+    const roadMatchStatus=dock.querySelector('[data-role="road-matching-status"]');
+    roadMatchLabel.hidden=!this.settings?.map_matching_enabled;
     const eventStrip=dock.querySelector('[data-role="timeline-events"]');
     const localDate=d=>new Intl.DateTimeFormat("sv-SE",{
       timeZone:this.hassInstance.config.time_zone||undefined,
@@ -1278,11 +1292,20 @@ class TinyFamilyPanel extends HTMLElement {
       timeLabel.textContent="Henter tidslinje…";
       try{
         const url="tiny_family/timeline?person="+encodeURIComponent(person)+
-          "&date="+encodeURIComponent(dockDate.value);
+          "&date="+encodeURIComponent(dockDate.value)+
+          (roadMatchToggle.checked && this.settings?.map_matching_enabled?"&map_match=1":"");
         const result=await this.hassInstance.callApi("GET",url);
         if(requestId!==timelineRequest||this.active!=="live")return;
         timelineData=result;
         timelineRevision++;
+        const matchCount=(result.matched_segments||[]).length;
+        roadMatchStatus.textContent=roadMatchToggle.checked?
+          (matchCount?"✓ "+matchCount+" vejtilpassede rutestykker"+
+           (result.matching_status==="partial"?" · Delvist match":""):
+           result.matching_status==="disabled"?"Vejtilpasning er deaktiveret af administrator.":
+           result.matching_status==="not_enough_points"?"For få GPS-punkter til vejtilpasning.":
+           "Vejtilpasning kunne ikke beregnes. Oprindelige GPS-spor vises.")
+          :"";
         eventStrip.replaceChildren();
         for(const event of (result.events||[]).slice(0,40)){
           const eventButton=document.createElement("button");
@@ -1325,6 +1348,7 @@ class TinyFamilyPanel extends HTMLElement {
       }catch(error){
         if(requestId!==timelineRequest)return;
         timelineData=null;
+        roadMatchStatus.textContent="";
         eventStrip.replaceChildren();eventStrip.hidden=true;
         summaryLabel.textContent="Kunne ikke hente historik: "+this.errorText(error);
         previousSignature="";
@@ -1342,6 +1366,15 @@ class TinyFamilyPanel extends HTMLElement {
       else {previousSignature="";draw();}
     });
     dockDate.addEventListener("change",loadTimeline);
+    roadMatchToggle.addEventListener("change",()=>{
+      if(roadMatchToggle.checked){
+        // Explicitly request matching for the currently selected date only.
+        loadTimeline();
+      }else{
+        roadMatchStatus.textContent="";
+        previousSignature="";timelineRevision++;draw();
+      }
+    });
     minuteSlider.addEventListener("input",()=>{
       stopPlayback();
       updateCursor();
@@ -1713,23 +1746,39 @@ class TinyFamilyPanel extends HTMLElement {
         if(timelineMode && timelineData){
           const trackBounds=[];
           const color=this.settings.colors?.[timelineData.person]||"#24d5d9";
+          const matched=roadMatchToggle.checked?
+            (timelineData.matched_segments||[]):[];
           for(const segment of timelineData.segments||[]){
             const pts=(segment||[]).filter(p=>Number.isFinite(p.lat) &&
               Number.isFinite(p.lon)).map(p=>[p.lat,p.lon]);
             if(!pts.length)continue;
             if(pts.length>1){
               window.L.polyline(pts,{
-                color:"#ffffff",weight:6,opacity:.42
+                color:matched.length?"#a9c9d6":"#ffffff",
+                weight:matched.length?2:6,
+                opacity:matched.length?.50:.42,
+                dashArray:matched.length?"5 6":undefined
               }).addTo(map);
-              window.L.polyline(pts,{
-                color,weight:3.5,opacity:.96
-              }).addTo(map);
+              if(!matched.length){
+                window.L.polyline(pts,{
+                  color,weight:3.5,opacity:.96
+                }).addTo(map);
+              }
             }else{
               window.L.circleMarker(pts[0],{
                 radius:4,color:"#fff",weight:1,fillColor:color,fillOpacity:1
               }).addTo(map);
             }
             trackBounds.push(...pts);
+          }
+          for(const road of matched){
+            if(!Array.isArray(road.coordinates)||road.coordinates.length<2)continue;
+            window.L.polyline(road.coordinates,{
+              color:"#081624",weight:8,opacity:.60
+            }).addTo(map);
+            window.L.polyline(road.coordinates,{
+              color:"#2ce2eb",weight:4,opacity:1
+            }).addTo(map);
           }
           for(const event of timelineData.events||[]){
             if(event.kind!=="stay")continue;
