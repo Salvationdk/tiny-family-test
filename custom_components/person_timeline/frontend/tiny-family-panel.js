@@ -112,6 +112,9 @@ class TinyFamilyPanel extends HTMLElement {
       .tf-timeline-dock input[type=range]{width:100%;margin:2px 0 0;accent-color:#39d9e4;touch-action:pan-y;min-height:23px}
       .tf-scrub-row{display:grid;grid-template-columns:48px minmax(0,1fr);gap:8px;align-items:center}
       .tf-scrub-row button{padding:5px 3px}
+      .tf-event-strip{display:flex;overflow-x:auto;gap:6px;padding:3px 0;scrollbar-width:thin}
+      .tf-event-strip[hidden]{display:none}
+      .tf-event-strip button{white-space:nowrap;flex:none;min-height:31px;font-size:11px;padding:4px 8px;border-color:rgba(188,146,244,.54);background:rgba(55,35,75,.77)}
       .tf-history-info{display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;line-height:1.25}
       .tf-history-info span{color:#d0e1f0}
       .tf-history-info strong{color:#a6f5f2}
@@ -1182,6 +1185,7 @@ class TinyFamilyPanel extends HTMLElement {
         </div>
         <div class="tf-history-info"><strong data-role="timeline-time">—</strong>
           <span data-role="timeline-stats">Vælg dato og person</span></div>
+        <div class="tf-event-strip" data-role="timeline-events" hidden></div>
         <div class="tf-timeline-warning" data-role="timeline-summary"></div>
       </div>`;
     root.appendChild(dock);
@@ -1203,6 +1207,7 @@ class TinyFamilyPanel extends HTMLElement {
     const timeLabel=dock.querySelector('[data-role="timeline-time"]');
     const statsLabel=dock.querySelector('[data-role="timeline-stats"]');
     const summaryLabel=dock.querySelector('[data-role="timeline-summary"]');
+    const eventStrip=dock.querySelector('[data-role="timeline-events"]');
     const localDate=d=>new Intl.DateTimeFormat("sv-SE",{
       timeZone:this.hassInstance.config.time_zone||undefined,
       year:"numeric",month:"2-digit",day:"2-digit"
@@ -1278,6 +1283,28 @@ class TinyFamilyPanel extends HTMLElement {
         if(requestId!==timelineRequest||this.active!=="live")return;
         timelineData=result;
         timelineRevision++;
+        eventStrip.replaceChildren();
+        for(const event of (result.events||[]).slice(0,40)){
+          const eventButton=document.createElement("button");
+          eventButton.type="button";
+          const eventTime=new Date(event.started_at*1000).toLocaleTimeString("da-DK",{
+            hour:"2-digit",minute:"2-digit",timeZone:result.timezone||undefined
+          });
+          eventButton.textContent=event.kind==="stay"
+            ?"◷ "+eventTime+" · Ophold "+event.duration_min+" min"
+            :"↗ "+eventTime+" · Tur "+event.duration_min+" min";
+          eventButton.title=event.label||eventButton.textContent;
+          eventButton.addEventListener("click",()=>{
+            minuteSlider.value=String(Math.max(0,Math.min(
+              Number(minuteSlider.max),
+              Math.floor((event.started_at-result.start)/60)
+            )));
+            stopPlayback();
+            updateCursor();
+          });
+          eventStrip.appendChild(eventButton);
+        }
+        eventStrip.hidden=!eventStrip.children.length;
         minuteSlider.max=String(Math.max(0,Math.floor((result.end-result.start)/60)-1));
         const segments=result.segments||[];
         const lastSegment=segments[segments.length-1]||[];
@@ -1298,6 +1325,7 @@ class TinyFamilyPanel extends HTMLElement {
       }catch(error){
         if(requestId!==timelineRequest)return;
         timelineData=null;
+        eventStrip.replaceChildren();eventStrip.hidden=true;
         summaryLabel.textContent="Kunne ikke hente historik: "+this.errorText(error);
         previousSignature="";
         await draw();
