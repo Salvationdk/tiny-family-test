@@ -1206,7 +1206,10 @@ class TinyFamilyPanel extends HTMLElement {
     };
     const updateCursor=()=>{
       if(!timelineMode||!timelineData)return;
-      const desired=timelineData.start+Number(minuteSlider.value)*60;
+      // Select the end of each displayed minute so real fixes with seconds
+      // (e.g. 12:23:50) remain visible at 12:23 on the slider.
+      const desired=Math.min(timelineData.end-1,
+        timelineData.start+(Number(minuteSlider.value)+1)*60-1);
       const prettyTime=ts=>new Date(ts*1000).toLocaleTimeString("da-DK",{
         hour:"2-digit",minute:"2-digit",
         timeZone:timelineData.timezone||undefined
