@@ -924,7 +924,7 @@ class TinyFamilyPanel extends HTMLElement {
     const routesLabel=document.createElement("label");
     routesLabel.className="tf-message";
     const routesToggle=document.createElement("input");
-    routesToggle.type="checkbox";routesToggle.checked=true;
+    routesToggle.type="checkbox";routesToggle.checked=false;
     routesLabel.append(routesToggle,
       document.createTextNode(" Vis delte ruter fra de seneste 24 timer"));
     root.appendChild(routesLabel);
@@ -951,13 +951,13 @@ class TinyFamilyPanel extends HTMLElement {
     const zonesLabel=document.createElement("label");
     zonesLabel.className="tf-message";
     const zonesToggle=document.createElement("input");
-    zonesToggle.type="checkbox";zonesToggle.checked=true;
+    zonesToggle.type="checkbox";zonesToggle.checked=false;
     zonesLabel.append(zonesToggle,document.createTextNode(" Vis geografiske zoner og deres radius"));
     root.appendChild(zonesLabel);
     const polygonLabel=document.createElement("label");
     polygonLabel.className="tf-message";
     const polygonsToggle=document.createElement("input");
-    polygonsToggle.type="checkbox";polygonsToggle.checked=true;
+    polygonsToggle.type="checkbox";polygonsToggle.checked=false;
     polygonLabel.append(polygonsToggle,
       document.createTextNode(" Vis Tiny Family-polygonområder"));
     root.appendChild(polygonLabel);
@@ -1293,13 +1293,27 @@ class TinyFamilyPanel extends HTMLElement {
     dock.querySelector('[data-role="prev-day"]').addEventListener("click",()=>moveDay(-1));
     dock.querySelector('[data-role="next-day"]').addEventListener("click",()=>moveDay(1));
     const draw=async()=>{
-      if(drawing || this.active!=="live" || !this.isConnected)return;
+      if(this.active!=="live" || !this.isConnected)return;
+      if(drawing){pendingRedraw=true;return;}
       drawing=true;
       refresh.disabled=true;
       try {
         const data=await this.hassInstance.callApi("GET","tiny_family/status");
         if (this.active!=="live") return;
         this._viewerPerson=data.viewer_person;
+        const previousDockPerson=dockPerson.value;
+        dockPerson.replaceChildren();
+        for(const person of data.people || []){
+          if(person.ghost && person.person!==data.viewer_person)continue;
+          const choice=document.createElement("option");
+          choice.value=person.person;
+          choice.textContent=person.name;
+          dockPerson.appendChild(choice);
+        }
+        const requested=this._timelineRequestedPerson||previousDockPerson||data.viewer_person;
+        if([...dockPerson.options].some(option=>option.value===requested)){
+          dockPerson.value=requested;
+        }
         const polygonData=await this.hassInstance.callApi("GET","tiny_family/geofences");
         if(this.active!=="live")return;
         const previousRoutePerson=routePerson.value;
@@ -1317,7 +1331,9 @@ class TinyFamilyPanel extends HTMLElement {
           routes:routesToggle.checked,routeHours:routeHours.value,
           routePerson:routePerson.value,
           zoneVisibility:zonesToggle.checked,
-          polygonVisibility:polygonsToggle.checked
+          polygonVisibility:polygonsToggle.checked,
+          timelineMode,timelineRevision,
+          selectedTimelinePerson:dockPerson.value
         });
         if(signature===previousSignature && this._familyMap)return;
         previousSignature=signature;
@@ -1353,7 +1369,9 @@ class TinyFamilyPanel extends HTMLElement {
         list.replaceChildren();
         await this.leaflet();
         if(this._familyMap) {this._familyMap.remove();this._familyMap=null;}
+        activeMap=null;timelineMarker=null;
         const map=this.createLeafletMap(mapElement);
+        activeMap=map;
         if(data.can_manage_zones){
           let draft=null, polygonDraft=null;
           map.on("click",event=>{
@@ -1415,7 +1433,7 @@ class TinyFamilyPanel extends HTMLElement {
           marker.bindPopup(label);
           zoneBounds.push([place.latitude,place.longitude]);
         }
-        if(routesToggle.checked){
+        if(!timelineMode && routesToggle.checked){
           const routes=await this.hassInstance.callApi("GET","tiny_family/routes");
           if(this.active!=="live")return;
           const since=Date.now()/1000-Number(routeHours.value)*3600;
@@ -1446,6 +1464,7 @@ class TinyFamilyPanel extends HTMLElement {
             zoneBounds.push(center);
           }
         }
+        let focusedLivePoint=null;
         for(const person of data.people || []){
           const box=document.createElement("section");box.className="tf-person";
           const head=document.createElement("div");head.className="tf-card-head";
@@ -1489,8 +1508,10 @@ class TinyFamilyPanel extends HTMLElement {
                  " · sikkerhed ca. "+person.destination_confidence+" %" : "");
             box.appendChild(eta);
           }
-          if(Number.isFinite(person.latitude) && Number.isFinite(person.longitude) && !person.ghost){
+          if(!timelineMode && Number.isFinite(person.latitude) &&
+             Number.isFinite(person.longitude) && !person.ghost){
             const point=[person.latitude,person.longitude];
+            if(person.person===dockPerson.value)focusedLivePoint=point;
             const battery=person.battery_percent;
             const color=person.stale?"#888888":battery!=null&&battery<20?"#d64646":
               battery!=null&&battery<=50?"#d79b3f":"#1fb77e";
@@ -1565,6 +1586,15 @@ class TinyFamilyPanel extends HTMLElement {
               gps.textContent="GPS er ikke opdateret";
               popup.appendChild(gps);
             }
+            const timelineAction=document.createElement("button");
+            timelineAction.type="button";
+            timelineAction.className="tf-save tf-mini";
+            timelineAction.textContent="Vis 24-timers tidslinje";
+            timelineAction.addEventListener("click",()=>{
+              dockPerson.value=person.person;
+              loadTimeline();
+            });
+            popup.appendChild(timelineAction);
             mapMarker.bindPopup(popup);
             bounds.push(point);
             if(!person.stale){
@@ -1602,13 +1632,58 @@ class TinyFamilyPanel extends HTMLElement {
           empty.textContent="Ingen tilknyttede familiemedlemmer endnu. Tilknyt personer og HA-brugere i Administration.";
           list.appendChild(empty);
         }
-        if(bounds.length)map.fitBounds(bounds,{padding:[35,35],maxZoom:15});
-        else if(zoneBounds.length)map.fitBounds(zoneBounds,{padding:[35,35],maxZoom:14});
+        if(timelineMode && timelineData){
+          const trackBounds=[];
+          const color=this.settings.colors?.[timelineData.person]||"#24d5d9";
+          for(const segment of timelineData.segments||[]){
+            const pts=(segment||[]).filter(p=>Number.isFinite(p.lat) &&
+              Number.isFinite(p.lon)).map(p=>[p.lat,p.lon]);
+            if(!pts.length)continue;
+            if(pts.length>1){
+              window.L.polyline(pts,{
+                color:"#ffffff",weight:6,opacity:.42
+              }).addTo(map);
+              window.L.polyline(pts,{
+                color,weight:3.5,opacity:.96
+              }).addTo(map);
+            }else{
+              window.L.circleMarker(pts[0],{
+                radius:4,color:"#fff",weight:1,fillColor:color,fillOpacity:1
+              }).addTo(map);
+            }
+            trackBounds.push(...pts);
+          }
+          for(const event of timelineData.events||[]){
+            if(event.kind!=="stay")continue;
+            const observed=(timelineData.segments||[]).flat().find(p=>
+              p.t>=event.started_at && p.t<=event.ended_at);
+            if(!observed)continue;
+            const stop=window.L.circleMarker([observed.lat,observed.lon],{
+              radius:7,color:"#ffffff",weight:2,fillColor:"#a777f3",fillOpacity:.85
+            }).addTo(map);
+            const stopLabel=document.createElement("span");
+            stopLabel.textContent="Ophold "+event.duration_min+" min"+
+              (event.label?" · "+event.label:"");
+            stop.bindTooltip(stopLabel);
+          }
+          if(trackBounds.length){
+            map.fitBounds(trackBounds,{padding:[40,40],maxZoom:15});
+          }else map.setView([this.hassInstance.config.latitude||0,
+                            this.hassInstance.config.longitude||0],11);
+          updateCursor();
+        }else if(!timelineMode && focusedLivePoint){
+          map.setView(focusedLivePoint,14);
+        }else if(!timelineMode && bounds.length){
+          map.fitBounds(bounds,{padding:[35,35],maxZoom:15});
+        }else if(zoneBounds.length)map.fitBounds(zoneBounds,{padding:[35,35],maxZoom:14});
         else map.setView([this.hassInstance.config.latitude||0,
                            this.hassInstance.config.longitude||0],5);
-        setTimeout(()=>map.invalidateSize(),150);
+        setTimeout(()=>{if(this._familyMap===map)map.invalidateSize();},150);
       }catch(error){this.message("Familiekort kunne ikke indlæses: "+error.message,true);}
-      finally{refresh.disabled=false;drawing=false;}
+      finally{
+        refresh.disabled=false;drawing=false;
+        if(pendingRedraw){pendingRedraw=false;draw();}
+      }
     };
     refresh.addEventListener("click",()=>{previousSignature="";draw();});
     zonesToggle.addEventListener("change",()=>{previousSignature="";draw();});
@@ -1617,6 +1692,14 @@ class TinyFamilyPanel extends HTMLElement {
     routeHours.addEventListener("change",()=>{previousSignature="";draw();});
     routePerson.addEventListener("change",()=>{previousSignature="";draw();});
     await draw();
+    if(this._timelineRequestedPerson){
+      const requested=this._timelineRequestedPerson;
+      this._timelineRequestedPerson=null;
+      if([...dockPerson.options].some(option=>option.value===requested)){
+        dockPerson.value=requested;
+      }
+      await loadTimeline();
+    }
     this._familyTimer=setInterval(()=>{
       if(this.active==="live" && this.isConnected)draw();
     },30000);
