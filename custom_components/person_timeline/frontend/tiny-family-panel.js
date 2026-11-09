@@ -7,7 +7,7 @@ const TF_VIEWS = [
 ];
 const TF_MORE_VIEWS = [
   ["today", "Min status", "mdi:home-outline"],
-  ["routes", "GPS-ruter", "mdi:map-outline"],
+  ["routes", "Tidslinje", "mdi:map-outline"],
   ["history", "Hændelser", "mdi:history"],
   ["help", "Hjælp", "mdi:help-circle-outline"]
 ];
@@ -24,6 +24,7 @@ class TinyFamilyPanel extends HTMLElement {
   connectedCallback() { if (this.hassInstance && !this.booted) this.initialize(); }
   disconnectedCallback() {
     if(this._familyTimer){clearInterval(this._familyTimer);this._familyTimer=null;}
+    if(this._timelinePlaybackTimer){clearInterval(this._timelinePlaybackTimer);this._timelinePlaybackTimer=null;}
     if(this._familyMap){this._familyMap.remove();this._familyMap=null;}
   }
   async initialize() {
@@ -97,6 +98,28 @@ class TinyFamilyPanel extends HTMLElement {
       .tf-shared-place-actions>*{flex:1 1 150px}
       .tf-place-group{margin:15px 0}
       .tf-place-group>summary{padding:10px 0;cursor:pointer;font-weight:600}
+      /* Tiny Neon timeline: frosted bottom dock, real daily samples, no page scroll. */
+      .tf-timeline-dock{position:relative;z-index:700;max-width:850px;padding:10px 12px;border:1px solid rgba(66,220,230,.55);border-radius:17px;background:rgba(20,28,44,.94);color:#effbff;box-shadow:0 8px 22px rgba(0,0,0,.23),0 0 16px rgba(50,188,217,.17);font-size:13px}
+      .tf-dock-main{display:flex;gap:7px;align-items:center}
+      .tf-timeline-dock button,.tf-timeline-dock select,.tf-timeline-dock input[type=date]{border:1px solid rgba(101,209,224,.5);border-radius:10px;background:rgba(12,23,37,.93);color:#fff;min-height:40px;padding:6px 9px;font-size:13px}
+      .tf-timeline-dock button[aria-pressed=true]{background:linear-gradient(125deg,#079eac,#6556b0);border-color:#72e9e7}
+      .tf-timeline-dock select{min-width:0;flex:1;max-width:100%;text-overflow:ellipsis}
+      .tf-history-controls{display:grid;gap:7px;margin-top:9px}
+      .tf-history-controls[hidden]{display:none}
+      .tf-day-nav{display:grid;grid-template-columns:44px minmax(0,1fr) 44px;gap:6px}
+      .tf-day-nav input{width:100%;min-width:0;box-sizing:border-box;color-scheme:dark}
+      .tf-day-nav button{font-size:18px}
+      .tf-timeline-dock input[type=range]{width:100%;margin:2px 0 0;accent-color:#39d9e4;touch-action:pan-y;min-height:23px}
+      .tf-scrub-row{display:grid;grid-template-columns:48px minmax(0,1fr);gap:8px;align-items:center}
+      .tf-scrub-row button{padding:5px 3px}
+      .tf-event-strip{display:flex;overflow-x:auto;gap:6px;padding:3px 0;scrollbar-width:thin}
+      .tf-event-strip[hidden]{display:none}
+      .tf-event-strip button{white-space:nowrap;flex:none;min-height:31px;font-size:11px;padding:4px 8px;border-color:rgba(188,146,244,.54);background:rgba(55,35,75,.77)}
+      .tf-history-info{display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;line-height:1.25}
+      .tf-history-info span{color:#d0e1f0}
+      .tf-history-info strong{color:#a6f5f2}
+      .tf-timeline-warning{font-size:11px;color:#ddcfed}
+      .tf-timeline-dock .tf-mini{font-size:12px;padding:5px 7px}
       .tf-head h1{margin:0;font-size:24px}
       .tf-tabs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;max-width:100%}
       .tf-tabs button{display:flex;align-items:center;justify-content:center;gap:7px;padding:12px 16px;min-height:44px;border-radius:14px;border:1px solid var(--divider-color);color:var(--primary-text-color);background:var(--card-background-color);cursor:pointer}
@@ -119,7 +142,18 @@ class TinyFamilyPanel extends HTMLElement {
         .tf-wrap{padding:10px 10px calc(100px + env(safe-area-inset-bottom))}.tf-head h1{font-size:21px}
         .tf-head{margin-bottom:8px}
         .tf-tabs{position:fixed;left:0;right:0;bottom:0;z-index:100;background:var(--card-background-color);border-top:1px solid var(--divider-color);padding:7px 8px calc(7px + env(safe-area-inset-bottom));box-shadow:0 -4px 20px rgba(0,0,0,.08)}
-        .tf-family-view>.tf-map{height:calc(100dvh - 210px);min-height:380px;max-height:750px;border-radius:18px}
+        #tf-main.tf-family-view{position:relative;height:calc(100dvh - 167px - env(safe-area-inset-bottom));min-height:330px;overflow:hidden;margin:0}
+        #tf-main.tf-family-view>h2,#tf-main.tf-family-view>.tf-map-tools,
+        #tf-main.tf-family-view>.tf-fields,#tf-main.tf-family-view>.tf-save{display:none}
+        #tf-main.tf-family-view>.tf-map{height:100%;min-height:0;max-height:none;width:100%;margin:0!important;border-radius:16px}
+        #tf-main.tf-family-view>.tf-timeline-dock{position:absolute;left:8px;right:8px;bottom:9px;max-width:none}
+        .tf-wrap:has(#tf-main.tf-family-view){height:calc(100dvh - 12px);overflow:hidden;padding-bottom:0}
+        .tf-wrap:has(#tf-main.tf-family-view) .tf-head{margin:0 0 7px}
+        .tf-wrap:has(#tf-main.tf-family-view) #tf-message:empty{display:none}
+        .tf-wrap:has(#tf-main.tf-family-view) .tf-tabs{margin:0}
+        .tf-history-info{font-size:11px}
+        .tf-timeline-dock{padding:8px 9px}
+        .tf-timeline-dock button,.tf-timeline-dock select{min-height:38px;padding:5px 6px}
         .tf-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;overflow:visible}
         .tf-tabs button{display:flex;flex-direction:column;gap:3px;font-size:11px;line-height:1.2;padding:7px 2px;min-height:58px;white-space:normal;text-align:center;border-radius:10px}
         .tf-tabs button ha-icon{--mdc-icon-size:21px}
@@ -127,7 +161,7 @@ class TinyFamilyPanel extends HTMLElement {
         .tf-metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
         .tf-stat{padding:10px}
         .tf-person{padding:11px}.tf-map{height:min(57vh,440px);min-height:330px}
-        .tf-family-view>.tf-map{height:calc(100dvh - 210px);min-height:380px;max-height:750px}
+        #tf-main.tf-family-view>.tf-map{height:100%;min-height:0;max-height:none}
         .tf-card-actions>*{flex:1 1 100%}
         .tf-wrap .tf-save{width:100%}
         .tf-admin-panel{padding:12px}
@@ -218,8 +252,14 @@ class TinyFamilyPanel extends HTMLElement {
   show(key) {
     if (!this.booted) return;
     if (key === "editor" && !this.settings?.editable) key = "live";
+    if (key === "routes"){
+      this._timelineRequestedPerson=this._routeFilterPerson||this._viewerPerson;
+      this._routeFilterPerson=null;
+      key="live";
+    }
     this.active = key; this.card = null; this._todayPerson = null; this.message("");
     if(this._familyTimer){clearInterval(this._familyTimer);this._familyTimer=null;}
+    if(this._timelinePlaybackTimer){clearInterval(this._timelinePlaybackTimer);this._timelinePlaybackTimer=null;}
     if(this._familyMap){this._familyMap.remove();this._familyMap=null;}
     this.querySelectorAll("[data-view]").forEach(b => b.setAttribute("aria-current", b.dataset.view === key ? "page" : "false"));
     const root = this.querySelector("#tf-main");
@@ -891,7 +931,7 @@ class TinyFamilyPanel extends HTMLElement {
     const routesLabel=document.createElement("label");
     routesLabel.className="tf-message";
     const routesToggle=document.createElement("input");
-    routesToggle.type="checkbox";routesToggle.checked=true;
+    routesToggle.type="checkbox";routesToggle.checked=false;
     routesLabel.append(routesToggle,
       document.createTextNode(" Vis delte ruter fra de seneste 24 timer"));
     root.appendChild(routesLabel);
@@ -918,13 +958,13 @@ class TinyFamilyPanel extends HTMLElement {
     const zonesLabel=document.createElement("label");
     zonesLabel.className="tf-message";
     const zonesToggle=document.createElement("input");
-    zonesToggle.type="checkbox";zonesToggle.checked=true;
+    zonesToggle.type="checkbox";zonesToggle.checked=false;
     zonesLabel.append(zonesToggle,document.createTextNode(" Vis geografiske zoner og deres radius"));
     root.appendChild(zonesLabel);
     const polygonLabel=document.createElement("label");
     polygonLabel.className="tf-message";
     const polygonsToggle=document.createElement("input");
-    polygonsToggle.type="checkbox";polygonsToggle.checked=true;
+    polygonsToggle.type="checkbox";polygonsToggle.checked=false;
     polygonLabel.append(polygonsToggle,
       document.createTextNode(" Vis Tiny Family-polygonområder"));
     root.appendChild(polygonLabel);
@@ -1122,16 +1162,236 @@ class TinyFamilyPanel extends HTMLElement {
     const refresh=document.createElement("button");refresh.className="tf-save";
     refresh.textContent="Opdater personer";
     root.appendChild(refresh);
-    let drawing=false;
+    // Person, date and the full 24-hour scrubber stay ON the map on mobile.
+    const dock=document.createElement("section");
+    dock.className="tf-timeline-dock";
+    dock.setAttribute("aria-label","Familiens tidslinje");
+    dock.innerHTML=`
+      <div class="tf-dock-main">
+        <button type="button" data-mode="live" aria-pressed="true">● Nu</button>
+        <button type="button" data-mode="history" aria-pressed="false">◷ Tidslinje</button>
+        <select data-role="timeline-person" aria-label="Vælg person"></select>
+      </div>
+      <div class="tf-history-controls" hidden>
+        <div class="tf-day-nav">
+          <button type="button" data-role="prev-day" aria-label="Forrige dato">‹</button>
+          <input data-role="timeline-date" type="date" aria-label="Dato for historik">
+          <button type="button" data-role="next-day" aria-label="Næste dato">›</button>
+        </div>
+        <div class="tf-scrub-row">
+          <button type="button" data-role="timeline-play" aria-label="Afspil dagsruten">▶</button>
+          <input type="range" data-role="timeline-minute" min="0" max="1439"
+            step="1" value="1439" aria-label="Gå gennem dagens GPS-tidslinje">
+        </div>
+        <div class="tf-history-info"><strong data-role="timeline-time">—</strong>
+          <span data-role="timeline-stats">Vælg dato og person</span></div>
+        <div class="tf-event-strip" data-role="timeline-events" hidden></div>
+        <div class="tf-timeline-warning" data-role="timeline-summary"></div>
+      </div>`;
+    root.appendChild(dock);
+    const liveTab=dock.querySelector('[data-mode="live"]');
+    const historyTab=dock.querySelector('[data-mode="history"]');
+    const historyControls=dock.querySelector(".tf-history-controls");
+    const dockPerson=dock.querySelector('[data-role="timeline-person"]');
+    const dockDate=dock.querySelector('[data-role="timeline-date"]');
+    const minuteSlider=dock.querySelector('[data-role="timeline-minute"]');
+    const playButton=dock.querySelector('[data-role="timeline-play"]');
+    const stopPlayback=()=>{
+      if(this._timelinePlaybackTimer){
+        clearInterval(this._timelinePlaybackTimer);
+        this._timelinePlaybackTimer=null;
+      }
+      playButton.textContent="▶";
+      playButton.setAttribute("aria-label","Afspil dagsruten");
+    };
+    const timeLabel=dock.querySelector('[data-role="timeline-time"]');
+    const statsLabel=dock.querySelector('[data-role="timeline-stats"]');
+    const summaryLabel=dock.querySelector('[data-role="timeline-summary"]');
+    const eventStrip=dock.querySelector('[data-role="timeline-events"]');
+    const localDate=d=>new Intl.DateTimeFormat("sv-SE",{
+      timeZone:this.hassInstance.config.time_zone||undefined,
+      year:"numeric",month:"2-digit",day:"2-digit"
+    }).format(d);
+    dockDate.value=localDate(new Date());
+    dockDate.max=dockDate.value;
+    dockDate.min=localDate(new Date(Date.now()-364*86400000));
+    let timelineMode=false,timelineData=null,timelineMarker=null,activeMap=null;
+    let timelineRequest=0,timelineRevision=0;
+    let drawing=false,pendingRedraw=false;
     let previousSignature="";
+    const chooseMode=mode=>{
+      timelineMode=mode==="history";
+      liveTab.setAttribute("aria-pressed",String(!timelineMode));
+      historyTab.setAttribute("aria-pressed",String(timelineMode));
+      historyControls.hidden=!timelineMode;
+    };
+    const updateCursor=()=>{
+      if(!timelineMode||!timelineData)return;
+      // Select the end of each displayed minute so real fixes with seconds
+      // (e.g. 12:23:50) remain visible at 12:23 on the slider.
+      const desired=Math.min(timelineData.end-1,
+        timelineData.start+(Number(minuteSlider.value)+1)*60-1);
+      const prettyTime=ts=>new Date(ts*1000).toLocaleTimeString("da-DK",{
+        hour:"2-digit",minute:"2-digit",
+        timeZone:timelineData.timezone||undefined
+      });
+      timeLabel.textContent=prettyTime(desired);
+      let closest=null;
+      for(const segment of timelineData.segments||[]){
+        for(const fix of segment){
+          if(fix.t<=desired && (!closest || fix.t>closest.t))closest=fix;
+        }
+      }
+      if(!closest || desired-closest.t>300){
+        const event=(timelineData.events||[]).find(item=>
+          item.started_at<=desired && item.ended_at>=desired);
+        statsLabel.textContent=event
+          ?(event.kind==="stay"?"Ophold":"Tur")+" · "+
+            (event.label||event.duration_min+" min")
+          :"Ingen GPS-måling på dette tidspunkt";
+        if(timelineMarker && activeMap){activeMap.removeLayer(timelineMarker);timelineMarker=null;}
+        return;
+      }
+      const metrics=[];
+      if(Number.isFinite(closest.speed))metrics.push(Math.round(closest.speed)+" km/t");
+      if(Number.isFinite(closest.battery))metrics.push(Math.round(closest.battery)+" % batteri");
+      if(closest.movement==="stationary" && Number.isFinite(closest.stay_min) &&
+          closest.stay_min>=0)metrics.push("Ophold "+closest.stay_min+" min");
+      statsLabel.textContent=prettyTime(closest.t)+" · "+(metrics.join(" · ")||"Position målt");
+      if(activeMap){
+        const loc=[closest.lat,closest.lon];
+        if(!timelineMarker){
+          timelineMarker=window.L.circleMarker(loc,{
+            radius:11,color:"#ffffff",weight:3,fillColor:"#19d8df",
+            fillOpacity:1
+          }).addTo(activeMap);
+        }else timelineMarker.setLatLng(loc);
+        activeMap.panTo(loc,{animate:false});
+      }
+    };
+    const loadTimeline=async()=>{
+      stopPlayback();
+      chooseMode("history");
+      const person=dockPerson.value||this._viewerPerson;
+      if(!person){summaryLabel.textContent="Ingen tilknyttet person.";return;}
+      const requestId=++timelineRequest;
+      timeLabel.textContent="Henter tidslinje…";
+      try{
+        const url="tiny_family/timeline?person="+encodeURIComponent(person)+
+          "&date="+encodeURIComponent(dockDate.value);
+        const result=await this.hassInstance.callApi("GET",url);
+        if(requestId!==timelineRequest||this.active!=="live")return;
+        timelineData=result;
+        timelineRevision++;
+        eventStrip.replaceChildren();
+        for(const event of (result.events||[]).slice(0,40)){
+          const eventButton=document.createElement("button");
+          eventButton.type="button";
+          const eventTime=new Date(event.started_at*1000).toLocaleTimeString("da-DK",{
+            hour:"2-digit",minute:"2-digit",timeZone:result.timezone||undefined
+          });
+          eventButton.textContent=event.kind==="stay"
+            ?"◷ "+eventTime+" · Ophold "+event.duration_min+" min"
+            :"↗ "+eventTime+" · Tur "+event.duration_min+" min";
+          eventButton.title=event.label||eventButton.textContent;
+          eventButton.addEventListener("click",()=>{
+            minuteSlider.value=String(Math.max(0,Math.min(
+              Number(minuteSlider.max),
+              Math.floor((event.started_at-result.start)/60)
+            )));
+            stopPlayback();
+            updateCursor();
+          });
+          eventStrip.appendChild(eventButton);
+        }
+        eventStrip.hidden=!eventStrip.children.length;
+        minuteSlider.max=String(Math.max(0,Math.floor((result.end-result.start)/60)-1));
+        const segments=result.segments||[];
+        const lastSegment=segments[segments.length-1]||[];
+        const lastFix=lastSegment[lastSegment.length-1];
+        minuteSlider.value=String(lastFix?
+          Math.min(Number(minuteSlider.max),Math.max(0,
+            Math.floor((lastFix.t-result.start)/60))):
+          Number(minuteSlider.max));
+        const sum=result.summary||{};
+        summaryLabel.textContent=(result.points_count||0)+" GPS-punkter · "+
+          (Number.isFinite(sum.distance_km)?sum.distance_km+" km":"ukendt distance")+
+          (Number.isFinite(sum.max_speed_kmh)?" · top "+sum.max_speed_kmh+" km/t":"")+
+          (sum.stays?" · "+sum.stays+" ophold":"")+
+          (result.gaps?" · "+result.gaps+" GPS-afbrud":"")+
+          " · Faktiske målinger";
+        previousSignature="";
+        await draw();
+      }catch(error){
+        if(requestId!==timelineRequest)return;
+        timelineData=null;
+        eventStrip.replaceChildren();eventStrip.hidden=true;
+        summaryLabel.textContent="Kunne ikke hente historik: "+this.errorText(error);
+        previousSignature="";
+        await draw();
+      }
+    };
+    liveTab.addEventListener("click",()=>{
+      stopPlayback();
+      timelineRequest++;timelineData=null;timelineRevision++;
+      chooseMode("live");previousSignature="";draw();
+    });
+    historyTab.addEventListener("click",loadTimeline);
+    dockPerson.addEventListener("change",()=>{
+      if(timelineMode)loadTimeline();
+      else {previousSignature="";draw();}
+    });
+    dockDate.addEventListener("change",loadTimeline);
+    minuteSlider.addEventListener("input",()=>{
+      stopPlayback();
+      updateCursor();
+    });
+    playButton.addEventListener("click",()=>{
+      if(this._timelinePlaybackTimer){stopPlayback();return;}
+      if(!timelineData || !timelineMode)return;
+      if(Number(minuteSlider.value)>=Number(minuteSlider.max))minuteSlider.value="0";
+      playButton.textContent="Ⅱ";
+      playButton.setAttribute("aria-label","Sæt dagsruten på pause");
+      this._timelinePlaybackTimer=setInterval(()=>{
+        if(this.active!=="live"||!timelineMode){stopPlayback();return;}
+        const next=Number(minuteSlider.value)+5;
+        if(next>Number(minuteSlider.max)){stopPlayback();return;}
+        minuteSlider.value=String(next);
+        updateCursor();
+      },180);
+    });
+    const moveDay=direction=>{
+      const parts=dockDate.value.split("-").map(Number);
+      const next=new Date(Date.UTC(parts[0],parts[1]-1,parts[2]+direction))
+        .toISOString().slice(0,10);
+      if(next>=dockDate.min && next<=dockDate.max){
+        dockDate.value=next;loadTimeline();
+      }
+    };
+    dock.querySelector('[data-role="prev-day"]').addEventListener("click",()=>moveDay(-1));
+    dock.querySelector('[data-role="next-day"]').addEventListener("click",()=>moveDay(1));
     const draw=async()=>{
-      if(drawing || this.active!=="live" || !this.isConnected)return;
+      if(this.active!=="live" || !this.isConnected)return;
+      if(drawing){pendingRedraw=true;return;}
       drawing=true;
       refresh.disabled=true;
       try {
         const data=await this.hassInstance.callApi("GET","tiny_family/status");
         if (this.active!=="live") return;
         this._viewerPerson=data.viewer_person;
+        const previousDockPerson=dockPerson.value;
+        dockPerson.replaceChildren();
+        for(const person of data.people || []){
+          if(person.ghost && person.person!==data.viewer_person)continue;
+          const choice=document.createElement("option");
+          choice.value=person.person;
+          choice.textContent=person.name;
+          dockPerson.appendChild(choice);
+        }
+        const requested=this._timelineRequestedPerson||previousDockPerson||data.viewer_person;
+        if([...dockPerson.options].some(option=>option.value===requested)){
+          dockPerson.value=requested;
+        }
         const polygonData=await this.hassInstance.callApi("GET","tiny_family/geofences");
         if(this.active!=="live")return;
         const previousRoutePerson=routePerson.value;
@@ -1149,7 +1409,9 @@ class TinyFamilyPanel extends HTMLElement {
           routes:routesToggle.checked,routeHours:routeHours.value,
           routePerson:routePerson.value,
           zoneVisibility:zonesToggle.checked,
-          polygonVisibility:polygonsToggle.checked
+          polygonVisibility:polygonsToggle.checked,
+          timelineMode,timelineRevision,
+          selectedTimelinePerson:dockPerson.value
         });
         if(signature===previousSignature && this._familyMap)return;
         previousSignature=signature;
@@ -1185,7 +1447,9 @@ class TinyFamilyPanel extends HTMLElement {
         list.replaceChildren();
         await this.leaflet();
         if(this._familyMap) {this._familyMap.remove();this._familyMap=null;}
+        activeMap=null;timelineMarker=null;
         const map=this.createLeafletMap(mapElement);
+        activeMap=map;
         if(data.can_manage_zones){
           let draft=null, polygonDraft=null;
           map.on("click",event=>{
@@ -1247,7 +1511,7 @@ class TinyFamilyPanel extends HTMLElement {
           marker.bindPopup(label);
           zoneBounds.push([place.latitude,place.longitude]);
         }
-        if(routesToggle.checked){
+        if(!timelineMode && routesToggle.checked){
           const routes=await this.hassInstance.callApi("GET","tiny_family/routes");
           if(this.active!=="live")return;
           const since=Date.now()/1000-Number(routeHours.value)*3600;
@@ -1278,6 +1542,7 @@ class TinyFamilyPanel extends HTMLElement {
             zoneBounds.push(center);
           }
         }
+        let focusedLivePoint=null;
         for(const person of data.people || []){
           const box=document.createElement("section");box.className="tf-person";
           const head=document.createElement("div");head.className="tf-card-head";
@@ -1321,8 +1586,10 @@ class TinyFamilyPanel extends HTMLElement {
                  " · sikkerhed ca. "+person.destination_confidence+" %" : "");
             box.appendChild(eta);
           }
-          if(Number.isFinite(person.latitude) && Number.isFinite(person.longitude) && !person.ghost){
+          if(!timelineMode && Number.isFinite(person.latitude) &&
+             Number.isFinite(person.longitude) && !person.ghost){
             const point=[person.latitude,person.longitude];
+            if(person.person===dockPerson.value)focusedLivePoint=point;
             const battery=person.battery_percent;
             const color=person.stale?"#888888":battery!=null&&battery<20?"#d64646":
               battery!=null&&battery<=50?"#d79b3f":"#1fb77e";
@@ -1397,6 +1664,15 @@ class TinyFamilyPanel extends HTMLElement {
               gps.textContent="GPS er ikke opdateret";
               popup.appendChild(gps);
             }
+            const timelineAction=document.createElement("button");
+            timelineAction.type="button";
+            timelineAction.className="tf-save tf-mini";
+            timelineAction.textContent="Vis 24-timers tidslinje";
+            timelineAction.addEventListener("click",()=>{
+              dockPerson.value=person.person;
+              loadTimeline();
+            });
+            popup.appendChild(timelineAction);
             mapMarker.bindPopup(popup);
             bounds.push(point);
             if(!person.stale){
@@ -1434,13 +1710,58 @@ class TinyFamilyPanel extends HTMLElement {
           empty.textContent="Ingen tilknyttede familiemedlemmer endnu. Tilknyt personer og HA-brugere i Administration.";
           list.appendChild(empty);
         }
-        if(bounds.length)map.fitBounds(bounds,{padding:[35,35],maxZoom:15});
-        else if(zoneBounds.length)map.fitBounds(zoneBounds,{padding:[35,35],maxZoom:14});
+        if(timelineMode && timelineData){
+          const trackBounds=[];
+          const color=this.settings.colors?.[timelineData.person]||"#24d5d9";
+          for(const segment of timelineData.segments||[]){
+            const pts=(segment||[]).filter(p=>Number.isFinite(p.lat) &&
+              Number.isFinite(p.lon)).map(p=>[p.lat,p.lon]);
+            if(!pts.length)continue;
+            if(pts.length>1){
+              window.L.polyline(pts,{
+                color:"#ffffff",weight:6,opacity:.42
+              }).addTo(map);
+              window.L.polyline(pts,{
+                color,weight:3.5,opacity:.96
+              }).addTo(map);
+            }else{
+              window.L.circleMarker(pts[0],{
+                radius:4,color:"#fff",weight:1,fillColor:color,fillOpacity:1
+              }).addTo(map);
+            }
+            trackBounds.push(...pts);
+          }
+          for(const event of timelineData.events||[]){
+            if(event.kind!=="stay")continue;
+            const observed=(timelineData.segments||[]).flat().find(p=>
+              p.t>=event.started_at && p.t<=event.ended_at);
+            if(!observed)continue;
+            const stop=window.L.circleMarker([observed.lat,observed.lon],{
+              radius:7,color:"#ffffff",weight:2,fillColor:"#a777f3",fillOpacity:.85
+            }).addTo(map);
+            const stopLabel=document.createElement("span");
+            stopLabel.textContent="Ophold "+event.duration_min+" min"+
+              (event.label?" · "+event.label:"");
+            stop.bindTooltip(stopLabel);
+          }
+          if(trackBounds.length){
+            map.fitBounds(trackBounds,{padding:[40,40],maxZoom:15});
+          }else map.setView([this.hassInstance.config.latitude||0,
+                            this.hassInstance.config.longitude||0],11);
+          updateCursor();
+        }else if(!timelineMode && focusedLivePoint){
+          map.setView(focusedLivePoint,14);
+        }else if(!timelineMode && bounds.length){
+          map.fitBounds(bounds,{padding:[35,35],maxZoom:15});
+        }else if(zoneBounds.length)map.fitBounds(zoneBounds,{padding:[35,35],maxZoom:14});
         else map.setView([this.hassInstance.config.latitude||0,
                            this.hassInstance.config.longitude||0],5);
-        setTimeout(()=>map.invalidateSize(),150);
+        setTimeout(()=>{if(this._familyMap===map)map.invalidateSize();},150);
       }catch(error){this.message("Familiekort kunne ikke indlæses: "+error.message,true);}
-      finally{refresh.disabled=false;drawing=false;}
+      finally{
+        refresh.disabled=false;drawing=false;
+        if(pendingRedraw){pendingRedraw=false;draw();}
+      }
     };
     refresh.addEventListener("click",()=>{previousSignature="";draw();});
     zonesToggle.addEventListener("change",()=>{previousSignature="";draw();});
@@ -1449,6 +1770,14 @@ class TinyFamilyPanel extends HTMLElement {
     routeHours.addEventListener("change",()=>{previousSignature="";draw();});
     routePerson.addEventListener("change",()=>{previousSignature="";draw();});
     await draw();
+    if(this._timelineRequestedPerson){
+      const requested=this._timelineRequestedPerson;
+      this._timelineRequestedPerson=null;
+      if([...dockPerson.options].some(option=>option.value===requested)){
+        dockPerson.value=requested;
+      }
+      await loadTimeline();
+    }
     this._familyTimer=setInterval(()=>{
       if(this.active==="live" && this.isConnected)draw();
     },30000);
@@ -1541,11 +1870,11 @@ class TinyFamilyPanel extends HTMLElement {
     const personalTitle=document.createElement("strong");
     personalTitle.textContent="Mine lokalt gemte data";
     const personalIntro=document.createElement("p");
-    personalIntro.textContent="Slet dine GPS-spor, indlærte steder eller afgangsmønstre. Dette sletter ikke Home Assistants Recorder-historik.";
+    personalIntro.textContent="Slet gemte GPS-spor, ture, ophold, steder eller afgangsmønstre. Din 365-dages Tiny Family-tidslinje er omfattet. Home Assistant Recorder skal slettes separat.";
     const choices={};
     for(const [key,label] of [
-      ["routes","GPS-spor (24 timer)"],
-      ["activities","Tur- og opholdsarkiv (30 dage)"],
+      ["routes","GPS-spor og tidslinje (op til 365 dage)"],
+      ["activities","Ture og ophold i arkiv (op til 365 dage)"],
       ["places","Indlærte opholdssteder"],
       ["routines","Indlærte afgangsmønstre (samtykke slås også fra)"]
     ]){
@@ -1720,7 +2049,7 @@ class TinyFamilyPanel extends HTMLElement {
     const heading=document.createElement("h2");
     heading.textContent="Mine ture og ophold";root.appendChild(heading);
     const note=document.createElement("p");note.className="tf-message";
-    note.textContent="Arkivet indeholder afsluttede ture og ophold fra højst 30 dage. Kun din egen konto kan se det. GPS-kortspor gemmes i højst 24 timer.";
+    note.textContent="Her ses dine seneste afsluttede ture og ophold. Åbn Kort → Tidslinje for at gennemgå GPS-spor og målinger for en bestemt dato, op til 365 dage tilbage.";
     root.appendChild(note);
     const routeButton=document.createElement("button");
     routeButton.className="tf-save";routeButton.type="button";

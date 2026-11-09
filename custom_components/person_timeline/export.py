@@ -11,6 +11,7 @@ from homeassistant.components.http import HomeAssistantView
 
 from .communications import own_person, private_history
 from .const import DOMAIN, HISTORY_KEY, HISTORY_MAX
+from .timeline import archive_stats, archived_dates, RETENTION_DAYS
 
 
 class TinyFamilyPersonalExportView(HomeAssistantView):
@@ -35,6 +36,12 @@ class TinyFamilyPersonalExportView(HomeAssistantView):
         state = self.hass.data.get(DOMAIN, {}).get(person) or {}
         trails = (runtime.get("routes") or {}).get(person, [])
         routines = (runtime.get("routines") or {}).get(person, [])
+        archive_counts = await self.hass.async_add_executor_job(
+            archive_stats, runtime["timeline_path"], person
+        ) if runtime.get("timeline_path") else {"fixes":0,"events":0}
+        archive_days = await self.hass.async_add_executor_job(
+            archived_dates, runtime["timeline_path"], person
+        ) if runtime.get("timeline_path") else []
         result = {
             "format": "tiny-family-personal-export-v1",
             "exported_at": datetime.now(timezone.utc).isoformat(),
@@ -42,6 +49,16 @@ class TinyFamilyPersonalExportView(HomeAssistantView):
             "places": state.get("places") or [],
             "route_history_24h": trails[-2500:],
             "activity_archive": (runtime.get("activity") or {}).get(person, [])[-200:],
+            "timeline_archive": {
+                "retention_days": RETENTION_DAYS,
+                "gps_fixes_count": archive_counts["fixes"],
+                "activities_count": archive_counts["events"],
+                "available_dates_utc": archive_days,
+                "important": ("This JSON export does not contain the full 365-day "
+                              "SQLite GPS archive. Fetch an individual calendar "
+                              "day from /api/tiny_family/timeline using your own "
+                              "authenticated Home Assistant account."),
+            },
             "routine_observations": routines[-80:],
             "messages": private_history(history, request["hass_user"].id, HISTORY_MAX),
             "system_events": [

@@ -1,8 +1,17 @@
-# Tiny Family — offentlig testversion 0.6.10
+# Tiny Family — offentlig testversion 0.7.0
 
 Tiny Family er en Home Assistant-integration til familiekort, GPS-ruter, opdagelse af steder, 30-dages turhistorik, beskeder, SOS og familieadvarsler.
 
 **Testversion:** Integrationen er stadig under praktisk afprøvning. SOS er ikke en certificeret nødtjeneste, og Home Assistant-notifikationer garanterer ikke levering på en telefon.
+
+## Nyt i 0.7.0 – datobaseret GPS-tidslinje på familiekortet
+- Vælg en person og en dato, og træk gennem dagens GPS-spor, hastigheder, batteri og registrerede ophold i **samme kortvisning**.
+- Mobilkortet har et kompakt **Tiny Neon**-betjeningspanel oven på kortet; persondetaljer og tekniske værktøjer fylder ikke længere skærmen og kræver ikke sidescroll på kortfanen.
+- Faktiske GPS-fix arkiveres lokalt i `tiny_family_timeline.sqlite3` med op til **365 dages historik**, også efter Home Assistant-genstart. Eksisterende 24-timers spor og 30-dages aktivitetsdata importeres i det omfang, de stadig findes.
+- Flyttede GPS-fix gemmes med mindst 5 sekunders interval i stedet for den gamle frasortering på 30 sekunder. Stillestående fix opsummeres typisk hvert minut. Det giver flere reelle rutepunkter, men kan **ikke genskabe vejforløb, som telefonen ikke sendte**.
+- GPS-afbrydelser og gamle privatmarkerede punkter bliver ikke forbundet af en kunstig linje. Historiske GPS-punkter udstilles kun via en autoriseret API, ikke som almindelige HA-entitetsattributter.
+- Tidligere kalenderdage kan vælges én ad gangen; arkivet har automatisk lokal sletning efter 365 dage for at begrænse lagrings- og privatlivsrisiko. Brugernes egen datasletning omfatter også SQLite-arkivet.
+- **Vigtigt:** Historik før denne opdatering kan kun genskabes fra de gamle, endnu eksisterende lokale data, ikke automatisk fra hele Home Assistant Recorder.
 
 ## Rettelser i 0.6.10 – stabilitet og automatiseringer
 - Sensorer og binære sensorer opdateres nu på Home Assistants event loop, også hvis opdateringen oprindeligt kommer fra en worker-tråd.
@@ -46,6 +55,6 @@ Ghost Mode fra tidligere installationer ændrer ikke Home Assistants `person`, `
 
 ## Teknisk
 
-Home Assistant-domæne: `person_timeline`. Version: `0.6.10`. Integrationens filer ligger i `custom_components/person_timeline/`.
+Home Assistant-domæne: `person_timeline`. Version: `0.7.0`. Integrationens filer ligger i `custom_components/person_timeline/`.
 
 Dette offentlige testrepository indeholder kun installationskode og dokumentation, ikke den private udviklingshistorik, personlige GPS-ruter, telefonnumre eller Home Assistant-konfigurationsdata.
