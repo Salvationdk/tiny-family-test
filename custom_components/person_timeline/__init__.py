@@ -163,6 +163,7 @@ async def async_unload_entry(hass: HomeAssistant, entry) -> bool:
     if timeline_flush is not None:
         await timeline_flush()
     runtime.pop("timeline_pending", None)
+    runtime.pop("timeline_last_samples", None)
     runtime.pop("timeline_path", None)
     runtime.pop("timeline_lock", None)
     if isinstance(runtime.get("routes"), dict):
@@ -587,6 +588,7 @@ async def _async_setup_runtime(hass: HomeAssistant, config: dict) -> bool:
     )
     runtime["timeline_path"] = timeline_path
     runtime["timeline_pending"] = []
+    runtime["timeline_last_samples"] = {}
     runtime["timeline_lock"] = asyncio.Lock()
     runtime["timeline_event_fingerprint"] = None
 
@@ -861,6 +863,7 @@ async def _async_setup_runtime(hass: HomeAssistant, config: dict) -> bool:
                 battery=battery_pct, movement=st.get("movement_state", "unknown"),
                 accuracy=accuracy, stay_min=st.get("current_stay_min"),
                 gap=timeline_gap, private=person in ghost_people,
+                last_samples=runtime["timeline_last_samples"],
             )
             if len(runtime["timeline_pending"]) >= 100:
                 await _flush_timeline()
