@@ -125,6 +125,23 @@ class TinyFamilyPanel extends HTMLElement {
       .tf-road-match-status{color:#adf0ed;font-size:11px;line-height:1.25}
       .tf-osrm-setting input[type=url]{display:block;width:100%;min-width:0;max-width:100%;box-sizing:border-box;padding:10px;border:1px solid var(--divider-color);border-radius:9px;background:var(--primary-background-color);color:var(--primary-text-color);margin:6px 0}
       .tf-timeline-dock .tf-mini{font-size:12px;padding:5px 7px}
+      /* Tiny Neon responsive app shell. Lists scroll within a single screen,
+         never underneath the fixed four-tab mobile navigation. */
+      .tf-screen-intro{margin:5px 0 8px;color:var(--secondary-text-color);font-size:13px}
+      .tf-screen-nav{display:flex;gap:7px;min-height:42px;padding:4px;border:1px solid rgba(70,207,225,.38);border-radius:13px;background:color-mix(in srgb,var(--card-background-color) 89%,#213b54)}
+      .tf-screen-nav button{min-width:0;flex:1;border:0;border-radius:10px;padding:8px 6px;background:transparent;color:var(--primary-text-color);font-size:12px;font-weight:700;cursor:pointer}
+      .tf-screen-nav button[aria-pressed=true]{background:linear-gradient(120deg,#117e96,#664db4);color:#fff;box-shadow:0 0 9px rgba(48,196,218,.25)}
+      .tf-screen-panel{min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#2ebfc3 transparent;padding:4px 3px}
+      .tf-screen-panel[hidden]{display:none!important}
+      .tf-mobile-title{font-size:19px;margin:2px 0 5px}
+      .tf-activity-list{overflow-y:auto;min-height:0;overscroll-behavior:contain;scrollbar-width:thin}
+      .tf-admin-form{min-height:0;display:flex;flex-direction:column;overflow:hidden;flex:1}
+      .tf-admin-groups{min-height:0;flex:1;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
+      .tf-admin-group{margin-bottom:9px;border:1px solid color-mix(in srgb,var(--divider-color) 50%,#5f99bf);border-radius:13px;background:var(--card-background-color);padding:8px}
+      .tf-admin-group>summary{font-weight:700;cursor:pointer;min-height:39px;padding:8px;list-style:none}
+      .tf-admin-group>summary::-webkit-details-marker{display:none}
+      .tf-admin-group[open]>summary{color:#38becb}
+      .tf-admin-save{width:100%;margin-top:7px;flex:none}
       .tf-head h1{margin:0;font-size:24px}
       .tf-tabs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;max-width:100%}
       .tf-tabs button{display:flex;align-items:center;justify-content:center;gap:7px;padding:12px 16px;min-height:44px;border-radius:14px;border:1px solid var(--divider-color);color:var(--primary-text-color);background:var(--card-background-color);cursor:pointer}
@@ -145,6 +162,37 @@ class TinyFamilyPanel extends HTMLElement {
       .tf-message{margin:14px 0;color:var(--secondary-text-color)}
       @media(max-width:600px){
         .tf-wrap{padding:10px 10px calc(100px + env(safe-area-inset-bottom))}.tf-head h1{font-size:21px}
+        .tf-wrap:has(#tf-main.tf-one-screen){height:100dvh;overflow:hidden;padding-bottom:0;display:flex;flex-direction:column}
+        .tf-wrap:has(#tf-main.tf-one-screen) .tf-head{flex:none;margin-bottom:4px}
+        .tf-wrap:has(#tf-main.tf-one-screen) #tf-message:empty{display:none}
+        .tf-wrap:has(#tf-main.tf-one-screen) #tf-message:not(:empty){flex:none;font-size:12px;margin:3px 0;max-height:60px;overflow-y:auto}
+        #tf-main.tf-one-screen{height:calc(100dvh - 165px - env(safe-area-inset-bottom));max-height:calc(100dvh - 165px - env(safe-area-inset-bottom));overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;padding:0 1px 4px}
+        #tf-main.tf-one-screen.tf-places-view,#tf-main.tf-one-screen.tf-messages-view,
+        #tf-main.tf-one-screen.tf-activity-view{display:flex;flex-direction:column;overflow:hidden;gap:7px}
+        #tf-main.tf-one-screen.tf-places-view>.tf-screen-panel,
+        #tf-main.tf-one-screen.tf-messages-view>.tf-screen-panel,
+        #tf-main.tf-one-screen.tf-activity-view>.tf-activity-list{flex:1;min-height:0}
+        #tf-main.tf-places-view>h2,#tf-main.tf-messages-view>h2,
+        #tf-main.tf-activity-view>h2{font-size:19px;margin:2px 0 1px;flex:none}
+        #tf-main.tf-places-view>.tf-screen-intro,
+        #tf-main.tf-messages-view>.tf-screen-intro,
+        #tf-main.tf-activity-view>.tf-screen-intro{display:none}
+        #tf-main.tf-places-view>.tf-screen-nav,
+        #tf-main.tf-messages-view>.tf-screen-nav,
+        #tf-main.tf-activity-view>.tf-screen-nav{flex:none}
+        #tf-main.tf-messages-view>.tf-message{font-size:11px;margin:2px 0}
+        #tf-main.tf-activity-view>.tf-save{min-height:39px;padding:9px}
+        #tf-main.tf-admin-mobile{display:flex;flex-direction:column;gap:6px;overflow:hidden;padding:5px}
+        #tf-main.tf-admin-mobile>.tf-admin-head{flex:none}
+        #tf-main.tf-admin-mobile>.tf-message{display:none}
+        #tf-main.tf-admin-mobile>.tf-admin-form{flex:1;min-height:0}
+        #tf-main.tf-admin-mobile>.tf-save{display:none}
+        #tf-main.tf-admin-mobile>.tf-person{display:none}
+        .tf-screen-panel .tf-person{margin-bottom:7px}
+        .tf-screen-panel .tf-map{height:210px!important;min-height:210px!important}
+        .tf-screen-panel .tf-card-actions>*{flex:1 1 auto}
+        .tf-admin-save{position:sticky;bottom:0;z-index:5}
+        .tf-head h1{font-size:19px}
         .tf-head{margin-bottom:8px}
         .tf-tabs{position:fixed;left:0;right:0;bottom:0;z-index:100;background:var(--card-background-color);border-top:1px solid var(--divider-color);padding:7px 8px calc(7px + env(safe-area-inset-bottom));box-shadow:0 -4px 20px rgba(0,0,0,.08)}
         #tf-main.tf-family-view{position:relative;height:calc(100dvh - 167px - env(safe-area-inset-bottom));min-height:330px;overflow:hidden;margin:0}
@@ -270,6 +318,7 @@ class TinyFamilyPanel extends HTMLElement {
     const root = this.querySelector("#tf-main");
     root.classList.toggle("tf-admin-panel",key==="editor");
     root.classList.toggle("tf-family-view",key==="live");
+    root.classList.toggle("tf-one-screen",key!=="live");
     root.replaceChildren();
     if (key === "editor") { this.editor(root); return; }
     if (key === "contact") { this.contact(root); return; }
@@ -515,7 +564,7 @@ class TinyFamilyPanel extends HTMLElement {
   async places(root) {
     const title=document.createElement("h2");
     title.textContent="Familiens steder";root.appendChild(title);
-    const intro=document.createElement("p");intro.className="tf-message";
+    const intro=document.createElement("p");intro.className="tf-message tf-screen-intro";
     intro.textContent="Fælles steder er synlige for alle familiemedlemmer. Du kan oprette og redigere dine egne. Administrator kan ændre alle steder.";
     root.appendChild(intro);
 
@@ -567,6 +616,40 @@ class TinyFamilyPanel extends HTMLElement {
     adminDetails.appendChild(adminTitle);
     const adminList=document.createElement("div");adminDetails.appendChild(adminList);
 
+    root.classList.add("tf-places-view");
+    const placeNav=document.createElement("nav");placeNav.className="tf-screen-nav";
+    placeNav.setAttribute("aria-label","Vælg stedvisning");
+    root.insertBefore(placeNav,create);
+    const makePane=()=>{
+      const pane=document.createElement("section");pane.className="tf-screen-panel";
+      root.appendChild(pane);return pane;
+    };
+    const sharedPane=makePane(),ownPane=makePane(),adminPane=makePane();
+    sharedPane.append(create,sharedTitle,sharedList);
+    ownPane.appendChild(ownDetails);
+    ownDetails.open=true;
+    adminPane.appendChild(adminDetails);
+    adminDetails.open=true;
+    const placeViews=[
+      {key:"shared",title:"Fælles",pane:sharedPane},
+      {key:"mine",title:"Mine ophold",pane:ownPane},
+      ...(this.settings.editable?[{key:"admin",title:"Forslag",pane:adminPane}]:[])
+    ];
+    const selectPlaceView=key=>{
+      for(const option of placeViews){
+        option.pane.hidden=option.key!==key;
+        option.button?.setAttribute("aria-pressed",String(option.key===key));
+      }
+    };
+    for(const option of placeViews){
+      const button=document.createElement("button");
+      button.type="button";button.textContent=option.title;
+      option.button=button;
+      button.addEventListener("click",()=>selectPlaceView(option.key));
+      placeNav.appendChild(button);
+    }
+    selectPlaceView("shared");
+
     let map=null,chosen=null,marker=null,mapLoading=false;
     const choose=(latitude,longitude)=>{
       if(!Number.isFinite(latitude)||!Number.isFinite(longitude))return;
@@ -616,6 +699,7 @@ class TinyFamilyPanel extends HTMLElement {
       }
     });
     const fill=(place,defaultName="")=>{
+      selectPlaceView("shared");
       create.open=true;
       name.value=defaultName || (place.name==="Ukendt sted"?"":place.name)||"";
       choose(Number(place.latitude),Number(place.longitude));
@@ -746,7 +830,7 @@ class TinyFamilyPanel extends HTMLElement {
         ownList.appendChild(empty);
       }
       if(data.can_manage_all_places){
-        if(!adminDetails.isConnected)root.appendChild(adminDetails);
+        if(!adminDetails.isConnected)adminPane.appendChild(adminDetails);
         for(const place of data.admin_suggestions||[]){
           const card=document.createElement("section");card.className="tf-person";
           const heading=document.createElement("strong");
@@ -2095,9 +2179,10 @@ class TinyFamilyPanel extends HTMLElement {
   }
 
   async activity(root) {
+    root.classList.add("tf-activity-view");
     const heading=document.createElement("h2");
     heading.textContent="Mine ture og ophold";root.appendChild(heading);
-    const note=document.createElement("p");note.className="tf-message";
+    const note=document.createElement("p");note.className="tf-message tf-screen-intro";
     note.textContent="Her ses dine seneste afsluttede ture og ophold. Åbn Kort → Tidslinje for at gennemgå GPS-spor og målinger for en bestemt dato, op til 365 dage tilbage.";
     root.appendChild(note);
     const routeButton=document.createElement("button");
@@ -2105,7 +2190,29 @@ class TinyFamilyPanel extends HTMLElement {
     routeButton.textContent="Se egne og delte GPS-spor på rutekortet";
     routeButton.addEventListener("click",()=>this.show("routes"));
     root.appendChild(routeButton);
-    const list=document.createElement("div");root.appendChild(list);
+    const activityNav=document.createElement("nav");activityNav.className="tf-screen-nav";
+    activityNav.setAttribute("aria-label","Filtrér ture og ophold");
+    root.appendChild(activityNav);
+    const list=document.createElement("div");list.className="tf-activity-list";root.appendChild(list);
+    const activityFilters=[
+      ["all","Alle"],["trip","Ture"],["stay","Ophold"]
+    ];
+    const selectActivity=key=>{
+      for(const child of list.children){
+        child.hidden=key!=="all" && child.dataset.activityKind!==key;
+      }
+      for(const [filter,button] of filterButtons){
+        button.setAttribute("aria-pressed",String(filter===key));
+      }
+    };
+    const filterButtons=[];
+    for(const [key,label] of activityFilters){
+      const button=document.createElement("button");
+      button.type="button";button.textContent=label;
+      button.addEventListener("click",()=>selectActivity(key));
+      activityNav.appendChild(button);filterButtons.push([key,button]);
+    }
+    selectActivity("all");
     try {
       const data=await this.hassInstance.callApi("GET","tiny_family/activity");
       if(this.active!=="activity")return;
@@ -2117,6 +2224,7 @@ class TinyFamilyPanel extends HTMLElement {
       }
       for(const item of data.entries||[]){
         const card=document.createElement("section");card.className="tf-person";
+        card.dataset.activityKind=item.kind;
         const title=document.createElement("strong");
         const fmt=t=>new Date(t*1000).toLocaleString("da-DK");
         title.textContent=(item.kind==="trip"?"Tur":"Ophold")+" · "+
@@ -2324,10 +2432,12 @@ class TinyFamilyPanel extends HTMLElement {
   }
 
   async contact(root) {
+    root.classList.add("tf-messages-view");
     const heading = document.createElement("h2");
-    heading.textContent = "Beskeder og sikkerhed";
+    heading.textContent = "Beskeder";
     root.appendChild(heading);
     const info = document.createElement("p");
+    info.className="tf-screen-intro";
     info.textContent = "Skriv til familien, giv besked om at du er på vej, eller send en SOS-hjælpanmodning.";
     root.appendChild(info);
 
@@ -2470,6 +2580,37 @@ class TinyFamilyPanel extends HTMLElement {
     clear.type="button";clear.textContent="Ryd min beskedvisning";
     clear.style.cssText="margin-top:12px;color:var(--error-color);border:1px solid var(--divider-color);background:transparent;padding:10px;border-radius:10px";
     root.appendChild(clear);
+    // Compose and inbox occupy one mobile screen at a time; neither view
+    // loses its state when switching between them.
+    const messageNav=document.createElement("nav");
+    messageNav.className="tf-screen-nav";
+    messageNav.setAttribute("aria-label","Beskedvisning");
+    root.insertBefore(messageNav,form);
+    const composePane=document.createElement("section");
+    composePane.className="tf-screen-panel";
+    root.insertBefore(composePane,form);
+    composePane.append(form,warning);
+    const inboxPane=document.createElement("section");
+    inboxPane.className="tf-screen-panel";
+    root.appendChild(inboxPane);
+    inboxPane.append(title,history,clear);
+    const messageViews=[
+      {key:"compose",title:"Skriv besked",pane:composePane},
+      {key:"inbox",title:"Indbakke",pane:inboxPane}
+    ];
+    const selectMessages=key=>{
+      for(const option of messageViews){
+        option.pane.hidden=option.key!==key;
+        option.button.setAttribute("aria-pressed",String(option.key===key));
+      }
+    };
+    for(const option of messageViews){
+      const button=document.createElement("button");
+      button.type="button";button.textContent=option.title;
+      button.addEventListener("click",()=>selectMessages(option.key));
+      option.button=button;messageNav.appendChild(button);
+    }
+    selectMessages("compose");
     clear.addEventListener("click",async()=>{
       if(!window.confirm("Vil du skjule alle beskeder i din egen historik? De andre deltagere beholder deres kopier."))return;
       clear.disabled=true;
