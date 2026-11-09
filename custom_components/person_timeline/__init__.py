@@ -753,8 +753,17 @@ async def _async_setup_runtime(hass: HomeAssistant, config: dict) -> bool:
                         raw_speed = source.attributes.get("speed")
                         if accuracy is None and source.attributes.get("gps_accuracy") is not None:
                             accuracy = float(source.attributes["gps_accuracy"])
-                speed = max(0.0, float(raw_speed or 0))
-                if not all(__import__("math").isfinite(v) for v in (lat, lon, speed)):
+                # A malformed/unknown optional speed must not discard an
+                # otherwise valid GPS fix and leave unexplained route gaps.
+                try:
+                    candidate_speed = float(raw_speed) if raw_speed is not None else 0.0
+                    if not 0 <= candidate_speed <= 200/3.6 or not __import__("math").isfinite(candidate_speed):
+                        raise ValueError("Unusable speed")
+                    speed = candidate_speed
+                except (ValueError, TypeError, OverflowError):
+                    raw_speed = None
+                    speed = 0.0
+                if not all(__import__("math").isfinite(v) for v in (lat, lon)):
                     return
                 if accuracy is not None and (
                     not __import__("math").isfinite(accuracy)
