@@ -1,6 +1,9 @@
 """Registered Tiny Family sensor entities preserving legacy entity IDs."""
 from __future__ import annotations
 
+import asyncio
+from functools import partial
+
 from homeassistant.components.sensor import SensorEntity
 
 from .sensors import generated_payloads
@@ -17,6 +20,16 @@ class TinyFamilySensor(SensorEntity):
         self.update_from_payload(value, attributes, write=False)
 
     def update_from_payload(self, value, attributes, *, write=True):
+        if getattr(self, "hass", None) is not None:
+            try:
+                on_loop = asyncio.get_running_loop() is self.hass.loop
+            except RuntimeError:
+                on_loop = False
+            if not on_loop:
+                self.hass.loop.call_soon_threadsafe(
+                    partial(self.update_from_payload, value, attributes, write=write)
+                )
+                return
         unit = attributes.get("unit_of_measurement")
         # Registered numeric HA sensors cannot expose the string "None".
         # Legacy payloads were all stringified by _sensor(); use an actual
