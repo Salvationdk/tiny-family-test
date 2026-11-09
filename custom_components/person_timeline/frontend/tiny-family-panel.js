@@ -2661,6 +2661,30 @@ class TinyFamilyPanel extends HTMLElement {
     routinesLabel.append(routineLearning,document.createTextNode(
       " Tillad lokal rutineindlæring (hver person skal også give samtykke i Min dag; data slettes ved fravalg)"));
     form.appendChild(routinesLabel);
+    const mapMatchPanel=document.createElement("details");
+    mapMatchPanel.className="tf-person tf-advanced tf-osrm-setting";
+    const mapMatchTitle=document.createElement("summary");
+    mapMatchTitle.textContent="Vejtilpasning / OSRM (valgfrit)";
+    mapMatchPanel.appendChild(mapMatchTitle);
+    const mapMatchLabel=document.createElement("label");
+    const mapMatchEnabled=document.createElement("input");
+    mapMatchEnabled.type="checkbox";
+    mapMatchEnabled.checked=Boolean(this.settings.map_matching_enabled);
+    mapMatchLabel.append(mapMatchEnabled,document.createTextNode(
+      " Tillad familiemedlemmer selv at vælge vejtilpasning på deres tidslinje"));
+    const mapMatchUrlLabel=document.createElement("label");
+    mapMatchUrlLabel.textContent="Adresse til OSRM Match-server";
+    const mapMatchUrl=document.createElement("input");
+    mapMatchUrl.type="url";
+    mapMatchUrl.placeholder="http://192.168.1.20:5000";
+    mapMatchUrl.maxLength=240;
+    mapMatchUrl.value=this.settings.map_matching_url||"";
+    mapMatchUrlLabel.appendChild(mapMatchUrl);
+    const mapMatchNote=document.createElement("p");
+    mapMatchNote.className="tf-message";
+    mapMatchNote.textContent="Slået fra som standard. En lokal OSRM-server holder GPS-punkter på dit netværk. Vælges en ekstern HTTPS-server, sendes GPS-koordinater og tidspunkter til denne tjeneste, men kun når en bruger selv aktiverer Følg vejene. Ved fejl vises den originale GPS-rute.";
+    mapMatchPanel.append(mapMatchLabel,mapMatchUrlLabel,mapMatchNote);
+    form.appendChild(mapMatchPanel);
     const rows = [];
     for (const person of this.settings.available_persons || []) {
       const section = document.createElement("section");
@@ -2879,7 +2903,9 @@ class TinyFamilyPanel extends HTMLElement {
           speed_limits_kmh,person_notification_events,
           notification_events:Object.keys(alertOptions).filter(key=>alertOptions[key].checked),
           auto_notifications_enabled:autoNotifications.checked,
-          learn_routines_enabled:routineLearning.checked
+          learn_routines_enabled:routineLearning.checked,
+          map_matching_enabled:mapMatchEnabled.checked,
+          map_matching_url:mapMatchUrl.value.trim()
         });
         await this.refreshSettings();
         this.message("Ændringer gemt. Integrationen genindlæses.");
