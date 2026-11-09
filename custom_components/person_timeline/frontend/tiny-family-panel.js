@@ -2827,6 +2827,7 @@ class TinyFamilyPanel extends HTMLElement {
     mapMatchPanel.append(mapMatchLabel,mapMatchUrlLabel,mapMatchNote);
     form.appendChild(mapMatchPanel);
     const rows = [];
+    const memberSections=[];
     for (const person of this.settings.available_persons || []) {
       const section = document.createElement("section");
       section.className = "tf-person";
@@ -2879,6 +2880,7 @@ class TinyFamilyPanel extends HTMLElement {
       const color = document.createElement("input");color.type="color";color.value=this.settings.colors?.[person.id]||"#00a8a9";
       colorLabel.appendChild(color);fields.appendChild(colorLabel);
       section.append(fields);form.appendChild(section);
+      memberSections.push(section);
       const owner = choice("Home Assistant-bruger", this.settings.available_users || [],
                            this.settings.owners?.[person.id]);
       const target = choice("Companion push-modtager", this.settings.available_notify_targets || [],
@@ -3010,7 +3012,8 @@ class TinyFamilyPanel extends HTMLElement {
       form.appendChild(note);
     }
     const save = document.createElement("button");
-    save.type="submit";save.className="tf-save";save.textContent="Gem indstillinger";form.appendChild(save);
+    save.type="submit";save.className="tf-save tf-admin-save";
+    save.textContent="Gem indstillinger";form.appendChild(save);
     form.addEventListener("submit",async e => {
       e.preventDefault();
       if(migrationPending && !migrationReady.checked){
@@ -3053,15 +3056,62 @@ class TinyFamilyPanel extends HTMLElement {
       } catch(error) { this.message("Kunne ikke gemme: "+error.message,true); }
       finally {save.disabled=false;}
     });
+    // Admin settings are grouped in one compact phone-sized view, with the
+    // Save control always available. This preserves all existing fields.
+    root.classList.add("tf-admin-mobile");
+    form.className="tf-admin-form";
+    const adminGroups=document.createElement("div");
+    adminGroups.className="tf-admin-groups";
+    const makeGroup=(label,elements,open=false)=>{
+      const panel=document.createElement("details");
+      panel.className="tf-admin-group";
+      panel.open=open;
+      const summary=document.createElement("summary");
+      summary.textContent=label;
+      panel.appendChild(summary);
+      for(const element of elements)panel.appendChild(element);
+      adminGroups.appendChild(panel);
+      return panel;
+    };
+    const peopleGroup=makeGroup("Familiemedlemmer og telefoner",memberSections,true);
+    const alertsGroup=makeGroup("Alarmer og fartgrænser",[
+      autoLabel,categoryBox,speedLabel
+    ]);
+    const routineGroup=makeGroup("Rutiner og samtykke",[routinesLabel]);
+    const roadGroup=makeGroup("Vejtilpasning og OSRM",[mapMatchPanel]);
+    mapMatchPanel.open=true;
+    const migrationGroup=makeGroup("Migrering af gammel opsætning",[
+      migrateLabel,migrationReview
+    ]);
+    const advancedGroup=makeGroup("Kortværktøjer og andre valg",[
+      zoneTools,placeTools
+    ]);
+    const expandGroup=group=>{
+      for(const child of adminGroups.children)child.open=(child===group);
+      group.scrollIntoView({behavior:"smooth",block:"nearest"});
+    };
+    for(const group of [peopleGroup,alertsGroup,routineGroup,roadGroup,
+                        migrationGroup,advancedGroup]){
+      group.addEventListener("toggle",()=>{
+        if(group.open){
+          for(const other of adminGroups.children){
+            if(other!==group)other.open=false;
+          }
+        }
+      });
+    }
+    form.replaceChildren(adminGroups,save);
     root.appendChild(form);
     const permissions=document.createElement("section");
     permissions.className="tf-person";
     const headingPermissions=document.createElement("strong");
-    headingPermissions.textContent="Administrator: deling og alarmer pr. person";
+    headingPermissions.textContent="Aktuel deling og alarmer";
     permissions.appendChild(headingPermissions);
     const overview=document.createElement("div");
     permissions.appendChild(overview);
+    // Sharing details are available in the same in-page admin sections.
     root.appendChild(permissions);
+    advancedGroup.appendChild(permissions);
     this.hassInstance.callApi("GET","tiny_family/sharing").then(policy=>{
       if(this.active!=="editor")return;
       overview.replaceChildren();
