@@ -2,7 +2,7 @@
 
 DOMAIN = "person_timeline"
 STATIC_URL = "/person_timeline_static"
-CARD_VERSION = "0.6.9"
+CARD_VERSION = "0.6.10"
 PLACES_FILE = "person_timeline_places.json"
 SHARED_PLACES_FILE = "tiny_family_shared_places.json"
 HISTORY_FILE = "person_timeline_historik.json"

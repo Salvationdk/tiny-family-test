@@ -1,10 +1,16 @@
-# Tiny Family — offentlig testversion 0.6.9
+# Tiny Family — offentlig testversion 0.6.10
 
 Tiny Family er en Home Assistant-integration til familiekort, GPS-ruter, opdagelse af steder, 30-dages turhistorik, beskeder, SOS og familieadvarsler.
 
 **Testversion:** Integrationen er stadig under praktisk afprøvning. SOS er ikke en certificeret nødtjeneste, og Home Assistant-notifikationer garanterer ikke levering på en telefon.
 
-## Nyt i 0.6.9 – Tiny Neon på kortet
+## Rettelser i 0.6.10 – stabilitet og automatiseringer
+- Sensorer og binære sensorer opdateres nu på Home Assistants event loop, også hvis opdateringen oprindeligt kommer fra en worker-tråd.
+- Companion-opdateringslyttere bruger Home Assistants `@callback`, så de ikke utilsigtet afvikles i executor-tråde.
+- `person_timeline.log_notification` accepterer Home Assistants interne automationskontekst uden en indlogget bruger. Manuelle brugerbaserede kald er fortsat kun for administratorer. Andre services, der ændrer personer, zoner eller historik, bevarer deres adgangskontrol.
+- Regressionstests for worker-tråde og automatisk systemlogging er tilføjet til GitHub Actions.
+
+## Fra 0.6.9 – Tiny Neon på kortet
 - Personmarkører viser aktuel hastighed (km/t), batteriprocent og registreret opholdstid på familiekortet.
 - Hastighed og opholdstid skjules, når GPS-positionen er forældet; ukendte målinger mærkes som utilgængelige.
 - Markørerne bruger den afdæmpede **Tiny Neon**-stil (cyan/lilla) i både lyst og mørkt Home Assistant-tema.
@@ -40,6 +46,6 @@ Ghost Mode fra tidligere installationer ændrer ikke Home Assistants `person`, `
 
 ## Teknisk
 
-Home Assistant-domæne: `person_timeline`. Version: `0.6.9`. Integrationens filer ligger i `custom_components/person_timeline/`.
+Home Assistant-domæne: `person_timeline`. Version: `0.6.10`. Integrationens filer ligger i `custom_components/person_timeline/`.
 
 Dette offentlige testrepository indeholder kun installationskode og dokumentation, ikke den private udviklingshistorik, personlige GPS-ruter, telefonnumre eller Home Assistant-konfigurationsdata.

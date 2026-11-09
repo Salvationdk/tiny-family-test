@@ -16,3 +16,19 @@ async def require_permission(hass, config, call, person=None, *, admin_only=Fals
             raise HomeAssistantError("Administrator permission required")
     elif not user.is_admin and (config.get("owners") or {}).get(person) != user_id:
         raise HomeAssistantError("Cannot modify another person's data")
+
+
+async def require_history_log_permission(hass, config, call):
+    """Authorize writing a bounded system log entry.
+
+    Home Assistant's own automation/script calls have a service context but
+    no user_id. Allow that *only* for the log_notification service; any call
+    attributable to a user remains admin-only. Never reuse this helper for
+    member data, history deletion, messaging or zone changes.
+    """
+    context = getattr(call, "context", None)
+    if context is None:
+        raise HomeAssistantError("Missing Home Assistant service context")
+    if getattr(context, "user_id", None) is None:
+        return
+    await require_permission(hass, config, call)

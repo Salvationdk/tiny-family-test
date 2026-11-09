@@ -14,6 +14,8 @@ jobs:
           python-version: '3.13'
       - name: Check Python syntax
         run: python -m compileall -q custom_components/person_timeline
+      - name: Regression tests (sensor threads and automation contexts)
+        run: python -m unittest discover -s tests -p "test_runtime_safety.py" -v
       - name: Check JavaScript syntax
         run: |
           node --check custom_components/person_timeline/frontend/tiny-family-panel.js
