@@ -17,6 +17,7 @@ from aiohttp import web
 from homeassistant.components.http import HomeAssistantView
 
 from .communications import own_person
+from .map_matching import match_day
 
 RETENTION_DAYS = 365
 MAX_DAY_POINTS = 25000
@@ -376,6 +377,41 @@ class TinyFamilyTimelineView(HomeAssistantView):
             all_points.extend(pending)
             combined={p["ts"]:p for p in all_points}
             data=build_day([combined[k] for k in sorted(combined)],data["events"])
+        # Map matching never runs for a normal timeline request. The user
+        # must deliberately activate matching and the admin must configure
+        # a matching backend first. Avoid sharing routes across viewers in
+        # memory: their visible GPS samples may differ due to legacy privacy.
+        data["matched_segments"]=[]
+        data["matching_status"]="off"
+        if request.query.get("map_match") == "1":
+            server=cfg.get("map_matching_url","")
+            if not cfg.get("map_matching_enabled") or not server:
+                data["matching_status"]="disabled"
+            elif data["points_count"]>=3:
+                cache=runtime.setdefault("map_matching_cache",{})
+                last_fix=max((seg[-1]["t"] for seg in data["segments"] if seg),default=0)
+                cache_key=(request["hass_user"].id,person,day,last_fix,
+                           data["points_count"],server)
+                cached=cache.get(cache_key)
+                now_ts=datetime.now(timezone.utc).timestamp()
+                if cached is not None and now_ts-cached["at"]<600:
+                    data["matched_segments"]=cached["segments"]
+                    data["matching_status"]=cached["status"]
+                else:
+                    # Serialize requests to avoid overloading a self-hosted
+                    # router from multiple simultaneous family viewers.
+                    import asyncio
+                    lock=runtime.setdefault("map_matching_lock",asyncio.Lock())
+                    async with lock:
+                        matched,status=await match_day(self.hass,server,data["segments"])
+                    data["matched_segments"]=matched
+                    data["matching_status"]=status
+                    cache[cache_key]={"at":now_ts,"segments":matched,"status":status}
+                    if len(cache)>20:
+                        oldest=min(cache,key=lambda key:cache[key]["at"])
+                        cache.pop(oldest,None)
+            else:
+                data["matching_status"]="not_enough_points"
         return web.json_response({
             "person":person,"date":day,"timezone":self.hass.config.time_zone,
             "retention_days":RETENTION_DAYS,"start":start,"end":end,

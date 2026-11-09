@@ -41,6 +41,7 @@ from .sharing import TinyFamilySharingView
 from .zones_api import TinyFamilyZonesView
 from .routes import TinyFamilyRoutesView, record_route, prune_routes
 from .timeline import TinyFamilyTimelineView, initialize_archive, persist_archive, enqueue_fix
+from .map_matching import validate_match_server
 from .activity import TinyFamilyActivityView, add_activity, prune_activity, archive_interrupted_trip
 from .geofences import TinyFamilyGeofencesView, polygon_zone, validate_polygon
 from .personal_data import TinyFamilyPersonalDataView
@@ -264,6 +265,8 @@ class TinyFamilySettingsView(HomeAssistantView):
                 if s.attributes.get("device_class") == "battery" or "battery" in s.entity_id
             ], key=lambda x: x["name"]) if admin else []),
             "editable": bool(request["hass_user"].is_admin),
+            "map_matching_enabled": bool(cfg.get("map_matching_enabled", False)),
+            "map_matching_url": (cfg.get("map_matching_url", "") if admin else ""),
             "auto_notifications_enabled": bool(cfg.get("auto_notifications_enabled",False)),
             "learn_routines_enabled": bool(cfg.get("learn_routines_enabled",False)),
             "notification_events": cfg.get("notification_events", list(DEFAULT_ALERT_EVENTS)),
@@ -318,6 +321,10 @@ class TinyFamilySettingsView(HomeAssistantView):
             notification_targets = data.get("notification_targets", {})
             auto_notifications_enabled = data.get("auto_notifications_enabled", False)
             learn_routines_enabled = data.get("learn_routines_enabled", False)
+            map_matching_enabled = data.get("map_matching_enabled", False)
+            map_matching_url = validate_match_server(data.get("map_matching_url", ""))
+            if type(map_matching_enabled) is not bool or (map_matching_enabled and not map_matching_url):
+                raise ValueError("OSRM needs a valid administrator-configured server")
             if type(auto_notifications_enabled) is not bool or type(learn_routines_enabled) is not bool:
                 raise ValueError("Invalid settings toggle")
             if type(speed_limit_kmh) is not int or not 30 <= speed_limit_kmh <= 200:
@@ -425,6 +432,8 @@ class TinyFamilySettingsView(HomeAssistantView):
             "notification_targets": {p: target for p, target in notification_targets.items() if target},
             "auto_notifications_enabled": auto_notifications_enabled,
             "learn_routines_enabled": learn_routines_enabled,
+            "map_matching_enabled": map_matching_enabled,
+            "map_matching_url": map_matching_url,
             "routine_learning_people": (options.get("routine_learning_people", [])
                                          if learn_routines_enabled else []),
         })
@@ -461,6 +470,9 @@ async def _async_setup_runtime(hass: HomeAssistant, config: dict) -> bool:
     for unsubscribe in runtime.pop("unsubscribers", []):
         unsubscribe()
     runtime["unsubscribers"] = []
+    # Drop matched geometry whenever the integration reloads, because person
+    # ownership and historical visibility can change with the new settings.
+    runtime.pop("map_matching_cache", None)
     if not runtime.get("assets_registered"):
         frontend_dir = Path(__file__).parent / "frontend"
         await hass.http.async_register_static_paths(
