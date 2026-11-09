@@ -1,5 +1,7 @@
 """Publish Home Assistant sensor states without changing entity IDs."""
 
+import asyncio
+
 from datetime import datetime, timezone
 from .const import DOMAIN
 from .places import _zone_candidates
@@ -112,7 +114,16 @@ def generated_payloads(hass, person):
 
 
 def _publish(hass, person):
-    """Refresh registered HA entities, falling back to legacy states in YAML mode."""
+    """Publish on HA's event loop even if a caller runs in a worker thread."""
+    try:
+        current_loop = asyncio.get_running_loop()
+    except RuntimeError:
+        current_loop = None
+    if current_loop is not hass.loop:
+        # Schedule the complete state read/update on HA's loop. Scheduling
+        # only the final write would still mutate entities off-thread.
+        hass.loop.call_soon_threadsafe(_publish, hass, person)
+        return
     readings = generated_payloads(hass, person)
     entities = hass.data.get("tiny_family_runtime", {}).get("registered_entities", {})
     for entity_id, value, attributes in (*readings[0], *readings[1]):
