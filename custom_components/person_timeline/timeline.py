@@ -196,10 +196,23 @@ def query_day(path, person, start, end, *, viewer, ghost=False):
     conn = _connect(path)
     conn.row_factory = sqlite3.Row
     try:
-        points = [dict(row) for row in conn.execute(
-            """SELECT ts,lat,lon,speed,battery,movement,accuracy,stay_min,gap
-               FROM fixes WHERE person=? AND ts>=? AND ts<?""" +
-            visibility + " ORDER BY ts ASC LIMIT ?", (person,start,end,MAX_DAY_POINTS))]
+        raw_points = [dict(row) for row in conn.execute(
+            """SELECT ts,lat,lon,speed,battery,movement,accuracy,stay_min,gap,private
+               FROM fixes WHERE person=? AND ts>=? AND ts<?
+               ORDER BY ts ASC LIMIT ?""",
+            (person,start,end,MAX_DAY_POINTS*2))]
+        points=[]
+        private_gap=False
+        for fix in raw_points:
+            if person != viewer and fix.pop("private"):
+                private_gap=True
+                continue
+            if private_gap:
+                fix["gap"]=1
+            private_gap=False
+            points.append(fix)
+            if len(points)>=MAX_DAY_POINTS:
+                break
         events = [dict(row) for row in conn.execute(
             """SELECT id,kind,started_at,ended_at,duration_min,distance_km,
                 max_speed_kmh,label,gap FROM events
@@ -293,15 +306,21 @@ class TinyFamilyTimelineView(HomeAssistantView):
             return web.json_response({"message":"Timeline storage unavailable"},status=503)
         # Recent pending samples have not reached the next scheduled flush.
         # They use the same privacy filter as persisted rows.
-        pending=[
-            {"ts":p["ts"],"lat":p["lat"],"lon":p["lon"],
-             "speed":p["speed"],"battery":p["battery"],
-             "movement":p["movement"],"accuracy":p["accuracy"],
-             "stay_min":p["stay_min"],"gap":p["gap"]}
-            for p in runtime.get("timeline_pending",())
-            if p["person"]==person and start<=p["ts"]<end
-            and (person==viewer or not p["private"])
-        ]
+        pending=[]
+        hidden_gap=False
+        for p in runtime.get("timeline_pending",()):
+            if p["person"]!=person or not start<=p["ts"]<end:
+                continue
+            if person!=viewer and p["private"]:
+                hidden_gap=True
+                continue
+            pending.append({
+                "ts":p["ts"],"lat":p["lat"],"lon":p["lon"],
+                "speed":p["speed"],"battery":p["battery"],
+                "movement":p["movement"],"accuracy":p["accuracy"],
+                "stay_min":p["stay_min"],"gap":p["gap"] or hidden_gap,
+            })
+            hidden_gap=False
         if pending:
             # Recalculate with persisted points to avoid hiding the pending tail.
             all_points=[{**point,"ts":point["t"],"gap":idx==0 and bool(i) }
