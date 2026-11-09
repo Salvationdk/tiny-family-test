@@ -1315,6 +1315,7 @@ class TinyFamilyPanel extends HTMLElement {
     dockDate.min=localDate(new Date(Date.now()-364*86400000));
     let timelineMode=false,timelineData=null,timelineMarker=null,activeMap=null;
     let timelineRequest=0,timelineRevision=0;
+    let previousCenteredFix=null;
     let drawing=false,pendingRedraw=false;
     let previousSignature="";
     const chooseMode=mode=>{
@@ -1348,6 +1349,7 @@ class TinyFamilyPanel extends HTMLElement {
             (event.label||event.duration_min+" min")
           :"Ingen GPS-måling på dette tidspunkt";
         if(timelineMarker && activeMap){activeMap.removeLayer(timelineMarker);timelineMarker=null;}
+        previousCenteredFix=null;
         return;
       }
       const metrics=[];
@@ -1359,12 +1361,34 @@ class TinyFamilyPanel extends HTMLElement {
       if(activeMap){
         const loc=[closest.lat,closest.lon];
         if(!timelineMarker){
-          timelineMarker=window.L.circleMarker(loc,{
-            radius:11,color:"#ffffff",weight:3,fillColor:"#19d8df",
-            fillOpacity:1
+          const selected=[...dockPerson.options]
+            .find(option=>option.value===dockPerson.value);
+          const initials=(selected?.textContent||"?").trim()
+            .split(/\s+/).slice(0,2).map(word=>word[0]||"")
+            .join("").toUpperCase();
+          const pin=document.createElement("span");
+          pin.className="tf-person-pin";
+          pin.style.borderColor="#2ce2eb";
+          pin.textContent=initials;
+          timelineMarker=window.L.marker(loc,{
+            icon:window.L.divIcon({
+              className:"tf-person-icon",html:pin.outerHTML,
+              iconSize:[48,48],iconAnchor:[24,24]
+            }),
+            zIndexOffset:1000
           }).addTo(activeMap);
-        }else timelineMarker.setLatLng(loc);
-        activeMap.panTo(loc,{animate:false});
+        }else{
+          timelineMarker.setLatLng(loc);
+        }
+        // Follow the person on every manual scrub/playback tick. This keeps
+        // the selected phone at the centre without continuously auto-zooming.
+        // The very first point is zoomed to street-level for a Zenly-like view.
+        if(previousCenteredFix===null){
+          activeMap.setView(loc,Math.max(15,activeMap.getZoom()),{animate:false});
+        }else if(previousCenteredFix!==closest.t){
+          activeMap.panTo(loc,{animate:false});
+        }
+        previousCenteredFix=closest.t;
       }
     };
     const loadTimeline=async()=>{
@@ -1441,6 +1465,7 @@ class TinyFamilyPanel extends HTMLElement {
     };
     liveTab.addEventListener("click",()=>{
       stopPlayback();
+      previousCenteredFix=null;
       timelineRequest++;timelineData=null;timelineRevision++;
       chooseMode("live");previousSignature="";draw();
     });
@@ -1564,7 +1589,7 @@ class TinyFamilyPanel extends HTMLElement {
         list.replaceChildren();
         await this.leaflet();
         if(this._familyMap) {this._familyMap.remove();this._familyMap=null;}
-        activeMap=null;timelineMarker=null;
+        activeMap=null;timelineMarker=null;previousCenteredFix=null;
         const map=this.createLeafletMap(mapElement);
         activeMap=map;
         if(data.can_manage_zones){
