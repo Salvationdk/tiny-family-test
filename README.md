@@ -4,6 +4,14 @@ Tiny Family er en Home Assistant-integration til familiekort, GPS-ruter, opdagel
 
 **Testversion:** Integrationen er stadig under praktisk afprøvning. SOS er ikke en certificeret nødtjeneste, og Home Assistant-notifikationer garanterer ikke levering på en telefon.
 
+## Mobilforbedringer i 0.7.1 – én skærm pr. hovedfane
+- **Kort:** Under 24-timers afspilning og manuel tidslinjesøgning følger kortet den valgte person i fast gadeniveau-zoom; markeringsikonet viser personens initialer. Liveopdateringer afbryder ikke historisk afspilning.
+- **Steder:** Kompakt trevejsvalg mellem Fælles, Mine ophold og administratorens Forslag. Oprettelse af steder og egne redigeringer bevares i den aktive visning.
+- **Aktivitet:** Filtrér direkte mellem Alle, Ture og Ophold uden at forlade skærmen.
+- **Beskeder:** Skift mellem Skriv besked og Indbakke på samme skærm. Svar åbner beskedfeltet med korrekt modtager; hurtigbeskeder ligger sammenklappet.
+- **Administration:** Indstillinger er organiseret efter Familiemedlemmer, Alarmer, Rutiner, Vejtilpasning og øvrige værktøjer, mens Gem forbliver tilgængelig.
+- Alle faner deler **Tiny Neon**, respekterer mobilens sikre skærmområder og holder bundnavigationen fast. Lange datalister ruller inde i en afgrænset sektion, så selve siden ikke bliver længere end telefonens skærm.
+
 ## Nyt i 0.7.1 – valgfri vejtilpasning (map matching)
 - Administrator kan aktivere en **OSRM Match-server** under **Administration → Vejtilpasning / OSRM**. Funktionen er deaktiveret som standard.
 - Sæt eksempelvis `http://192.168.1.50:5000` for en selvhostet OSRM-server på lokalnetværket. OSRM-serveren skal allerede være oprettet og indeholde vejkort for området; Tiny Family installerer ikke selv OSRM.
