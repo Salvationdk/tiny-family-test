@@ -1,10 +1,19 @@
-# Tiny Family — offentlig testversion 0.7.0
+# Tiny Family — offentlig testversion 0.7.1
 
 Tiny Family er en Home Assistant-integration til familiekort, GPS-ruter, opdagelse af steder, 30-dages turhistorik, beskeder, SOS og familieadvarsler.
 
 **Testversion:** Integrationen er stadig under praktisk afprøvning. SOS er ikke en certificeret nødtjeneste, og Home Assistant-notifikationer garanterer ikke levering på en telefon.
 
-## Nyt i 0.7.0 – datobaseret GPS-tidslinje på familiekortet
+## Nyt i 0.7.1 – valgfri vejtilpasning (map matching)
+- Administrator kan aktivere en **OSRM Match-server** under **Administration → Vejtilpasning / OSRM**. Funktionen er deaktiveret som standard.
+- Sæt eksempelvis `http://192.168.1.50:5000` for en selvhostet OSRM-server på lokalnetværket. OSRM-serveren skal allerede være oprettet og indeholde vejkort for området; Tiny Family installerer ikke selv OSRM.
+- På **Kort → Tidslinje** kan en familiebruger aktivere **Følg vejene** for den valgte person og dato. Kun efter dette valg sendes udvalgte GPS-koordinater og tidsstempler til den konfigurerede OSRM-server.
+- En ekstern server skal have HTTPS. En lokal OSRM-server er det mest private valg. Del ikke familiens positioner med offentlige routingtjenester uden at være klar over, hvor oplysningerne sendes hen.
+- OSRM Matching accepteres kun ved tilstrækkelig sandsynlighed. Originale GPS-positioner bevares, mens vejruten vises som separat **cyanfarvet Tiny Neon-linje**. Ved usikkert match, GPS-huller eller serverfejl vises den oprindelige rute.
+- Match beregnes ved forespørgsel, caches midlertidigt og gemmes **ikke** som erstatning for den rå GPS-historik.
+- **Bemærk:** Kortjustering kræver nok faktisk indsamlede målepunkter. Et langt GPS-udfald kan ikke rekonstrueres sikkert.
+
+## Fra 0.7.0 – datobaseret GPS-tidslinje på familiekortet
 - Vælg en person og en dato, og træk gennem dagens GPS-spor, hastigheder, batteri og registrerede ophold i **samme kortvisning**.
 - Mobilkortet har et kompakt **Tiny Neon**-betjeningspanel oven på kortet; persondetaljer og tekniske værktøjer fylder ikke længere skærmen og kræver ikke sidescroll på kortfanen.
 - Faktiske GPS-fix arkiveres lokalt i `tiny_family_timeline.sqlite3` med op til **365 dages historik**, også efter Home Assistant-genstart. Eksisterende 24-timers spor og 30-dages aktivitetsdata importeres i det omfang, de stadig findes.
@@ -55,6 +64,6 @@ Ghost Mode fra tidligere installationer ændrer ikke Home Assistants `person`, `
 
 ## Teknisk
 
-Home Assistant-domæne: `person_timeline`. Version: `0.7.0`. Integrationens filer ligger i `custom_components/person_timeline/`.
+Home Assistant-domæne: `person_timeline`. Version: `0.7.1`. Integrationens filer ligger i `custom_components/person_timeline/`.
 
 Dette offentlige testrepository indeholder kun installationskode og dokumentation, ikke den private udviklingshistorik, personlige GPS-ruter, telefonnumre eller Home Assistant-konfigurationsdata.
