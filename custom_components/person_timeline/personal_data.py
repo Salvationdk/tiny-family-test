@@ -5,6 +5,7 @@ Other users' chat copies and shared Home Assistant geographic zones remain.
 """
 from __future__ import annotations
 
+from functools import partial
 from aiohttp import web
 from homeassistant.components.http import HomeAssistantView
 
@@ -12,6 +13,7 @@ from .communications import own_person
 from .const import DOMAIN, PLACES_FILE
 from .storage import _save_places
 from .sensors import _publish
+from .timeline import archive_stats, delete_archive, RETENTION_DAYS
 
 
 class TinyFamilyPersonalDataView(HomeAssistantView):
@@ -39,10 +41,14 @@ class TinyFamilyPersonalDataView(HomeAssistantView):
         if person is None:
             return web.json_response({"message": "Account not linked"}, status=403)
         state = self.hass.data.get(DOMAIN, {}).get(person) or {}
+        timeline = (await self.hass.async_add_executor_job(
+            archive_stats, runtime["timeline_path"], person
+        )) if runtime.get("timeline_path") else {"fixes":0,"events":0}
         return web.json_response({
             "person": person,
-            "routes": len((runtime.get("routes") or {}).get(person, [])),
-            "activities": len((runtime.get("activity") or {}).get(person, [])),
+            "routes": timeline["fixes"],
+            "activities": timeline["events"],
+            "timeline_retention_days": RETENTION_DAYS,
             "places": len(state.get("places") or []),
             "routine_observations": len((runtime.get("routines") or {}).get(person, [])),
             "notice": "Home Assistant Recorder history must be handled separately.",
@@ -66,6 +72,27 @@ class TinyFamilyPersonalDataView(HomeAssistantView):
         except (ValueError, TypeError, AttributeError):
             return web.json_response({"message": "Confirmation and categories required"}, status=400)
         deleted = {}
+        # Respect the same erasure categories as before, including the new
+        # persistent SQLite history. The lock prevents a concurrent flush
+        # from restoring samples the user has just deleted.
+        if "routes" in categories or "activities" in categories:
+            lock = runtime.get("timeline_lock")
+            if lock is not None:
+                async with lock:
+                    if "routes" in categories:
+                        runtime["timeline_pending"][:] = [
+                            item for item in runtime.get("timeline_pending", ())
+                            if item["person"] != person
+                        ]
+                        runtime.get("timeline_last_samples", {}).pop(person,None)
+                    if runtime.get("timeline_path"):
+                        archived=await self.hass.async_add_executor_job(partial(
+                            delete_archive,runtime["timeline_path"],person,
+                            routes="routes" in categories,
+                            activities="activities" in categories
+                        ))
+                        deleted["archived_fixes"]=archived["fixes"]
+                        deleted["archived_events"]=archived["events"]
         if "routes" in categories:
             routes = runtime.get("routes") or {}
             deleted["routes"] = len(routes.pop(person, []))
