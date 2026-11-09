@@ -27,6 +27,8 @@ jobs:
         run: python -m unittest discover -s tests -p "test_runtime_safety.py" -v
       - name: Test persistent timeline archive
         run: python -m unittest discover -s tests -p "test_timeline_archive.py" -v
+      - name: Map matching regression tests
+        run: python -m unittest discover -s tests -p "test_map_matching.py" -v
       - name: Verify publishable integration
         run: |
           python -m compileall -q custom_components/person_timeline
@@ -38,11 +40,11 @@ jobs:
           meta=json.loads(Path("custom_components/person_timeline/manifest.json").read_text())
           hacs=json.loads(Path("hacs.json").read_text())
           assert meta["domain"] == "person_timeline"
-          assert meta["version"] == "0.7.0"
+          assert meta["version"] == "0.7.1"
           assert hacs["name"] == "Tiny Family"
           assert Path("custom_components/person_timeline/device_binding.py").is_file()
           assert Path("custom_components/person_timeline/frontend/leaflet/LICENSE").is_file()
-          print("Tiny Family 0.7.0 public package verified")
+          print("Tiny Family 0.7.1 public package verified")
           PY
 
   hassfest:
