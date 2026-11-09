@@ -1859,17 +1859,22 @@ class TinyFamilyPanel extends HTMLElement {
           const matched=roadMatchToggle.checked?
             (timelineData.matched_segments||[]):[];
           for(const segment of timelineData.segments||[]){
-            const pts=(segment||[]).filter(p=>Number.isFinite(p.lat) &&
-              Number.isFinite(p.lon)).map(p=>[p.lat,p.lon]);
+            const valid=(segment||[]).filter(p=>Number.isFinite(p.lat) &&
+              Number.isFinite(p.lon));
+            const pts=valid.map(p=>[p.lat,p.lon]);
             if(!pts.length)continue;
+            const matchedHere=matched.some(road=>
+              valid.length && road.start_t<=valid[valid.length-1].t &&
+              road.end_t>=valid[0].t
+            );
             if(pts.length>1){
               window.L.polyline(pts,{
-                color:matched.length?"#a9c9d6":"#ffffff",
-                weight:matched.length?2:6,
-                opacity:matched.length?.50:.42,
-                dashArray:matched.length?"5 6":undefined
+                color:matchedHere?"#a9c9d6":"#ffffff",
+                weight:matchedHere?2:6,
+                opacity:matchedHere?.50:.42,
+                dashArray:matchedHere?"5 6":undefined
               }).addTo(map);
-              if(!matched.length){
+              if(!matchedHere){
                 window.L.polyline(pts,{
                   color,weight:3.5,opacity:.96
                 }).addTo(map);
