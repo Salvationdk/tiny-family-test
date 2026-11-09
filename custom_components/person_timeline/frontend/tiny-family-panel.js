@@ -24,6 +24,7 @@ class TinyFamilyPanel extends HTMLElement {
   connectedCallback() { if (this.hassInstance && !this.booted) this.initialize(); }
   disconnectedCallback() {
     if(this._familyTimer){clearInterval(this._familyTimer);this._familyTimer=null;}
+    if(this._timelinePlaybackTimer){clearInterval(this._timelinePlaybackTimer);this._timelinePlaybackTimer=null;}
     if(this._familyMap){this._familyMap.remove();this._familyMap=null;}
   }
   async initialize() {
@@ -109,6 +110,8 @@ class TinyFamilyPanel extends HTMLElement {
       .tf-day-nav input{width:100%;min-width:0;box-sizing:border-box;color-scheme:dark}
       .tf-day-nav button{font-size:18px}
       .tf-timeline-dock input[type=range]{width:100%;margin:2px 0 0;accent-color:#39d9e4;touch-action:pan-y;min-height:23px}
+      .tf-scrub-row{display:grid;grid-template-columns:48px minmax(0,1fr);gap:8px;align-items:center}
+      .tf-scrub-row button{padding:5px 3px}
       .tf-history-info{display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;line-height:1.25}
       .tf-history-info span{color:#d0e1f0}
       .tf-history-info strong{color:#a6f5f2}
@@ -253,6 +256,7 @@ class TinyFamilyPanel extends HTMLElement {
     }
     this.active = key; this.card = null; this._todayPerson = null; this.message("");
     if(this._familyTimer){clearInterval(this._familyTimer);this._familyTimer=null;}
+    if(this._timelinePlaybackTimer){clearInterval(this._timelinePlaybackTimer);this._timelinePlaybackTimer=null;}
     if(this._familyMap){this._familyMap.remove();this._familyMap=null;}
     this.querySelectorAll("[data-view]").forEach(b => b.setAttribute("aria-current", b.dataset.view === key ? "page" : "false"));
     const root = this.querySelector("#tf-main");
@@ -1171,8 +1175,11 @@ class TinyFamilyPanel extends HTMLElement {
           <input data-role="timeline-date" type="date" aria-label="Dato for historik">
           <button type="button" data-role="next-day" aria-label="Næste dato">›</button>
         </div>
-        <input type="range" data-role="timeline-minute" min="0" max="1439"
-          step="1" value="1439" aria-label="Gå gennem dagens GPS-tidslinje">
+        <div class="tf-scrub-row">
+          <button type="button" data-role="timeline-play" aria-label="Afspil dagsruten">▶</button>
+          <input type="range" data-role="timeline-minute" min="0" max="1439"
+            step="1" value="1439" aria-label="Gå gennem dagens GPS-tidslinje">
+        </div>
         <div class="tf-history-info"><strong data-role="timeline-time">—</strong>
           <span data-role="timeline-stats">Vælg dato og person</span></div>
         <div class="tf-timeline-warning" data-role="timeline-summary"></div>
@@ -1184,6 +1191,15 @@ class TinyFamilyPanel extends HTMLElement {
     const dockPerson=dock.querySelector('[data-role="timeline-person"]');
     const dockDate=dock.querySelector('[data-role="timeline-date"]');
     const minuteSlider=dock.querySelector('[data-role="timeline-minute"]');
+    const playButton=dock.querySelector('[data-role="timeline-play"]');
+    const stopPlayback=()=>{
+      if(this._timelinePlaybackTimer){
+        clearInterval(this._timelinePlaybackTimer);
+        this._timelinePlaybackTimer=null;
+      }
+      playButton.textContent="▶";
+      playButton.setAttribute("aria-label","Afspil dagsruten");
+    };
     const timeLabel=dock.querySelector('[data-role="timeline-time"]');
     const statsLabel=dock.querySelector('[data-role="timeline-stats"]');
     const summaryLabel=dock.querySelector('[data-role="timeline-summary"]');
@@ -1249,6 +1265,7 @@ class TinyFamilyPanel extends HTMLElement {
       }
     };
     const loadTimeline=async()=>{
+      stopPlayback();
       chooseMode("history");
       const person=dockPerson.value||this._viewerPerson;
       if(!person){summaryLabel.textContent="Ingen tilknyttet person.";return;}
@@ -1287,6 +1304,7 @@ class TinyFamilyPanel extends HTMLElement {
       }
     };
     liveTab.addEventListener("click",()=>{
+      stopPlayback();
       timelineRequest++;timelineData=null;timelineRevision++;
       chooseMode("live");previousSignature="";draw();
     });
@@ -1296,7 +1314,24 @@ class TinyFamilyPanel extends HTMLElement {
       else {previousSignature="";draw();}
     });
     dockDate.addEventListener("change",loadTimeline);
-    minuteSlider.addEventListener("input",updateCursor);
+    minuteSlider.addEventListener("input",()=>{
+      stopPlayback();
+      updateCursor();
+    });
+    playButton.addEventListener("click",()=>{
+      if(this._timelinePlaybackTimer){stopPlayback();return;}
+      if(!timelineData || !timelineMode)return;
+      if(Number(minuteSlider.value)>=Number(minuteSlider.max))minuteSlider.value="0";
+      playButton.textContent="Ⅱ";
+      playButton.setAttribute("aria-label","Sæt dagsruten på pause");
+      this._timelinePlaybackTimer=setInterval(()=>{
+        if(this.active!=="live"||!timelineMode){stopPlayback();return;}
+        const next=Number(minuteSlider.value)+5;
+        if(next>Number(minuteSlider.max)){stopPlayback();return;}
+        minuteSlider.value=String(next);
+        updateCursor();
+      },180);
+    });
     const moveDay=direction=>{
       const parts=dockDate.value.split("-").map(Number);
       const next=new Date(Date.UTC(parts[0],parts[1]-1,parts[2]+direction))
