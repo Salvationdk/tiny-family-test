@@ -23,7 +23,7 @@ try:
 except ImportError:
     DATA_ZONE_STORAGE_COLLECTION = None
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant, SupportsResponse
+from homeassistant.core import HomeAssistant, SupportsResponse, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.discovery import async_load_platform
 from homeassistant.helpers.event import async_track_state_change_event, async_track_time_change, async_track_time_interval
@@ -478,6 +478,7 @@ async def _async_setup_runtime(hass: HomeAssistant, config: dict) -> bool:
     async def _handle_companion_reply(event):
         await process_companion_reply(hass, event)
 
+    @callback
     def _on_companion_reply(event):
         hass.async_create_task(_handle_companion_reply(event))
 
@@ -615,7 +616,9 @@ async def _async_setup_runtime(hass: HomeAssistant, config: dict) -> bool:
     for person in persons:
         st = hass.data[DOMAIN][person]
         for entity in filter(None, (st.get("charging_entity"), st.get("activity_entity"))):
+            @callback
             def _refresh(event, person=person):
+                # Run on HA's event loop, not in the default executor.
                 if person in hass.data.get(DOMAIN, {}):
                     _publish(hass, person)
             runtime["unsubscribers"].append(
@@ -1048,14 +1051,24 @@ async def _async_setup_runtime(hass: HomeAssistant, config: dict) -> bool:
                          "tekst": tekst[:500]})
 
     async def log_notification(call):
-        await require_permission(hass, cfg, call)
-        tekst = (call.data.get("tekst") or "").strip()
-        if not tekst:
+        # HA automations normally run with context.user_id=None. This
+        # service only appends a bounded system-history entry; it does not
+        # impersonate a family member, send push messages or edit zones.
+        # Interactive calls still require an authenticated administrator.
+        user_id = getattr(getattr(call, "context", None), "user_id", None)
+        if user_id is not None:
+            await require_permission(hass, cfg, call)
+        category = call.data.get("kategori") or "Besked"
+        message = call.data.get("tekst") or ""
+        if not isinstance(category, str) or not isinstance(message, str):
+            raise HomeAssistantError("Invalid notification text or category")
+        category = category.strip()[:80] or "Besked"
+        message = message.strip()[:500]
+        if not message:
             return
         _append_history(hass, history_path, "system",
                         {"tid": datetime.now().isoformat(timespec="seconds"),
-                         "kategori": (call.data.get("kategori") or "Besked").strip(),
-                         "tekst": tekst[:500]})
+                         "kategori": category, "tekst": message})
 
     async def clear_history(call):
         # Legacy global reset is restricted to an authenticated HA admin.
