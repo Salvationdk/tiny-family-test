@@ -625,6 +625,7 @@ class TinyFamilyPanel extends HTMLElement {
       root.appendChild(pane);return pane;
     };
     const sharedPane=makePane(),ownPane=makePane(),adminPane=makePane();
+    adminPane.hidden=true;
     sharedPane.append(create,sharedTitle,sharedList);
     ownPane.appendChild(ownDetails);
     ownDetails.open=true;
@@ -1937,7 +1938,8 @@ class TinyFamilyPanel extends HTMLElement {
       await loadTimeline();
     }
     this._familyTimer=setInterval(()=>{
-      if(this.active==="live" && this.isConnected)draw();
+      // Do not rebuild the map mid-playback or change the selected history zoom.
+      if(this.active==="live" && this.isConnected && !timelineMode)draw();
     },30000);
   }
 
@@ -2589,7 +2591,12 @@ class TinyFamilyPanel extends HTMLElement {
       shortcut.addEventListener("click",()=>{input.value=phrase;input.focus();});
       shortcuts.appendChild(shortcut);
     }
-    form.appendChild(shortcuts);root.appendChild(form);
+    const shortcutsPanel=document.createElement("details");
+    shortcutsPanel.className="tf-advanced";
+    const shortcutsHeading=document.createElement("summary");
+    shortcutsHeading.textContent="Hurtige beskeder";
+    shortcutsPanel.append(shortcutsHeading,shortcuts);
+    form.appendChild(shortcutsPanel);root.appendChild(form);
     recipientSelect.addEventListener("change",()=>{
       for(const {button,action} of buttons){
         if(action==="message")button.disabled=false;
@@ -2732,6 +2739,7 @@ class TinyFamilyPanel extends HTMLElement {
             reply.style.cssText="justify-self:start;padding:7px 14px;border:1px solid var(--divider-color);border-radius:10px;color:var(--primary-text-color);background:var(--card-background-color)";
             reply.addEventListener("click",()=>{
               recipientSelect.value=item.fra;
+              selectMessages("compose");
               input.focus();
               note.textContent="Svar sendes kun til "+item.fra+".";
             });
@@ -3111,11 +3119,7 @@ class TinyFamilyPanel extends HTMLElement {
     const advancedGroup=makeGroup("Kortværktøjer og andre valg",[
       zoneTools,placeTools
     ]);
-    const expandGroup=group=>{
-      for(const child of adminGroups.children)child.open=(child===group);
-      group.scrollIntoView({behavior:"smooth",block:"nearest"});
-    };
-    for(const group of [peopleGroup,alertsGroup,routineGroup,roadGroup,
+     for(const group of [peopleGroup,alertsGroup,routineGroup,roadGroup,
                         migrationGroup,advancedGroup]){
       group.addEventListener("toggle",()=>{
         if(group.open){
