@@ -7,7 +7,7 @@ const TF_VIEWS = [
 ];
 const TF_MORE_VIEWS = [
   ["today", "Min status", "mdi:home-outline"],
-  ["routes", "GPS-ruter", "mdi:map-outline"],
+  ["routes", "Tidslinje", "mdi:map-outline"],
   ["history", "Hændelser", "mdi:history"],
   ["help", "Hjælp", "mdi:help-circle-outline"]
 ];
@@ -1804,11 +1804,11 @@ class TinyFamilyPanel extends HTMLElement {
     const personalTitle=document.createElement("strong");
     personalTitle.textContent="Mine lokalt gemte data";
     const personalIntro=document.createElement("p");
-    personalIntro.textContent="Slet dine GPS-spor, indlærte steder eller afgangsmønstre. Dette sletter ikke Home Assistants Recorder-historik.";
+    personalIntro.textContent="Slet gemte GPS-spor, ture, ophold, steder eller afgangsmønstre. Din 365-dages Tiny Family-tidslinje er omfattet. Home Assistant Recorder skal slettes separat.";
     const choices={};
     for(const [key,label] of [
-      ["routes","GPS-spor (24 timer)"],
-      ["activities","Tur- og opholdsarkiv (30 dage)"],
+      ["routes","GPS-spor og tidslinje (op til 365 dage)"],
+      ["activities","Ture og ophold i arkiv (op til 365 dage)"],
       ["places","Indlærte opholdssteder"],
       ["routines","Indlærte afgangsmønstre (samtykke slås også fra)"]
     ]){
@@ -1983,7 +1983,7 @@ class TinyFamilyPanel extends HTMLElement {
     const heading=document.createElement("h2");
     heading.textContent="Mine ture og ophold";root.appendChild(heading);
     const note=document.createElement("p");note.className="tf-message";
-    note.textContent="Arkivet indeholder afsluttede ture og ophold fra højst 30 dage. Kun din egen konto kan se det. GPS-kortspor gemmes i højst 24 timer.";
+    note.textContent="Her ses dine seneste afsluttede ture og ophold. Åbn Kort → Tidslinje for at gennemgå GPS-spor og målinger for en bestemt dato, op til 365 dage tilbage.";
     root.appendChild(note);
     const routeButton=document.createElement("button");
     routeButton.className="tf-save";routeButton.type="button";
