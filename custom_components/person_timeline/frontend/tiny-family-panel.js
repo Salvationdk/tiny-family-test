@@ -1219,7 +1219,12 @@ class TinyFamilyPanel extends HTMLElement {
         }
       }
       if(!closest || desired-closest.t>300){
-        statsLabel.textContent="Ingen GPS-måling på dette tidspunkt";
+        const event=(timelineData.events||[]).find(item=>
+          item.started_at<=desired && item.ended_at>=desired);
+        statsLabel.textContent=event
+          ?(event.kind==="stay"?"Ophold":"Tur")+" · "+
+            (event.label||event.duration_min+" min")
+          :"Ingen GPS-måling på dette tidspunkt";
         if(timelineMarker && activeMap){activeMap.removeLayer(timelineMarker);timelineMarker=null;}
         return;
       }
@@ -1254,13 +1259,20 @@ class TinyFamilyPanel extends HTMLElement {
         timelineData=result;
         timelineRevision++;
         minuteSlider.max=String(Math.max(0,Math.floor((result.end-result.start)/60)-1));
-        minuteSlider.value=minuteSlider.max;
+        const segments=result.segments||[];
+        const lastSegment=segments[segments.length-1]||[];
+        const lastFix=lastSegment[lastSegment.length-1];
+        minuteSlider.value=String(lastFix?
+          Math.min(Number(minuteSlider.max),Math.max(0,
+            Math.floor((lastFix.t-result.start)/60))):
+          Number(minuteSlider.max));
         const sum=result.summary||{};
-        summaryLabel.textContent=(result.points_count||0)+" målepunkter · "+
+        summaryLabel.textContent=(result.points_count||0)+" GPS-punkter · "+
           (Number.isFinite(sum.distance_km)?sum.distance_km+" km":"ukendt distance")+
           (Number.isFinite(sum.max_speed_kmh)?" · top "+sum.max_speed_kmh+" km/t":"")+
+          (sum.stays?" · "+sum.stays+" ophold":"")+
           (result.gaps?" · "+result.gaps+" GPS-afbrud":"")+
-          " · Registrerede punkter, ikke vejberegning";
+          " · Faktiske målinger";
         previousSignature="";
         await draw();
       }catch(error){
