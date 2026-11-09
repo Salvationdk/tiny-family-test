@@ -1,6 +1,9 @@
 """Registered Tiny Family binary sensors for Companion-friendly automations."""
 from __future__ import annotations
 
+import asyncio
+from functools import partial
+
 from homeassistant.components.binary_sensor import BinarySensorEntity
 
 from .sensors import generated_payloads
@@ -17,6 +20,16 @@ class TinyFamilyBinarySensor(BinarySensorEntity):
         self.update_from_payload(value, attributes, write=False)
 
     def update_from_payload(self, value, attributes, *, write=True):
+        if getattr(self, "hass", None) is not None:
+            try:
+                on_loop = asyncio.get_running_loop() is self.hass.loop
+            except RuntimeError:
+                on_loop = False
+            if not on_loop:
+                self.hass.loop.call_soon_threadsafe(
+                    partial(self.update_from_payload, value, attributes, write=write)
+                )
+                return
         self._attr_is_on = None if value == "unknown" else value == "on"
         self._attr_name = attributes.get("friendly_name")
         self._attr_icon = attributes.get("icon")
