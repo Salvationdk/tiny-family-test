@@ -470,6 +470,9 @@ async def _async_setup_runtime(hass: HomeAssistant, config: dict) -> bool:
     for unsubscribe in runtime.pop("unsubscribers", []):
         unsubscribe()
     runtime["unsubscribers"] = []
+    # Drop matched geometry whenever the integration reloads, because person
+    # ownership and historical visibility can change with the new settings.
+    runtime.pop("map_matching_cache", None)
     if not runtime.get("assets_registered"):
         frontend_dir = Path(__file__).parent / "frontend"
         await hass.http.async_register_static_paths(
