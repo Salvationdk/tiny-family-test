@@ -9,6 +9,13 @@
 [![Last commit](https://img.shields.io/github/last-commit/Salvationdk/tiny-family-test?style=flat-square)](https://github.com/Salvationdk/tiny-family-test/commits)
 
 <sub>Release-downloads tæller kun filer vedhæftet GitHub Releases. HACS-installationer, kode-ZIP'er og Actions-artefakter indgår ikke. [Besøg og kloninger](https://github.com/Salvationdk/tiny-family-test/graphs/traffic) er kun synlige for brugere med de nødvendige rettigheder.</sub>
+
+[![Registrerede visninger](https://raw.githubusercontent.com/Salvationdk/tiny-family-test/metrics-history/metrics/badges/visits.svg)](https://github.com/Salvationdk/tiny-family-test/blob/metrics-history/metrics/dashboard.md)
+[![Registrerede kloninger](https://raw.githubusercontent.com/Salvationdk/tiny-family-test/metrics-history/metrics/badges/clones.svg)](https://github.com/Salvationdk/tiny-family-test/blob/metrics-history/metrics/dashboard.md)
+
+**[Historisk statistik og downloads pr. version](https://github.com/Salvationdk/tiny-family-test/blob/metrics-history/metrics/dashboard.md)** · [Daglig dataindsamling](https://github.com/Salvationdk/tiny-family-test/actions/workflows/repository-metrics.yml)
+
+<sub>Besøgs- og kloningstællerne starter først efter opsætning af det private METRICS_TRAFFIC_TOKEN; indtil da viser de "afventer token".</sub>
 <!-- END: Salvationdk repository metrics -->
 
 
