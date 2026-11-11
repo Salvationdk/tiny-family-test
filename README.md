@@ -1,5 +1,17 @@
 # Tiny Family — offentlig testversion 0.7.1
 
+<!-- BEGIN: Salvationdk repository metrics -->
+[![Release downloads](https://img.shields.io/github/downloads/Salvationdk/tiny-family-test/total?label=Release%20downloads&style=flat-square)](https://github.com/Salvationdk/tiny-family-test/releases)
+[![Stars](https://img.shields.io/github/stars/Salvationdk/tiny-family-test?style=flat-square)](https://github.com/Salvationdk/tiny-family-test/stargazers)
+[![Forks](https://img.shields.io/github/forks/Salvationdk/tiny-family-test?style=flat-square)](https://github.com/Salvationdk/tiny-family-test/forks)
+[![Issues](https://img.shields.io/github/issues/Salvationdk/tiny-family-test?style=flat-square)](https://github.com/Salvationdk/tiny-family-test/issues)
+[![Pull requests](https://img.shields.io/github/issues-pr/Salvationdk/tiny-family-test?style=flat-square)](https://github.com/Salvationdk/tiny-family-test/pulls)
+[![Last commit](https://img.shields.io/github/last-commit/Salvationdk/tiny-family-test?style=flat-square)](https://github.com/Salvationdk/tiny-family-test/commits)
+
+<sub>Release-downloads tæller kun filer vedhæftet GitHub Releases. HACS-installationer, kode-ZIP'er og Actions-artefakter indgår ikke. [Besøg og kloninger](https://github.com/Salvationdk/tiny-family-test/graphs/traffic) er kun synlige for brugere med de nødvendige rettigheder.</sub>
+<!-- END: Salvationdk repository metrics -->
+
+
 Tiny Family er en Home Assistant-integration til familiekort, GPS-ruter, opdagelse af steder, 30-dages turhistorik, beskeder, SOS og familieadvarsler.
 
 **Testversion:** Integrationen er stadig under praktisk afprøvning. SOS er ikke en certificeret nødtjeneste, og Home Assistant-notifikationer garanterer ikke levering på en telefon.
