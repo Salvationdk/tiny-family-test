@@ -1,0 +1,15 @@
+{
+  "release_snapshots": {
+    "2026-11-11": 0
+  },
+  "release_status": "ok",
+  "releases": [],
+  "repository": "Salvationdk/tiny-family-test",
+  "schema_version": 1,
+  "traffic": {
+    "clones": {},
+    "views": {}
+  },
+  "traffic_status": "ikke konfigureret",
+  "updated_at": "2026-11-11 14:41 UTC"
+}
