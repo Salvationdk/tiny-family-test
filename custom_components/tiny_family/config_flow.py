@@ -45,7 +45,7 @@ class TinyFamilyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             "learn_routines_enabled": False,
             "routine_learning_people": [],
             "owners": dict(self._setup_owners),
-            "notification_targets": {},
+            "notification_targets": dict(self._setup_targets),
             "map_matching_enabled": False,
             "map_matching_backend": "builtin",
             "map_matching_url": "",
@@ -64,6 +64,7 @@ class TinyFamilyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._setup_speakers = {}
             self._setup_tts_engines = {}
             self._setup_owners = {}
+            self._setup_targets = {}
             self._setup_index = 0
             if not self._setup_persons:
                 return self._create_family_entry()
@@ -82,6 +83,7 @@ class TinyFamilyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             speaker = user_input.get("speaker")
             tts_engine = user_input.get("tts_engine")
             owner = user_input.get("owner")
+            notify_target = user_input.get("notify_target")
             if bool(speaker) != bool(tts_engine):
                 errors["tts_engine" if speaker else "speaker"] = "required"
             if tracker and tracker in self._setup_trackers.values():
@@ -96,6 +98,8 @@ class TinyFamilyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     self._setup_tts_engines[person] = tts_engine
                 if owner:
                     self._setup_owners[person] = owner
+                if notify_target:
+                    self._setup_targets[person] = notify_target
                 self._setup_index += 1
                 if self._setup_index == len(self._setup_persons):
                     return self._create_family_entry()
@@ -118,6 +122,17 @@ class TinyFamilyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             schema[vol.Optional("owner")] = vol.In({
                 user.id: user.name or user.id for user in users
             })
+        available = {
+            "notify." + service: "Telefon: " + service.removeprefix("mobile_app_")
+            for service in self.hass.services.async_services().get("notify", {})
+            if service.startswith("mobile_app_")
+        }
+        available.update({
+            state.entity_id: state.name
+            for state in self.hass.states.async_all("notify")
+        })
+        if available:
+            schema[vol.Optional("notify_target")] = vol.In(available)
         state = self.hass.states.get(person)
         person_name = state.name if state is not None else person
         return self.async_show_form(
