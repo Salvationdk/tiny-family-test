@@ -3111,9 +3111,66 @@ class TinyFamilyPanel extends HTMLElement {
       adminGroups.appendChild(panel);
       return panel;
     };
+    // Native Tiny Family listeners handle alerts. Legacy HA automations are
+    // optional leftovers, not prerequisites for battery or speed warnings.
+    const managedAlerts=document.createElement("section");
+    managedAlerts.className="tf-person";
+    const managedTitle=document.createElement("strong");
+    managedTitle.textContent="Automatiske alarmer styres af Tiny Family";
+    const managedNote=document.createElement("p");
+    managedNote.className="tf-message";
+    managedNote.textContent="Batteri, fart, zoner, ture og GPS-hændelser registreres direkte i Tiny Family. Ingen separate Home Assistant-automatiseringer er nødvendige. Vælg Companion-telefon og notifikationsmodtagere her; push kræver aktivering.";
+    managedAlerts.append(managedTitle,managedNote);
+    const legacyAlarmEntities=[
+      ["automation.person_timeline_lavt_batteri","Lavt batteri"],
+      ["automation.person_timeline_fartalarm","Fartalarm"]
+    ];
+    const detectedLegacy=legacyAlarmEntities.filter(([entityId])=>
+      Object.prototype.hasOwnProperty.call(this.hassInstance?.states||{},entityId));
+    if(detectedLegacy.length){
+      const legacyStatus=document.createElement("p");
+      legacyStatus.className="tf-message";
+      legacyStatus.setAttribute("role","status");
+      const describeLegacy=()=>detectedLegacy.map(([entityId,label])=>
+        label+": "+(this.hassInstance.states?.[entityId]?.state||"ukendt")).join(" · ");
+      legacyStatus.textContent="Tidligere Home Assistant-automatiseringer: "+describeLegacy();
+      managedAlerts.appendChild(legacyStatus);
+      const legacyEnabled=detectedLegacy.filter(([entityId])=>
+        this.hassInstance.states?.[entityId]?.state==="on");
+      if(legacyEnabled.length){
+        const disableLegacy=document.createElement("button");
+        disableLegacy.type="button";
+        disableLegacy.className="tf-save";
+        disableLegacy.textContent="Deaktiver gamle alarmer ("+legacyEnabled.length+")";
+        disableLegacy.addEventListener("click",async()=>{
+          const entities=legacyEnabled.map(([entityId])=>entityId);
+          if(!window.confirm("Deaktivere de gamle batteri- og fartautomatiseringer? De slettes ikke. Kontrollér først dine personers sensorer og notifikationer i Tiny Family."))return;
+          disableLegacy.disabled=true;
+          try{
+            await this.hassInstance.callService("automation","turn_off",
+              {entity_id:entities});
+            disableLegacy.textContent="Deaktivering sendt";
+            legacyStatus.textContent="Deaktivering af gamle automatiseringer er sendt til Home Assistant. Opdater visningen for at kontrollere resultatet.";
+            this.message("Tiny Family håndterer fortsat alarmer efter de gemte indstillinger.");
+          }catch(error){
+            disableLegacy.disabled=false;
+            this.message("Kunne ikke deaktivere gamle automatiseringer: "+
+              this.errorText(error),true);
+          }
+        });
+        managedAlerts.appendChild(disableLegacy);
+      }
+      if(detectedLegacy.some(([entityId])=>
+        this.hassInstance.states?.[entityId]?.state==="unavailable")){
+        const unavailable=document.createElement("p");
+        unavailable.className="tf-message";
+        unavailable.textContent="En gammel automatisering er utilgængelig. Den kan ikke deaktiveres her, før Home Assistant kan indlæse den.";
+        managedAlerts.appendChild(unavailable);
+      }
+    }
     const peopleGroup=makeGroup("Familiemedlemmer og telefoner",memberSections,true);
     const alertsGroup=makeGroup("Alarmer og fartgrænser",[
-      autoLabel,categoryBox,speedLabel
+      managedAlerts,autoLabel,categoryBox,speedLabel
     ]);
     const routineGroup=makeGroup("Rutiner og samtykke",[routinesLabel]);
     const roadGroup=makeGroup("Vejtilpasning og OSRM",[mapMatchPanel]);
