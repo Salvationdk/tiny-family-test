@@ -23,6 +23,14 @@ Tiny Family er en Home Assistant-integration til familiekort, GPS-ruter, opdagel
 
 **Testversion:** Integrationen er stadig under praktisk afprøvning. SOS er ikke en certificeret nødtjeneste, og Home Assistant-notifikationer garanterer ikke levering på en telefon.
 
+## Nyt i 0.8.1 – indbygget Snap-on-road
+- **Indbygget vejtilpasning** i Tiny Family: Ingen OSRM-server eller API-nøgle er påkrævet. Motoren bygger en lokal vejgraf af OpenStreetMap-geometri og finder sammenhængende vejruter under hensyn til ensretning.
+- I **Administration → Vejtilpasning** vælges `Indbygget OpenStreetMap` som standard, eller eksisterende selvhostet OSRM som valgfrit alternativ. Funktionen er deaktiveret indtil administrator slår den til.
+- I **Kort → Tidslinje → Følg vejene** vælger den enkelte bruger aktivt korttilpasning for person og dato. Den indbyggede motor henter da vejgeometri via HTTPS fra Overpass. Kun rutens geografiske afgrænsning sendes ud; ingen person-id, rå GPS-punktliste eller tidsstempler sendes til Overpass.
+- Vejgeometri caches i hukommelsen i op til 24 timer. Forespørgsler er begrænsede; lange ture, manglende vejdata, serveroverbelastning eller usikre GPS-prøver kan give **delvis vejtilpasning**. Rå GPS-spor vises fortsat, hvor match ikke kan beregnes.
+- Originale koordinater, historisk SQLite-database, afspilning og personcentreret kort ændres ikke. Det er et vejforslag baseret på de registrerede målepunkter, ikke et bevis for den kørte rute.
+- Dette er **ikke fuldt offline**: Hvis Overpass er utilgængelig, vises originalsporet. For helt lokal vejmatching uden eksterne OSM-forespørgsler kræves en fremtidig import af lokale vejdata.
+
 ## Nyt i 0.8.1 – stabil Min dag og dansk højttalerbesked
 - Retter en `insertBefore`-fejl, når brugerens personbinding eller privatlivsindstilling ikke er klar. Ingen personlige data slettes.
 - Ved ny opsætning vælges hver persons Companion-GPS-telefon, Home Assistant-konto og eventuel smart speaker med TTS-stemme.
@@ -45,7 +53,7 @@ Tiny Family er en Home Assistant-integration til familiekort, GPS-ruter, opdagel
 - **Administration:** Indstillinger er organiseret efter Familiemedlemmer, Alarmer, Rutiner, Vejtilpasning og øvrige værktøjer, mens Gem forbliver tilgængelig.
 - Alle faner deler **Tiny Neon**, respekterer mobilens sikre skærmområder og holder bundnavigationen fast. Lange datalister ruller inde i en afgrænset sektion, så selve siden ikke bliver længere end telefonens skærm.
 
-## Nyt i 0.7.1 – valgfri vejtilpasning (map matching)
+## Fra 0.7.1 – valgfri vejtilpasning (OSRM som alternativ)
 - Administrator kan aktivere en **OSRM Match-server** under **Administration → Vejtilpasning / OSRM**. Funktionen er deaktiveret som standard.
 - Sæt eksempelvis `http://192.168.1.50:5000` for en selvhostet OSRM-server på lokalnetværket. OSRM-serveren skal allerede være oprettet og indeholde vejkort for området; Tiny Family installerer ikke selv OSRM.
 - På **Kort → Tidslinje** kan en familiebruger aktivere **Følg vejene** for den valgte person og dato. Kun efter dette valg sendes udvalgte GPS-koordinater og tidsstempler til den konfigurerede OSRM-server.
