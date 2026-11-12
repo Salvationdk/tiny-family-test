@@ -1,5 +1,5 @@
-const PT_COMPACT_ENTITY = "switch.person_timeline_compact";
-const PT_LEGACY_COMPACT_ENTITY = "input_boolean.person_timeline_kompakt";
+const PT_COMPACT_ENTITY = "switch.tiny_family_compact";
+const PT_LEGACY_COMPACT_ENTITY = "input_boolean.tiny_family_kompakt";
 
 function personTimelineCompact(hass, config) {
   const entity = hass && (hass.states[PT_COMPACT_ENTITY] || hass.states[PT_LEGACY_COMPACT_ENTITY]);
@@ -101,7 +101,7 @@ this._renderLiveList();
 }
 _subscribe() {
 if (this._sub || !this._hass || !this._hass.connection) return;
-const ids = [...this._cfg.persons, ...this._cfg.persons.map(p => this._trackers[p]).filter(Boolean), ...Object.values(this._batteries), "input_boolean.person_timeline_live_visning", PT_COMPACT_ENTITY, PT_LEGACY_COMPACT_ENTITY, ...this._cfg.persons.map(p => "input_boolean.person_timeline_vis_" + p.split(".")[1]), ...this._cfg.persons.map(p => "sensor.person_timeline_" + p.split(".")[1] + "_destination")];
+const ids = [...this._cfg.persons, ...this._cfg.persons.map(p => this._trackers[p]).filter(Boolean), ...Object.values(this._batteries), "input_boolean.tiny_family_live_visning", PT_COMPACT_ENTITY, PT_LEGACY_COMPACT_ENTITY, ...this._cfg.persons.map(p => "input_boolean.tiny_family_vis_" + p.split(".")[1]), ...this._cfg.persons.map(p => "sensor.tiny_family_" + p.split(".")[1] + "_destination")];
 try {
 this._unsub = this._hass.connection.subscribeMessage(ev => {
 const eid = ev && ev.data && ev.data.entity_id;
@@ -144,10 +144,10 @@ return 2 * R * Math.asin(Math.sqrt(s1 * s1 + Math.cos(a * t) * Math.cos(c * t) *
 _dest(person) {
 try {
 const slug = person.split(".")[1];
-const d = this._hass.states["sensor.person_timeline_" + slug + "_destination"];
+const d = this._hass.states["sensor.tiny_family_" + slug + "_destination"];
 if (!d || !d.state || ["Ingen", "unknown", "unavailable", ""].includes(d.state)) return "";
-const e = this._hass.states["sensor.person_timeline_" + slug + "_destination_eta"];
-const km = this._hass.states["sensor.person_timeline_" + slug + "_destination_afstand"];
+const e = this._hass.states["sensor.tiny_family_" + slug + "_destination_eta"];
+const km = this._hass.states["sensor.tiny_family_" + slug + "_destination_afstand"];
 const eta = e ? Number(e.state) : 0;
 if (!isFinite(eta) || eta <= 0) return "";
 const dist = km ? Number(km.state) : 0;
@@ -157,7 +157,7 @@ return '<div class="pt-destination">På vej til ' + d.state + " ~" + Math.round(
 }
 _visiblePersons() {
 try {
-const h = this._hass && this._hass.states["input_select.person_timeline_valg"];
+const h = this._hass && this._hass.states["input_select.tiny_family_valg"];
 if (h && h.state && h.state !== "Begge") {
 const hit = this._cfg.persons.find(p => this._name(p) === h.state);
 if (hit) return [hit];
@@ -167,7 +167,7 @@ return this._cfg.persons;
 }
 _ghostOn(person) {
 try {
-const s = this._hass && this._hass.states["input_boolean.person_timeline_ghost_" + person.split(".")[1]];
+const s = this._hass && this._hass.states["input_boolean.tiny_family_ghost_" + person.split(".")[1]];
 return !!(s && s.state === "on");
 } catch (e) { return false; }
 }
@@ -178,7 +178,7 @@ if (root) root.classList.toggle("pt-compact", personTimelineCompact(this._hass, 
 const el = this.querySelector("#live");
 if (!el) return;
 try {
-const lv = this._hass.states["input_boolean.person_timeline_live_visning"];
+const lv = this._hass.states["input_boolean.tiny_family_live_visning"];
 el.style.display = (!lv || lv.state === "on") ? "" : "none";
 } catch (e) {}
 el.innerHTML = this._visiblePersons().map(person => {
@@ -200,10 +200,10 @@ const s = this.querySelector("#s");
 if (s) s.textContent = n ? "Liveopdateret (" + n + " personer). Rute og historik vises på kortet herunder." : "Alle personer er skjult – slå dem til under Visning.";
 }
 getCardSize() { return 3; }
-static getConfigElement() { return document.createElement("person-timeline-card-editor"); }
+static getConfigElement() { return document.createElement("tiny-family-card-editor"); }
 static getStubConfig() { return {persons: [], compact: false}; }
 }
-customElements.define("person-timeline-card", PersonTimelineCard);
+customElements.define("tiny-family-card", PersonTimelineCard);
 
 class PersonTimelineCardEditor extends HTMLElement {
 setConfig(config) { personTimelineTheme(this,this._hass);
@@ -300,9 +300,9 @@ wrap.appendChild(box);
 this.appendChild(wrap);
 }
 }
-customElements.define("person-timeline-card-editor", PersonTimelineCardEditor);
+customElements.define("tiny-family-card-editor", PersonTimelineCardEditor);
 window.customCards = window.customCards || [];
-window.customCards.push({type: "person-timeline-card", name: "Person Timeline Live", description: "Live venne-liste med status, batteri og ETA"});
+window.customCards.push({type: "tiny-family-card", name: "Tiny Family Live", description: "Live venne-liste med status, batteri og ETA"});
 
 class PersonTimelinePlacesCard extends HTMLElement {
 setConfig(c) {
@@ -333,7 +333,7 @@ if (!this._hass) return [];
 const rows = [];
 (this._cfg.persons || []).forEach(person => {
 const slug = person.split(".")[1];
-const state = this._hass.states["sensor.person_timeline_" + slug + "_kendte_steder"];
+const state = this._hass.states["sensor.tiny_family_" + slug + "_kendte_steder"];
 const items = state && Array.isArray(state.attributes.zone_forslag) ? state.attributes.zone_forslag : [];
 items.forEach(item => rows.push({person: person, name: this._name(person), item: item}));
 });
@@ -388,7 +388,7 @@ if (!name) { status.textContent = "Skriv først et navn."; input.focus(); return
 button.disabled = true;
 status.textContent = "Gemmer…";
 try {
-await this._hass.callService("person_timeline", "save_place_as_zone", {person: row.person, lat: Number(row.item.lat), lon: Number(row.item.lon), navn: name, radius: Number(this._cfg.radius || 25)});
+await this._hass.callService("tiny_family", "save_place_as_zone", {person: row.person, lat: Number(row.item.lat), lon: Number(row.item.lon), navn: name, radius: Number(this._cfg.radius || 25)});
 status.textContent = "Gemt. Forslaget fjernes nu.";
 } catch (error) {
 status.textContent = "Kunne ikke gemme: " + (error && error.message ? error.message : error);
@@ -401,7 +401,7 @@ if (!window.confirm("Slet dette forslag? Stedet kan blive foreslået igen efter 
 button.disabled = true;
 status.textContent = "Sletter…";
 try {
-await this._hass.callService("person_timeline", "delete_place_suggestion", {person: row.person, lat: Number(row.item.lat), lon: Number(row.item.lon)});
+await this._hass.callService("tiny_family", "delete_place_suggestion", {person: row.person, lat: Number(row.item.lat), lon: Number(row.item.lon)});
 status.textContent = "Forslaget er slettet.";
 } catch (error) {
 status.textContent = "Kunne ikke slette: " + (error && error.message ? error.message : error);
@@ -410,10 +410,10 @@ button.disabled = false;
 }
 getCardSize() { return Math.max(1, this._suggestions().length * 2); }
 static getStubConfig() { return {persons: [], radius: 25, compact: false}; }
-static getConfigElement() { return document.createElement("person-timeline-places-card-editor"); }
+static getConfigElement() { return document.createElement("tiny-family-places-card-editor"); }
 }
-customElements.define("person-timeline-places-card", PersonTimelinePlacesCard);
-window.customCards.push({type: "person-timeline-places-card", name: "Person Timeline steder", description: "Behandl alle foreslåede steder enkeltvis"});
+customElements.define("tiny-family-places-card", PersonTimelinePlacesCard);
+window.customCards.push({type: "tiny-family-places-card", name: "Tiny Family steder", description: "Behandl alle foreslåede steder enkeltvis"});
 
 class PersonTimelinePlacesCardEditor extends HTMLElement {
 setConfig(config) {
@@ -479,13 +479,13 @@ compactLabel.appendChild(compactInput);
 compactLabel.appendChild(document.createTextNode("Brug altid kompakt visning"));
 wrap.appendChild(compactLabel);
 const compactHint = document.createElement("div");
-compactHint.textContent = "Den globale Person Timeline-kontakt kan også aktivere kompakt visning.";
+compactHint.textContent = "Den globale Tiny Family-kontakt kan også aktivere kompakt visning.";
 compactHint.style.cssText = "font-size:12px;color:var(--pt-muted,var(--secondary-text-color))";
 wrap.appendChild(compactHint);
 this.appendChild(wrap);
 }
 }
-customElements.define("person-timeline-places-card-editor", PersonTimelinePlacesCardEditor);
+customElements.define("tiny-family-places-card-editor", PersonTimelinePlacesCardEditor);
 
 class PersonRouteCard extends HTMLElement {
 setConfig(c) {
@@ -500,7 +500,7 @@ return (s && s.attributes.friendly_name) || person.replace("person.", "").replac
 }
 _wantPersons() {
 try {
-const h = this._hass && this._hass.states["input_select.person_timeline_valg"];
+const h = this._hass && this._hass.states["input_select.tiny_family_valg"];
 if (!h || h.state === "Begge") return this._cfg.persons;
 const hit = this._cfg.persons.find(p => this._name(p) === h.state);
 return hit ? [hit] : this._cfg.persons;
@@ -515,11 +515,11 @@ this.innerHTML = '<div class="pt-route-root"><div class="pt-route-controls">'
 + '</style>';
 this.querySelector("#d").value = new Date().toISOString().slice(0, 10);
 this.querySelector("#b").onclick = () => this._load();
-const css = "/person_timeline_static/leaflet/leaflet.css";
+const css = "/tiny_family_static/leaflet/leaflet.css";
 if (!document.querySelector('link[href="' + css + '"]')) {
 const l = document.createElement("link"); l.rel = "stylesheet"; l.href = css; document.head.appendChild(l);
 }
-const js = "/person_timeline_static/leaflet/leaflet.js";
+const js = "/tiny_family_static/leaflet/leaflet.js";
 const ensure = () => window.L ? Promise.resolve() : new Promise((res, rej) => {
 const s = document.createElement("script"); s.src = js;
 s.onload = res; s.onerror = () => rej(new Error("Kunne ikke indlæse kort-biblioteket.")); document.head.appendChild(s);
@@ -827,14 +827,14 @@ element.disabled = false;
 }
 }
 getCardSize() { return Math.max(1, Math.ceil(this._config.buttons.length / (Number(this._config.columns) || 2))); }
-static getConfigElement() { return document.createElement("person-timeline-neon-buttons-card-editor"); }
+static getConfigElement() { return document.createElement("tiny-family-neon-buttons-card-editor"); }
 static getStubConfig() {
 return {columns: 2, compact: false, buttons: [{name: "Handling", icon: "mdi:gesture-tap-button", service: "script.turn_on", data: {}}]};
 }
 }
-customElements.define("person-timeline-neon-buttons-card", PersonTimelineNeonButtonsCard);
+customElements.define("tiny-family-neon-buttons-card", PersonTimelineNeonButtonsCard);
 window.customCards = window.customCards || [];
-window.customCards.push({type: "person-timeline-neon-buttons-card", name: "Person Timeline neon-knapper", description: "Små konfigurerbare Tiny Neon-knapper til handlinger og beskeder"});
+window.customCards.push({type: "tiny-family-neon-buttons-card", name: "Tiny Family neon-knapper", description: "Små konfigurerbare Tiny Neon-knapper til handlinger og beskeder"});
 
 class PersonTimelineNeonButtonsCardEditor extends HTMLElement {
 setConfig(config) {
@@ -943,6 +943,6 @@ root.appendChild(add);
 this.appendChild(root);
 }
 }
-customElements.define("person-timeline-neon-buttons-card-editor", PersonTimelineNeonButtonsCardEditor);
+customElements.define("tiny-family-neon-buttons-card-editor", PersonTimelineNeonButtonsCardEditor);
 
 window.PersonTimelineTheme = Object.freeze({css:PT_NEON, editorCss:PT_EDITOR_CSS, apply:personTimelineTheme});
