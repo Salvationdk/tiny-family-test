@@ -279,6 +279,9 @@ class TinyFamilySettingsView(HomeAssistantView):
             ], key=lambda x: x["name"]) if admin else []),
             "editable": bool(request["hass_user"].is_admin),
             "map_matching_enabled": bool(cfg.get("map_matching_enabled", False)),
+            "map_matching_backend": cfg.get("map_matching_backend") or (
+                "osrm" if cfg.get("map_matching_url") else "builtin"
+            ),
             "map_matching_url": (cfg.get("map_matching_url", "") if admin else ""),
             "auto_notifications_enabled": bool(cfg.get("auto_notifications_enabled",False)),
             "learn_routines_enabled": bool(cfg.get("learn_routines_enabled",False)),
@@ -338,9 +341,13 @@ class TinyFamilySettingsView(HomeAssistantView):
             auto_notifications_enabled = data.get("auto_notifications_enabled", False)
             learn_routines_enabled = data.get("learn_routines_enabled", False)
             map_matching_enabled = data.get("map_matching_enabled", False)
+            map_matching_backend = data.get("map_matching_backend", "builtin")
             map_matching_url = validate_match_server(data.get("map_matching_url", ""))
-            if type(map_matching_enabled) is not bool or (map_matching_enabled and not map_matching_url):
-                raise ValueError("OSRM needs a valid administrator-configured server")
+            if (type(map_matching_enabled) is not bool or
+                    map_matching_backend not in ("builtin", "osrm") or
+                    (map_matching_enabled and map_matching_backend == "osrm"
+                     and not map_matching_url)):
+                raise ValueError("Invalid map matching backend settings")
             if type(auto_notifications_enabled) is not bool or type(learn_routines_enabled) is not bool:
                 raise ValueError("Invalid settings toggle")
             if type(speed_limit_kmh) is not int or not 30 <= speed_limit_kmh <= 200:
@@ -471,6 +478,7 @@ class TinyFamilySettingsView(HomeAssistantView):
             "auto_notifications_enabled": auto_notifications_enabled,
             "learn_routines_enabled": learn_routines_enabled,
             "map_matching_enabled": map_matching_enabled,
+            "map_matching_backend": map_matching_backend,
             "map_matching_url": map_matching_url,
             "routine_learning_people": (options.get("routine_learning_people", [])
                                          if learn_routines_enabled else []),
