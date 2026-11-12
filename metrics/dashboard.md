@@ -1,6 +1,6 @@
 # Repository-statistik: Salvationdk/tiny-family-test
 
-Senest kørt (UTC): **2026-11-11 14:41 UTC**
+Senest kørt (UTC): **2026-11-12 12:39 UTC**
 
 | Måling | Antal | Dækning |
 |---|---:|---|
