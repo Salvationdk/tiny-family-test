@@ -1,4 +1,4 @@
-# Tiny Family — offentlig testversion 0.7.2
+# Tiny Family — offentlig testversion 0.8.0
 
 <!-- BEGIN: Salvationdk repository metrics -->
 [![Release downloads](https://img.shields.io/github/downloads/Salvationdk/tiny-family-test/total?label=Release%20downloads&style=flat-square)](https://github.com/Salvationdk/tiny-family-test/releases)
@@ -23,11 +23,11 @@ Tiny Family er en Home Assistant-integration til familiekort, GPS-ruter, opdagel
 
 **Testversion:** Integrationen er stadig under praktisk afprøvning. SOS er ikke en certificeret nødtjeneste, og Home Assistant-notifikationer garanterer ikke levering på en telefon.
 
-## Nyt i 0.7.2 – integrationen styrer selv alarmerne
+## Nyt i 0.8.0 – navn, domæne og alarmstyring
 - Tiny Family registrerer selv batteri-, fart-, zone-, tur- og GPS-hændelser og gemmer dem i systemhistorikken uden særskilte Home Assistant-automatiseringer.
-- Under **Administration → Alarmer og fartgrænser** kan administrator se to kendte gamle `Person Timeline`-automatiseringer og deaktivere aktive eksemplarer med bekræftelse. Automatiseringerne slettes ikke.
+- Under **Administration → Alarmer og fartgrænser** kan administrator se to kendte gamle `Tiny Family`-automatiseringer og deaktivere aktive eksemplarer med bekræftelse. Automatiseringerne slettes ikke.
 - Kontrollér Companion-telefon, notifikationsmodtagere og aktiverede alarmkategorier før oprydning. Systemhistorik og eksisterende GPS-arkiver ændres ikke.
-- Integrationsdomænet `person_timeline` bevares indtil en særskilt sikker migrering, så eksisterende enheder, historik og config entries ikke brydes.
+- Integrationsdomænet `tiny_family` bevares indtil en særskilt sikker migrering, så eksisterende enheder, historik og config entries ikke brydes.
 
 ## Mobilforbedringer i 0.7.1 – én skærm pr. hovedfane
 - **Kort:** Under 24-timers afspilning og manuel tidslinjesøgning følger kortet den valgte person i fast gadeniveau-zoom; markeringsikonet viser personens initialer. Liveopdateringer afbryder ikke historisk afspilning.
@@ -58,7 +58,7 @@ Tiny Family er en Home Assistant-integration til familiekort, GPS-ruter, opdagel
 ## Rettelser i 0.6.10 – stabilitet og automatiseringer
 - Sensorer og binære sensorer opdateres nu på Home Assistants event loop, også hvis opdateringen oprindeligt kommer fra en worker-tråd.
 - Companion-opdateringslyttere bruger Home Assistants `@callback`, så de ikke utilsigtet afvikles i executor-tråde.
-- `person_timeline.log_notification` accepterer Home Assistants interne automationskontekst uden en indlogget bruger. Manuelle brugerbaserede kald er fortsat kun for administratorer. Andre services, der ændrer personer, zoner eller historik, bevarer deres adgangskontrol.
+- `tiny_family.log_notification` accepterer Home Assistants interne automationskontekst uden en indlogget bruger. Manuelle brugerbaserede kald er fortsat kun for administratorer. Andre services, der ændrer personer, zoner eller historik, bevarer deres adgangskontrol.
 - Regressionstests for worker-tråde og automatisk systemlogging er tilføjet til GitHub Actions.
 
 ## Fra 0.6.9 – Tiny Neon på kortet
@@ -78,6 +78,28 @@ Tiny Family er en Home Assistant-integration til familiekort, GPS-ruter, opdagel
 
 **Vigtigt:** Tiny Family kan ikke tilsidesætte Android/iOS' placeringstilladelser. Personer og enheder skal være korrekt tilknyttet i Home Assistant Companion.
 
+## Éngangsovergang til Tiny Family 0.8.0
+
+**Integrationsdomænet er nu `tiny_family`.** Det er en ny installation i
+Home Assistant, ikke en almindelig opdatering af `person_timeline`.
+
+1. Tag en **fuld Home Assistant-backup**, og notér dine person-/telefonbindinger.
+2. Fjern den gamle Tiny Family-integration under **Indstillinger → Enheder og tjenester**.
+3. Fjern den forældede mappe `custom_components/person_timeline/`, hvis
+   Marketplace/HACS ikke selv har fjernet den.
+4. Installér dette testrepository igen (nu version 0.8.0), genstart Home
+   Assistant og tilføj **Tiny Family** som ny integration.
+5. Vælg familiemedlemmer, Companion-telefoner, brugere og notifikationer
+   igen. Kontrollér GPS-historik, zoner og alarmer før du rydder gamle entiteter.
+
+Ved første opstart kopierer Tiny Family eventuelle eksisterende
+`person_timeline_places.json` og `person_timeline_historik.json` til
+`tiny_family_places.json` og `tiny_family_historik.json`, hvis nye filer
+ikke findes. Gamle filer slettes ikke. SQLite-arkivet
+`tiny_family_timeline.sqlite3` og eksisterende `tiny_family_*` data
+fortsætter uændret. Der sker **ingen automatisk omskrivning** af den gamle
+Home Assistant-konfigurationspost; denne engangsovergang kræver genopsætning.
+
 ## Installation med Home Assistant Marketplace (2026.11 eller nyere)
 
 1. Lav først en fuld Home Assistant-backup.
@@ -91,12 +113,12 @@ Tidligere HACS: Tilføj samme URL via **HACS → Custom repositories** med typen
 
 ## Sikker test
 
-Brug helst en separat testinstallation. Hvis du tidligere har brugt `person_timeline:` i YAML, må den gamle YAML-instans ikke være aktiv samtidig med den nye UI-konfiguration uden en gennemgået migration. Gem backup af både historik, scripts og `.storage`.
+Brug helst en separat testinstallation. Hvis du tidligere har brugt `tiny_family:` i YAML, må den gamle YAML-instans ikke være aktiv samtidig med den nye UI-konfiguration uden en gennemgået migration. Gem backup af både historik, scripts og `.storage`.
 
 Ghost Mode fra tidligere installationer ændrer ikke Home Assistants `person`, `device_tracker` eller Recorder-data. Native widgets skal tilføjes gennem den officielle Companion-app. Intet officielt HACS-katalogbidrag er indsendt.
 
 ## Teknisk
 
-Home Assistant-domæne: `person_timeline`. Version: `0.7.2`. Integrationens filer ligger i `custom_components/person_timeline/`.
+Home Assistant-domæne: `tiny_family`. Version: `0.8.0`. Integrationens filer ligger i `custom_components/tiny_family/`.
 
 Dette offentlige testrepository indeholder kun installationskode og dokumentation, ikke den private udviklingshistorik, personlige GPS-ruter, telefonnumre eller Home Assistant-konfigurationsdata.
