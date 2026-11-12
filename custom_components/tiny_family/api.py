@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from secrets import token_urlsafe
 from homeassistant.components.http import HomeAssistantView
 
-from .communications import (CommunicationError, acknowledge_message, deliver,
+from .communications import (CommunicationError, acknowledge_message, deliver, deliver_spoken,
                              own_person, private_history)
 from .const import HISTORY_FILE, HISTORY_KEY
 from .storage import _append_history, _save_history
@@ -43,16 +43,22 @@ class TinyFamilyCommunicationsView(HomeAssistantView):
             return web.json_response({"message": str(err), "error_code": err.code}, status=403)
         targets = config.get("notification_targets") or {}
         owners = config.get("owners") or {}
+        speakers = config.get("smart_speakers") or {}
+        engines = config.get("tts_engines") or {}
         recipients = sum(1 for other in config.get("persons") or []
-                         if other != person and owners.get(other) and targets.get(other))
+                         if other != person and owners.get(other) and
+                         (targets.get(other) or (speakers.get(other) and engines.get(other))))
         return web.json_response({
             "person": person, "recipients_configured": recipients,
             "recipients": [
                 {"person": other, "name": (
                     self.hass.states.get(other).name
-                    if self.hass.states.get(other) else other)}
+                    if self.hass.states.get(other) else other),
+                 "phone_available": bool(targets.get(other)),
+                 "speaker_available": bool(speakers.get(other) and engines.get(other))}
                 for other in config.get("persons") or []
-                if other != person and owners.get(other) and targets.get(other)
+                if other != person and owners.get(other) and
+                (targets.get(other) or (speakers.get(other) and engines.get(other)))
             ],
             "history": private_history(self.hass.data.get(HISTORY_KEY) or {}, user_id),
         }, headers={"Cache-Control": "no-store"})
@@ -84,6 +90,11 @@ class TinyFamilyCommunicationsView(HomeAssistantView):
             if not isinstance(payload, dict):
                 raise CommunicationError("Invalid action payload")
             action = payload.get("action")
+            channel = payload.get("channel", "phone")
+            if channel not in ("phone", "speaker"):
+                raise CommunicationError("Unknown message channel")
+            if channel == "speaker" and action != "message":
+                raise CommunicationError("Only ordinary messages can be spoken")
             if action == "acknowledge":
                 history = self.hass.data.get(HISTORY_KEY) or {}
                 changed = acknowledge_message(
@@ -105,11 +116,18 @@ class TinyFamilyCommunicationsView(HomeAssistantView):
                     or (recipient_person is not None
                         and not isinstance(recipient_person, str))):
                 raise CommunicationError("Invalid action or message")
-            result = await deliver(
-                self.hass, sender_user_id=user_id, sender_person=person,
-                config=config, action=action, message=message,
-                recipient_person=recipient_person, include_location=include_location,
-            )
+            if channel == "speaker":
+                result = await deliver_spoken(
+                    self.hass, sender_user_id=user_id, sender_person=person,
+                    config=config, recipient_person=recipient_person,
+                    message=message,
+                )
+            else:
+                result = await deliver(
+                    self.hass, sender_user_id=user_id, sender_person=person,
+                    config=config, action=action, message=message,
+                    recipient_person=recipient_person, include_location=include_location,
+                )
         except CommunicationError as err:
             return web.json_response({"message": str(err), "error_code": err.code}, status=400)
         except (ValueError, TypeError):
@@ -125,6 +143,7 @@ class TinyFamilyCommunicationsView(HomeAssistantView):
             "accepted_recipients": result["recipients_sent"],
             "failed_recipients": result["recipients_failed"],
             "delivery_state": result["delivery_state"],
+            "delivery_channel": result.get("delivery_channel", "phone"),
             "location_status": result["location_status"],
         })
         self.hass.bus.async_fire("tiny_family_communication_sent", {
@@ -138,6 +157,7 @@ class TinyFamilyCommunicationsView(HomeAssistantView):
             "recipients_failed": result["recipients_failed"],
             "attempted_recipients": result["attempted_recipients"],
             "delivery_state": result["delivery_state"],
+            "delivery_channel": result.get("delivery_channel", "phone"),
             "push_delivery_verified": result["push_delivery_verified"],
             "location_status": result["location_status"],
         }, headers={"Cache-Control": "no-store"})
