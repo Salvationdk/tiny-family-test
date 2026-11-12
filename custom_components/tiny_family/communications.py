@@ -165,6 +165,95 @@ def acknowledge_message(history: dict, user_id: str, message_id: str,
     raise CommunicationError("Unknown message")
 
 
+def danish_tts_language(tts_state) -> str:
+    """Choose a Danish language code supported by the configured TTS engine."""
+    attrs = getattr(tts_state, "attributes", {}) or {}
+    languages = attrs.get("supported_languages")
+    if isinstance(languages, (list, tuple, set)) and languages:
+        for language in languages:
+            if isinstance(language, str) and language.lower().replace("_", "-").startswith("da"):
+                return language
+        raise CommunicationError("Den valgte TTS-stemme understøtter ikke dansk",
+                                 code="danish_not_supported")
+    # Some HA TTS engines do not publish supported_languages in entity state.
+    # Try Danish; a rejecting engine returns an error instead of using English.
+    return "da"
+
+
+async def deliver_spoken(hass, *, sender_user_id: str, sender_person: str,
+                         config: dict, recipient_person: str | None,
+                         message: str) -> dict:
+    """Play an explicitly selected direct message on the recipient's speaker.
+
+    TTS is never used for SOS or automatic alerts; no GPS location is spoken.
+    Speaker/engine mappings are administrator-owned, not supplied by the caller.
+    """
+    persons = config.get("persons") or []
+    owners = config.get("owners") or {}
+    if (sender_person not in persons or
+            owners.get(sender_person) != sender_user_id):
+        raise CommunicationError("Du er ikke knyttet til afsenderen", code="not_linked")
+    if (not isinstance(recipient_person, str) or
+            recipient_person not in persons or recipient_person == sender_person or
+            not owners.get(recipient_person)):
+        raise CommunicationError("Vælg én anden familiemodtager", code="invalid_recipient")
+    if not isinstance(message, str) or not (1 <= len(message.strip()) <= 250):
+        raise CommunicationError("Oplæsning skal indeholde 1–250 tegn", code="invalid_action")
+    speaker = (config.get("smart_speakers") or {}).get(recipient_person)
+    engine = (config.get("tts_engines") or {}).get(recipient_person)
+    if (not isinstance(speaker, str) or not speaker.startswith("media_player.") or
+            not isinstance(engine, str) or not engine.startswith("tts.")):
+        raise CommunicationError("Modtageren mangler højttaler eller dansk TTS",
+                                 code="speaker_not_configured")
+    speaker_state = hass.states.get(speaker)
+    engine_state = hass.states.get(engine)
+    if (speaker_state is None or speaker_state.state in ("unknown", "unavailable") or
+            engine_state is None or engine_state.state == "unavailable" or
+            "speak" not in hass.services.async_services().get("tts", {})):
+        raise CommunicationError("Højttaler eller TTS er ikke tilgængelig",
+                                 code="speaker_unavailable")
+    language = danish_tts_language(engine_state)
+    now = datetime.now(timezone.utc)
+    ledger = hass.data.setdefault("tiny_family_action_limits", {})
+    key = (sender_user_id, "speaker", recipient_person)
+    previous = ledger.get(key)
+    if previous is not None and now.timestamp() - previous < 10:
+        raise CommunicationError("Vent lidt før næste oplæsning", code="rate_limited")
+    ledger[key] = now.timestamp()
+    sender_state = hass.states.get(sender_person)
+    name = sender_state.name if sender_state is not None else sender_person
+    clean_message = message.strip()
+    try:
+        await hass.services.async_call(
+            "tts", "speak",
+            {
+                "media_player_entity_id": speaker,
+                "message": f"Tiny Family. Besked fra {name}. {clean_message}",
+                "language": language,
+            },
+            target={"entity_id": engine}, blocking=True,
+        )
+    except Exception as err:
+        ledger.pop(key, None)
+        raise CommunicationError("Home Assistant kunne ikke starte oplæsning",
+                                 code="tts_failed") from err
+    return {
+        "action": "message", "title": "Tiny Family – oplæst besked",
+        "message": clean_message,
+        "sender_user_id": sender_user_id,
+        "sender_person": sender_person,
+        "recipient_people": [recipient_person],
+        "recipient_user_ids": [owners[recipient_person]],
+        "recipients_sent": 1, "recipients_failed": 0,
+        "attempted_recipients": 1,
+        "delivery_state": "accepted_by_tts",
+        "delivery_channel": "speaker",
+        "push_delivery_verified": False,
+        "location_status": "not_applicable",
+        "tid": now.isoformat(),
+    }
+
+
 async def deliver(hass, *, sender_user_id: str, sender_person: str,
                   config: dict, action: str, message: str = "",
                   recipient_person: str | None = None,

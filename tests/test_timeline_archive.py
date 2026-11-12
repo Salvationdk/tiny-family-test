@@ -40,6 +40,7 @@ def load_timeline_module():
     async def no_match(*args, **kwargs):
         return [], "disabled"
     sys.modules[f"{PKG}.map_matching"] = types.SimpleNamespace(match_day=no_match)
+    sys.modules[f"{PKG}.road_engine"] = types.SimpleNamespace(match_day_embedded=no_match)
     spec = importlib.util.spec_from_file_location(f"{PKG}.timeline", ROOT / "timeline.py")
     mod = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = mod

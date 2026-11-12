@@ -5,17 +5,38 @@
       "user": {
         "title": "Tiny Family",
         "description": "Vælg de personer, du vil følge. Resten kan konfigureres i Tiny Family-panelets egen editor.",
-        "data": {"persons": "Familiemedlemmer"}
+        "data": {
+          "persons": "Familiemedlemmer"
+        }
+      },
+      "member": {
+        "title": "Enheder til {person}",
+        "description": "Familiemedlem {number} af {total}. Vælg personens Companion-telefon, tilhørende pushmodtager, Home Assistant-bruger og eventuel smart speaker med dansk TTS. En smart speaker bruges kun ved aktivt valg af oplæsning.",
+        "data": {
+          "tracker": "Personens telefon (GPS)",
+          "speaker": "Smart speaker i personens rum (valgfri)",
+          "tts_engine": "TTS-stemme til dansk oplæsning (valgfri)",
+          "owner": "Personens Home Assistant-bruger",
+          "notify_target": "Telefonens pushmodtager (valgfri, til beskeder og alarmer)"
+        }
       }
     },
-    "abort": {"already_configured": "Tiny Family er allerede tilføjet."}
+    "abort": {
+      "already_configured": "Tiny Family er allerede tilføjet."
+    },
+    "error": {
+      "already_assigned": "Telefon eller konto bruges allerede af et andet familiemedlem",
+      "required": "Vælg både smart speaker og TTS-stemme, eller undlad begge"
+    }
   },
   "options": {
     "step": {
       "init": {
         "title": "Personer",
         "description": "Avancerede indstillinger findes i Tiny Family-sidepanelet.",
-        "data": {"persons": "Familiemedlemmer"}
+        "data": {
+          "persons": "Familiemedlemmer"
+        }
       }
     }
   }

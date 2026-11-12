@@ -235,6 +235,8 @@ class TinyFamilySettingsView(HomeAssistantView):
         return web.json_response({
             "persons": visible,
             "trackers": {p: v for p,v in (cfg.get("trackers") or {}).items() if p in visible},
+            "smart_speakers": {p: v for p,v in (cfg.get("smart_speakers") or {}).items() if p in visible},
+            "tts_engines": {p: v for p,v in (cfg.get("tts_engines") or {}).items() if p in visible},
             "batteries": {p: v for p,v in (cfg.get("batteries") or {}).items() if p in visible},
             "charging_sensors": {p: v for p,v in (cfg.get("charging_sensors") or {}).items() if p in visible},
             "activity_sensors": {p: v for p,v in (cfg.get("activity_sensors") or {}).items() if p in visible},
@@ -246,6 +248,14 @@ class TinyFamilySettingsView(HomeAssistantView):
             "device_sensors": ({s.entity_id: companion_device_sensors(self.hass, s.entity_id)
                                 for s in self.hass.states.async_all("device_tracker")}
                                if admin else {}),
+            "available_speakers": (sorted([
+                {"id": state.entity_id, "name": state.name}
+                for state in self.hass.states.async_all("media_player")
+            ], key=lambda item: item["name"]) if admin else []),
+            "available_tts_engines": (sorted([
+                {"id": state.entity_id, "name": state.name}
+                for state in self.hass.states.async_all("tts")
+            ], key=lambda item: item["name"]) if admin else []),
             "available_trackers": (sorted([
                 {"id": s.entity_id, "name": s.attributes.get("friendly_name", s.entity_id)}
                 for s in self.hass.states.async_all("device_tracker")
@@ -269,6 +279,9 @@ class TinyFamilySettingsView(HomeAssistantView):
             ], key=lambda x: x["name"]) if admin else []),
             "editable": bool(request["hass_user"].is_admin),
             "map_matching_enabled": bool(cfg.get("map_matching_enabled", False)),
+            "map_matching_backend": cfg.get("map_matching_backend") or (
+                "osrm" if cfg.get("map_matching_url") else "builtin"
+            ),
             "map_matching_url": (cfg.get("map_matching_url", "") if admin else ""),
             "auto_notifications_enabled": bool(cfg.get("auto_notifications_enabled",False)),
             "learn_routines_enabled": bool(cfg.get("learn_routines_enabled",False)),
@@ -307,6 +320,9 @@ class TinyFamilySettingsView(HomeAssistantView):
             data = await request.json()
             persons = data["persons"]
             trackers = data.get("trackers", {})
+            saved = {**entry.data, **entry.options}
+            smart_speakers = data.get("smart_speakers", saved.get("smart_speakers", {}))
+            tts_engines = data.get("tts_engines", saved.get("tts_engines", {}))
             batteries = data.get("batteries", {})
             charging_sensors = data.get("charging_sensors", {})
             activity_sensors = data.get("activity_sensors", {})
@@ -325,9 +341,13 @@ class TinyFamilySettingsView(HomeAssistantView):
             auto_notifications_enabled = data.get("auto_notifications_enabled", False)
             learn_routines_enabled = data.get("learn_routines_enabled", False)
             map_matching_enabled = data.get("map_matching_enabled", False)
+            map_matching_backend = data.get("map_matching_backend", "builtin")
             map_matching_url = validate_match_server(data.get("map_matching_url", ""))
-            if type(map_matching_enabled) is not bool or (map_matching_enabled and not map_matching_url):
-                raise ValueError("OSRM needs a valid administrator-configured server")
+            if (type(map_matching_enabled) is not bool or
+                    map_matching_backend not in ("builtin", "osrm") or
+                    (map_matching_enabled and map_matching_backend == "osrm"
+                     and not map_matching_url)):
+                raise ValueError("Invalid map matching backend settings")
             if type(auto_notifications_enabled) is not bool or type(learn_routines_enabled) is not bool:
                 raise ValueError("Invalid settings toggle")
             if type(speed_limit_kmh) is not int or not 30 <= speed_limit_kmh <= 200:
@@ -358,12 +378,32 @@ class TinyFamilySettingsView(HomeAssistantView):
                 raise ValueError("Invalid alert categories")
             if not all(isinstance(obj, dict) for obj in (
                     trackers, batteries, charging_sensors, activity_sensors,
-                    colors, owners, notification_targets)):
+                    colors, owners, notification_targets,
+                    smart_speakers, tts_engines)):
                 raise ValueError("invalid mappings")
             if any(k not in persons for obj in (
                     trackers, batteries, charging_sensors, activity_sensors,
-                    colors, owners, notification_targets) for k in obj):
+                    colors, owners, notification_targets,
+                    smart_speakers, tts_engines) for k in obj):
                 raise ValueError("mapping contains a person not selected")
+            if any(not isinstance(v, str) or len(v) > 128 or
+                   (v and not v.startswith("media_player."))
+                   for v in smart_speakers.values()):
+                raise ValueError("invalid speaker")
+            if any(not isinstance(v, str) or len(v) > 128 or
+                   (v and not v.startswith("tts."))
+                   for v in tts_engines.values()):
+                raise ValueError("invalid TTS engine")
+            if any(bool(smart_speakers.get(p)) != bool(tts_engines.get(p))
+                   for p in persons):
+                raise ValueError("speaker and TTS must be selected together")
+            registered_speakers = {state.entity_id for state in
+                                   self.hass.states.async_all("media_player")}
+            registered_tts = {state.entity_id for state in
+                              self.hass.states.async_all("tts")}
+            if (any(v and v not in registered_speakers for v in smart_speakers.values()) or
+                    any(v and v not in registered_tts for v in tts_engines.values())):
+                raise ValueError("speaker or TTS entity is unavailable")
             if any(not isinstance(v, str) or len(v) > 128 or
                    (v and not v.startswith("device_tracker."))
                    for v in trackers.values()):
@@ -418,6 +458,8 @@ class TinyFamilySettingsView(HomeAssistantView):
         options = dict(entry.options)
         options.update({
             "persons": persons, "trackers": trackers,
+            "smart_speakers": {p: v for p, v in smart_speakers.items() if v},
+            "tts_engines": {p: v for p, v in tts_engines.items() if v},
             "batteries": batteries, "colors": colors,
             "charging_sensors": charging_sensors,
             "activity_sensors": activity_sensors,
@@ -436,6 +478,7 @@ class TinyFamilySettingsView(HomeAssistantView):
             "auto_notifications_enabled": auto_notifications_enabled,
             "learn_routines_enabled": learn_routines_enabled,
             "map_matching_enabled": map_matching_enabled,
+            "map_matching_backend": map_matching_backend,
             "map_matching_url": map_matching_url,
             "routine_learning_people": (options.get("routine_learning_people", [])
                                          if learn_routines_enabled else []),

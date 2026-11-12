@@ -1,4 +1,4 @@
-# Tiny Family — offentlig testversion 0.8.0
+# Tiny Family — offentlig testversion 0.8.1
 
 <!-- BEGIN: Salvationdk repository metrics -->
 [![Release downloads](https://img.shields.io/github/downloads/Salvationdk/tiny-family-test/total?label=Release%20downloads&style=flat-square)](https://github.com/Salvationdk/tiny-family-test/releases)
@@ -23,6 +23,22 @@ Tiny Family er en Home Assistant-integration til familiekort, GPS-ruter, opdagel
 
 **Testversion:** Integrationen er stadig under praktisk afprøvning. SOS er ikke en certificeret nødtjeneste, og Home Assistant-notifikationer garanterer ikke levering på en telefon.
 
+## Nyt i 0.8.1 – indbygget Snap-on-road
+- **Indbygget vejtilpasning** i Tiny Family: Ingen OSRM-server eller API-nøgle er påkrævet. Motoren bygger en lokal vejgraf af OpenStreetMap-geometri og finder sammenhængende vejruter under hensyn til ensretning.
+- I **Administration → Vejtilpasning** vælges `Indbygget OpenStreetMap` som standard, eller eksisterende selvhostet OSRM som valgfrit alternativ. Funktionen er deaktiveret indtil administrator slår den til.
+- I **Kort → Tidslinje → Følg vejene** vælger den enkelte bruger aktivt korttilpasning for person og dato. Den indbyggede motor henter da vejgeometri via HTTPS fra Overpass. Kun rutens geografiske afgrænsning sendes ud; ingen person-id, rå GPS-punktliste eller tidsstempler sendes til Overpass.
+- Vejgeometri caches i hukommelsen i op til 24 timer. Forespørgsler er begrænsede; lange ture, manglende vejdata, serveroverbelastning eller usikre GPS-prøver kan give **delvis vejtilpasning**. Rå GPS-spor vises fortsat, hvor match ikke kan beregnes.
+- Originale koordinater, historisk SQLite-database, afspilning og personcentreret kort ændres ikke. Det er et vejforslag baseret på de registrerede målepunkter, ikke et bevis for den kørte rute.
+- Dette er **ikke fuldt offline**: Hvis Overpass er utilgængelig, vises originalsporet. For helt lokal vejmatching uden eksterne OSM-forespørgsler kræves en fremtidig import af lokale vejdata.
+
+## Nyt i 0.8.1 – stabil Min dag og dansk højttalerbesked
+- Retter en `insertBefore`-fejl, når brugerens personbinding eller privatlivsindstilling ikke er klar. Ingen personlige data slettes.
+- Ved ny opsætning vælges hver persons Companion-GPS-telefon, Home Assistant-konto og eventuel smart speaker med TTS-stemme.
+- Administration kan ændre samme bindinger senere.
+- Beskeder kan eksplicit sendes som almindelig telefon-push eller **læses op på dansk** til én navngiven modtagers valgte højttaler.
+- Højttalerbeskeder er fravalgte som standard, sendes aldrig automatisk eller som SOS og kræver en konfigureret TTS-stemme. Oplæsningen kan høres af andre i rummet.
+- Den eksisterende OSRM-baserede vejtilpasning og 365-dages tidslinje er uændret.
+
 ## Nyt i 0.8.0 – navn, domæne og alarmstyring
 - Tiny Family registrerer selv batteri-, fart-, zone-, tur- og GPS-hændelser og gemmer dem i systemhistorikken uden særskilte Home Assistant-automatiseringer.
 - Under **Administration → Alarmer og fartgrænser** kan administrator se to kendte gamle `Tiny Family`-automatiseringer og deaktivere aktive eksemplarer med bekræftelse. Automatiseringerne slettes ikke.
@@ -37,7 +53,7 @@ Tiny Family er en Home Assistant-integration til familiekort, GPS-ruter, opdagel
 - **Administration:** Indstillinger er organiseret efter Familiemedlemmer, Alarmer, Rutiner, Vejtilpasning og øvrige værktøjer, mens Gem forbliver tilgængelig.
 - Alle faner deler **Tiny Neon**, respekterer mobilens sikre skærmområder og holder bundnavigationen fast. Lange datalister ruller inde i en afgrænset sektion, så selve siden ikke bliver længere end telefonens skærm.
 
-## Nyt i 0.7.1 – valgfri vejtilpasning (map matching)
+## Fra 0.7.1 – valgfri vejtilpasning (OSRM som alternativ)
 - Administrator kan aktivere en **OSRM Match-server** under **Administration → Vejtilpasning / OSRM**. Funktionen er deaktiveret som standard.
 - Sæt eksempelvis `http://192.168.1.50:5000` for en selvhostet OSRM-server på lokalnetværket. OSRM-serveren skal allerede være oprettet og indeholde vejkort for området; Tiny Family installerer ikke selv OSRM.
 - På **Kort → Tidslinje** kan en familiebruger aktivere **Følg vejene** for den valgte person og dato. Kun efter dette valg sendes udvalgte GPS-koordinater og tidsstempler til den konfigurerede OSRM-server.
@@ -119,6 +135,6 @@ Ghost Mode fra tidligere installationer ændrer ikke Home Assistants `person`, `
 
 ## Teknisk
 
-Home Assistant-domæne: `tiny_family`. Version: `0.8.0`. Integrationens filer ligger i `custom_components/tiny_family/`.
+Home Assistant-domæne: `tiny_family`. Version: `0.8.1`. Integrationens filer ligger i `custom_components/tiny_family/`.
 
 Dette offentlige testrepository indeholder kun installationskode og dokumentation, ikke den private udviklingshistorik, personlige GPS-ruter, telefonnumre eller Home Assistant-konfigurationsdata.

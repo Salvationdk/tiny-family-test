@@ -79,8 +79,8 @@ class LegacyAlarmMigrationTests(unittest.TestCase):
         import json
         manifest = json.loads((COMPONENT / "manifest.json").read_text(encoding="utf-8"))
         constants = (COMPONENT / "const.py").read_text(encoding="utf-8")
-        self.assertEqual(manifest["version"], "0.8.0")
-        self.assertIn('CARD_VERSION = "0.8.0"', constants)
+        self.assertEqual(manifest["version"], "0.8.1")
+        self.assertIn('CARD_VERSION = "0.8.1"', constants)
 
 
 if __name__ == "__main__":
