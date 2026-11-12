@@ -18,6 +18,7 @@ from homeassistant.components.http import HomeAssistantView
 
 from .communications import own_person
 from .map_matching import match_day
+from .road_engine import match_day_embedded
 
 RETENTION_DAYS = 365
 MAX_DAY_POINTS = 25000
@@ -384,34 +385,53 @@ class TinyFamilyTimelineView(HomeAssistantView):
         data["matched_segments"]=[]
         data["matching_status"]="off"
         if request.query.get("map_match") == "1":
-            server=cfg.get("map_matching_url","")
-            if not cfg.get("map_matching_enabled") or not server:
-                data["matching_status"]="disabled"
-            elif data["points_count"]>=3:
-                cache=runtime.setdefault("map_matching_cache",{})
-                last_fix=max((seg[-1]["t"] for seg in data["segments"] if seg),default=0)
-                cache_key=(request["hass_user"].id,person,day,last_fix,
-                           data["points_count"],server)
-                cached=cache.get(cache_key)
-                now_ts=datetime.now(timezone.utc).timestamp()
-                if cached is not None and now_ts-cached["at"]<600:
-                    data["matched_segments"]=cached["segments"]
-                    data["matching_status"]=cached["status"]
+            server = cfg.get("map_matching_url", "")
+            backend = cfg.get("map_matching_backend") or (
+                "osrm" if server else "builtin"
+            )
+            if (not cfg.get("map_matching_enabled") or
+                    backend not in ("builtin", "osrm") or
+                    (backend == "osrm" and not server)):
+                data["matching_status"] = "disabled"
+            elif data["points_count"] >= 3:
+                cache = runtime.setdefault("map_matching_cache", {})
+                last_fix = max(
+                    (seg[-1]["t"] for seg in data["segments"] if seg), default=0
+                )
+                cache_key = (
+                    request["hass_user"].id, person, day, last_fix,
+                    data["points_count"], backend, server if backend == "osrm" else "",
+                )
+                cached = cache.get(cache_key)
+                now_ts = datetime.now(timezone.utc).timestamp()
+                if cached is not None and now_ts - cached["at"] < 600:
+                    data["matched_segments"] = cached["segments"]
+                    data["matching_status"] = cached["status"]
                 else:
-                    # Serialize requests to avoid overloading a self-hosted
-                    # router from multiple simultaneous family viewers.
+                    # A single matching request at a time protects external
+                    # road-data services and the Home Assistant event loop.
                     import asyncio
-                    lock=runtime.setdefault("map_matching_lock",asyncio.Lock())
+                    lock = runtime.setdefault("map_matching_lock", asyncio.Lock())
                     async with lock:
-                        matched,status=await match_day(self.hass,server,data["segments"])
-                    data["matched_segments"]=matched
-                    data["matching_status"]=status
-                    cache[cache_key]={"at":now_ts,"segments":matched,"status":status}
-                    if len(cache)>20:
-                        oldest=min(cache,key=lambda key:cache[key]["at"])
-                        cache.pop(oldest,None)
+                        if backend == "builtin":
+                            road_cache = runtime.setdefault("osm_road_cache", {})
+                            matched, status = await match_day_embedded(
+                                self.hass, data["segments"], road_cache
+                            )
+                        else:
+                            matched, status = await match_day(
+                                self.hass, server, data["segments"]
+                            )
+                    data["matched_segments"] = matched
+                    data["matching_status"] = status
+                    cache[cache_key] = {
+                        "at": now_ts, "segments": matched, "status": status,
+                    }
+                    if len(cache) > 20:
+                        oldest = min(cache, key=lambda key: cache[key]["at"])
+                        cache.pop(oldest, None)
             else:
-                data["matching_status"]="not_enough_points"
+                data["matching_status"] = "not_enough_points"
         return web.json_response({
             "person":person,"date":day,"timezone":self.hass.config.time_zone,
             "retention_days":RETENTION_DAYS,"start":start,"end":end,
