@@ -1,8 +1,8 @@
-"""Canonical Tiny Family domain and persistent identifiers for version 0.8.0."""
+"""Canonical Tiny Family domain and persistent identifiers for version 0.8.1."""
 
 DOMAIN = "tiny_family"
 STATIC_URL = "/tiny_family_static"
-CARD_VERSION = "0.8.0"
+CARD_VERSION = "0.8.1"
 PLACES_FILE = "tiny_family_places.json"
 SHARED_PLACES_FILE = "tiny_family_shared_places.json"
 HISTORY_FILE = "tiny_family_historik.json"

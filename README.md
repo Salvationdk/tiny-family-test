@@ -1,4 +1,4 @@
-# Tiny Family — offentlig testversion 0.8.0
+# Tiny Family — offentlig testversion 0.8.1
 
 <!-- BEGIN: Salvationdk repository metrics -->
 [![Release downloads](https://img.shields.io/github/downloads/Salvationdk/tiny-family-test/total?label=Release%20downloads&style=flat-square)](https://github.com/Salvationdk/tiny-family-test/releases)
@@ -22,6 +22,14 @@
 Tiny Family er en Home Assistant-integration til familiekort, GPS-ruter, opdagelse af steder, 30-dages turhistorik, beskeder, SOS og familieadvarsler.
 
 **Testversion:** Integrationen er stadig under praktisk afprøvning. SOS er ikke en certificeret nødtjeneste, og Home Assistant-notifikationer garanterer ikke levering på en telefon.
+
+## Nyt i 0.8.1 – stabil Min dag og dansk højttalerbesked
+- Retter en `insertBefore`-fejl, når brugerens personbinding eller privatlivsindstilling ikke er klar. Ingen personlige data slettes.
+- Ved ny opsætning vælges hver persons Companion-GPS-telefon, Home Assistant-konto og eventuel smart speaker med TTS-stemme.
+- Administration kan ændre samme bindinger senere.
+- Beskeder kan eksplicit sendes som almindelig telefon-push eller **læses op på dansk** til én navngiven modtagers valgte højttaler.
+- Højttalerbeskeder er fravalgte som standard, sendes aldrig automatisk eller som SOS og kræver en konfigureret TTS-stemme. Oplæsningen kan høres af andre i rummet.
+- Den eksisterende OSRM-baserede vejtilpasning og 365-dages tidslinje er uændret.
 
 ## Nyt i 0.8.0 – navn, domæne og alarmstyring
 - Tiny Family registrerer selv batteri-, fart-, zone-, tur- og GPS-hændelser og gemmer dem i systemhistorikken uden særskilte Home Assistant-automatiseringer.
@@ -119,6 +127,6 @@ Ghost Mode fra tidligere installationer ændrer ikke Home Assistants `person`, `
 
 ## Teknisk
 
-Home Assistant-domæne: `tiny_family`. Version: `0.8.0`. Integrationens filer ligger i `custom_components/tiny_family/`.
+Home Assistant-domæne: `tiny_family`. Version: `0.8.1`. Integrationens filer ligger i `custom_components/tiny_family/`.
 
 Dette offentlige testrepository indeholder kun installationskode og dokumentation, ikke den private udviklingshistorik, personlige GPS-ruter, telefonnumre eller Home Assistant-konfigurationsdata.
