@@ -2508,6 +2508,35 @@ class TinyFamilyPanel extends HTMLElement {
     recipientSelect.appendChild(everyone);
     recipientLabel.appendChild(recipientSelect);
     form.appendChild(recipientLabel);
+    const channelLabel=document.createElement("label");
+    channelLabel.className="tf-contact-recipient";
+    channelLabel.textContent="Send besked til";
+    const channelSelect=document.createElement("select");
+    channelSelect.setAttribute("aria-label","Beskedkanal");
+    for(const [id,name] of [["phone","Telefon (push)"],["speaker","Smart speaker (dansk oplæsning)"]]){
+      const option=document.createElement("option");
+      option.value=id;option.textContent=name;channelSelect.appendChild(option);
+    }
+    channelLabel.appendChild(channelSelect);
+    form.appendChild(channelLabel);
+    const channelNotice=document.createElement("p");
+    channelNotice.className="tf-message";
+    channelNotice.textContent="Oplæsning kan høres af andre i rummet og kræver én navngiven modtager med højttaler og dansk TTS.";
+    form.appendChild(channelNotice);
+    let recipientChannels=new Map();
+    const syncChannel=()=>{
+      const recipient=recipientSelect.value;
+      const allowed=recipientChannels.get(recipient)||{};
+      channelSelect.querySelector('option[value="speaker"]').disabled=!recipient||!allowed.speaker_available;
+      if(channelSelect.value==="speaker" && (!recipient||!allowed.speaker_available))
+        channelSelect.value="phone";
+    };
+    channelSelect.addEventListener("change",()=>{
+      if(channelSelect.value==="speaker" && !recipientSelect.value){
+        channelSelect.value="phone";
+        note.textContent="Vælg en bestemt person, før du sender en oplæst besked.";
+      }
+    });
     const actions = document.createElement("div");
     actions.className = "tf-contact-actions";
     const ids = [
@@ -2545,7 +2574,9 @@ class TinyFamilyPanel extends HTMLElement {
         const positionText=result.location_status==="included"?" · Frisk position medtaget.":
           result.location_status==="unavailable"?" · Ingen frisk GPS: sendt uden position.":
           result.location_status==="withheld"?" · Position udeladt efter dine privatlivsvalg.":"";
-        note.textContent="HA-notifikationstjenesten accepterede "+accepted+
+        note.textContent=result.delivery_channel==="speaker"
+          ?"Home Assistant accepterede oplæsning på modtagerens smart speaker. Faktisk afspilning kan ikke bekræftes."
+          :"HA-notifikationstjenesten accepterede "+accepted+
           " af "+(Number(result.attempted_recipients)||accepted+failed)+
           " modtager(e)."+(failed?" "+failed+" kunne ikke accepteres.":"")+
           positionText+" Telefonlevering kan ikke verificeres. En læsekvittering kræver handling i Tiny Family.";
@@ -2583,6 +2614,7 @@ class TinyFamilyPanel extends HTMLElement {
         const payload={
           action,message:action==="message"?input.value:"",
           include_location:includePositionCheckbox.checked,
+          ...(action==="message"?{channel:channelSelect.value}:{}),
           ...(action==="message" && recipientSelect.value?
               {recipient_person:recipientSelect.value}:{})
         };
@@ -2609,6 +2641,7 @@ class TinyFamilyPanel extends HTMLElement {
     shortcutsPanel.append(shortcutsHeading,shortcuts);
     form.appendChild(shortcutsPanel);root.appendChild(form);
     recipientSelect.addEventListener("change",()=>{
+      syncChannel();
       for(const {button,action} of buttons){
         if(action==="message")button.disabled=false;
       }
@@ -2668,6 +2701,7 @@ class TinyFamilyPanel extends HTMLElement {
       try {
         const response = await this.hassInstance.callApi("GET","tiny_family/communications");
         const prior = recipientSelect.value;
+        recipientChannels=new Map((response.recipients||[]).map(person=>[person.person,person]));
         recipientSelect.replaceChildren(everyone);
         for (const person of response.recipients || []) {
           const option = document.createElement("option");
@@ -2677,6 +2711,7 @@ class TinyFamilyPanel extends HTMLElement {
         if ([...recipientSelect.options].some(option=>option.value===prior)) {
           recipientSelect.value = prior;
         }
+        syncChannel();
         note.textContent = note.textContent || (response.recipients_configured ?
           "Klar til at kontakte "+response.recipients_configured+" tilknyttet(e) telefonmodtager(e)." :
           "Ingen andre telefonmodtagere er konfigureret. Administrator skal vælge Companion-modtagere i Administration.");
@@ -2686,6 +2721,7 @@ class TinyFamilyPanel extends HTMLElement {
           if([...recipientSelect.options].some(option=>option.value===chosen)){
             recipientSelect.value=chosen;
             input.focus();
+            syncChannel();
           }else{
             note.textContent="Den valgte person har ingen tilknyttet beskedmodtager. Kontakt administrator i Administration.";
             // Never fall back to 'everyone' when direct messaging was requested.
@@ -2750,6 +2786,7 @@ class TinyFamilyPanel extends HTMLElement {
             reply.style.cssText="justify-self:start;padding:7px 14px;border:1px solid var(--divider-color);border-radius:10px;color:var(--primary-text-color);background:var(--card-background-color)";
             reply.addEventListener("click",()=>{
               recipientSelect.value=item.fra;
+              syncChannel();
               selectMessages("compose");
               input.focus();
               note.textContent="Svar sendes kun til "+item.fra+".";
@@ -2929,6 +2966,12 @@ class TinyFamilyPanel extends HTMLElement {
                            this.settings.owners?.[person.id]);
       const target = choice("Companion push-modtager", this.settings.available_notify_targets || [],
                             this.settings.notification_targets?.[person.id]);
+      const speaker = choice("Smart speaker i personens rum (valgfri)",
+                             this.settings.available_speakers || [],
+                             this.settings.smart_speakers?.[person.id]);
+      const ttsEngine = choice("Dansk TTS-stemme (vælg sammen med smart speaker)",
+                               this.settings.available_tts_engines || [],
+                               this.settings.tts_engines?.[person.id]);
       const personSpeedLabel=document.createElement("label");
       personSpeedLabel.textContent="Personlig fartgrænse (km/t; tom = fælles)";
       const personSpeed=document.createElement("input");
@@ -2964,7 +3007,7 @@ class TinyFamilyPanel extends HTMLElement {
       });
       fields.appendChild(personEventsBox);
       rows.push({person:person.id,checkbox,tracker,battery,charging,activity,color,
-                 owner,target,personSpeed,useGlobalEvents,individualEvents,refreshPhone});
+                 owner,target,speaker,ttsEngine,personSpeed,useGlobalEvents,individualEvents,refreshPhone});
     }
     const migrateLabel=document.createElement("label");
     migrateLabel.className="tf-person";
@@ -3060,13 +3103,17 @@ class TinyFamilyPanel extends HTMLElement {
     save.textContent="Gem indstillinger";form.appendChild(save);
     form.addEventListener("submit",async e => {
       e.preventDefault();
+      if(rows.some(row=>row.checkbox.checked&&Boolean(row.speaker.value)!==Boolean(row.ttsEngine.value))){
+        this.message("Vælg både højttaler og dansk TTS-stemme for hver person, eller lad begge være tomme.",true);
+        return;
+      }
       if(migrationPending && !migrationReady.checked){
         this.message("Bekræft først backup og manuel gennemgang af migrationen.",true);
         return;
       }
       save.disabled=true;this.message("Gemmer …");
       const persons=[],trackers={},batteries={},charging_sensors={},activity_sensors={},
-            colors={},owners={},notification_targets={},
+            colors={},owners={},notification_targets={},smart_speakers={},tts_engines={},
             speed_limits_kmh={},person_notification_events={};
       for(const row of rows) if(row.checkbox.checked) {
         persons.push(row.person);
@@ -3077,6 +3124,8 @@ class TinyFamilyPanel extends HTMLElement {
         colors[row.person]=row.color.value;
         if(row.owner.value) owners[row.person]=row.owner.value;
         if(row.target.value) notification_targets[row.person]=row.target.value;
+        if(row.speaker.value) smart_speakers[row.person]=row.speaker.value;
+        if(row.ttsEngine.value) tts_engines[row.person]=row.ttsEngine.value;
         if(row.personSpeed.value!=="") speed_limits_kmh[row.person]=Number(row.personSpeed.value);
         if(!row.useGlobalEvents.checked){
           person_notification_events[row.person]=
@@ -3086,7 +3135,7 @@ class TinyFamilyPanel extends HTMLElement {
       try {
         await this.hassInstance.callApi("POST","tiny_family/settings",{
           persons,trackers,batteries,charging_sensors,activity_sensors,
-          colors,owners,notification_targets,
+          colors,owners,notification_targets,smart_speakers,tts_engines,
           speed_limit_kmh:Number(speedLimit.value),
           speed_limits_kmh,person_notification_events,
           notification_events:Object.keys(alertOptions).filter(key=>alertOptions[key].checked),
