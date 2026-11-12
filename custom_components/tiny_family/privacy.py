@@ -134,7 +134,7 @@ def public_profile(hass, person: str, config: dict, now: datetime,
     for field,suffix in (("movement","movement"),("destination","destination"),
                          ("eta_minutes","destination_eta"),
                          ("distance_today_km","distance_today")):
-        metric=hass.states.get(f"sensor.person_timeline_{slug}_{suffix}")
+        metric=hass.states.get(f"sensor.tiny_family_{slug}_{suffix}")
         if metric is not None and metric.state not in ("unknown","unavailable"):
             result[field]=metric.state
     if (person == viewer_person and config.get("learn_routines_enabled") and

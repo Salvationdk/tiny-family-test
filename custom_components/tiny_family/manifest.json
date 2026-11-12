@@ -1,5 +1,5 @@
 {
-  "domain": "person_timeline",
+  "domain": "tiny_family",
   "name": "Tiny Family",
   "codeowners": [
     "@Salvationdk"
@@ -17,5 +17,5 @@
   "issue_tracker": "https://github.com/Salvationdk/tiny-family-test/issues",
   "requirements": [],
   "single_config_entry": true,
-  "version": "0.7.1"
+  "version": "0.8.0"
 }

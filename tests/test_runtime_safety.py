@@ -14,7 +14,7 @@ import types
 import unittest
 
 
-ROOT = Path(__file__).resolve().parents[1] / "custom_components" / "person_timeline"
+ROOT = Path(__file__).resolve().parents[1] / "custom_components" / "tiny_family"
 PKG = "_tiny_family_runtime_tests"
 
 
@@ -55,7 +55,7 @@ def make_modules():
     add_module("homeassistant.components.sensor", SensorEntity=Entity)
     add_module("homeassistant.components.binary_sensor", BinarySensorEntity=Entity)
     add_module("homeassistant.exceptions", HomeAssistantError=HomeAssistantError)
-    add_module(f"{PKG}.const", DOMAIN="person_timeline")
+    add_module(f"{PKG}.const", DOMAIN="tiny_family")
     add_module(f"{PKG}.places", _zone_candidates=lambda *args: [])
     add_module(f"{PKG}.companion", companion_readings=lambda *args, **kwargs: {})
     add_module(f"{PKG}.utils", _pretty=lambda x: x, _slug=lambda x: x,

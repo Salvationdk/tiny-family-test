@@ -13,7 +13,7 @@ jobs:
         with:
           python-version: '3.13'
       - name: Check Python syntax
-        run: python -m compileall -q custom_components/person_timeline
+        run: python -m compileall -q custom_components/tiny_family
       - name: Regression tests (sensor threads and automation contexts)
         run: python -m unittest discover -s tests -p "test_runtime_safety.py" -v
       - name: Test persistent timeline archive
@@ -22,24 +22,28 @@ jobs:
         run: python -m unittest discover -s tests -p "test_map_matching.py" -v
       - name: Tiny Neon mobile layout regression tests
         run: python -m unittest discover -s tests -p "test_mobile_experience.py" -v
+      - name: Integration-owned alarm regression
+        run: python -m unittest discover -s tests -p "test_managed_alarms.py" -v
+      - name: One-time Tiny Family migration test
+        run: python -m unittest discover -s tests -p "test_one_time_migration.py" -v
       - name: Check JavaScript syntax
         run: |
-          node --check custom_components/person_timeline/frontend/tiny-family-panel.js
-          node --check custom_components/person_timeline/frontend/person-timeline-card.js
+          node --check custom_components/tiny_family/frontend/tiny-family-panel.js
+          node --check custom_components/tiny_family/frontend/tiny-family-card.js
       - name: Check shared place and phone integration contracts
         run: |
           python - <<'PY'
           from pathlib import Path
-          src = Path("custom_components/person_timeline/places_api.py").read_text()
-          panel = Path("custom_components/person_timeline/frontend/tiny-family-panel.js").read_text()
-          runtime = Path("custom_components/person_timeline/__init__.py").read_text()
+          src = Path("custom_components/tiny_family/places_api.py").read_text()
+          panel = Path("custom_components/tiny_family/frontend/tiny-family-panel.js").read_text()
+          runtime = Path("custom_components/tiny_family/__init__.py").read_text()
           assert "shared_places" in src
           assert "admin_suggestions" in src
           assert 'kind:"shared"' in panel
           assert 'this.active = "live"' in panel
           assert "companion_device_sensors(self.hass, tracker)" in runtime
           assert "batteries.clear()" in runtime
-          profile = Path("custom_components/person_timeline/privacy.py").read_text()
+          profile = Path("custom_components/tiny_family/privacy.py").read_text()
           assert 'result["speed_kmh"]' in profile
           assert 'result["stay_minutes"]' in profile
           assert 'tf-neon-stats' in panel

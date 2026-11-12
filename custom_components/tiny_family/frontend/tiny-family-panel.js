@@ -347,7 +347,7 @@ class TinyFamilyPanel extends HTMLElement {
           link=document.createElement("link");
           link.rel="stylesheet";
           link.dataset.tinyFamilyLeaflet="1";
-          link.href="/person_timeline_static/leaflet/leaflet.css";
+          link.href="/tiny_family_static/leaflet/leaflet.css";
           link.addEventListener("load",resolve,{once:true});
           link.addEventListener("error",()=>reject(new Error(
             "Leaflet CSS kunne ikke indlæses.")),{once:true});
@@ -364,7 +364,7 @@ class TinyFamilyPanel extends HTMLElement {
     if(!this._leafletLoading){
       this._leafletLoading=new Promise((resolve,reject)=>{
         const script=document.createElement("script");
-        script.src="/person_timeline_static/leaflet/leaflet.js";
+        script.src="/tiny_family_static/leaflet/leaflet.js";
         script.onload=()=>resolve(window.L);
         script.onerror=()=>reject(new Error(
           "Leaflet JavaScript kunne ikke indlæses."));
@@ -2172,7 +2172,7 @@ class TinyFamilyPanel extends HTMLElement {
     const slug = person.slice("person.".length);
     const current = all[person];
     const state = key => {
-      const value = all["sensor.person_timeline_"+slug+"_"+key]?.state;
+      const value = all["sensor.tiny_family_"+slug+"_"+key]?.state;
       return (!value || ["unknown","unavailable"].includes(value)) ? "—" : value;
     };
     const units = (value,unit) => value==="—" ? "—" : value+" "+unit;
@@ -2181,8 +2181,8 @@ class TinyFamilyPanel extends HTMLElement {
     const values = {
       place: current?.state || "—",
       battery: batteryState != null ? batteryState+" %" : "Ikke tilknyttet",
-      charging: all["binary_sensor.person_timeline_"+slug+"_charging"]?.state==="on"
-        ? "Oplader" : all["binary_sensor.person_timeline_"+slug+"_charging"]?.state==="off"
+      charging: all["binary_sensor.tiny_family_"+slug+"_charging"]?.state==="on"
+        ? "Oplader" : all["binary_sensor.tiny_family_"+slug+"_charging"]?.state==="off"
         ? "Ikke tilsluttet" : "—",
       activity: state("activity"),
       movement: state("gps_health")==="fresh" ? state("movement") : "—",
@@ -2381,7 +2381,7 @@ class TinyFamilyPanel extends HTMLElement {
       ["Beskedstatus", "Accepteret betyder, at Home Assistants notifikationstjeneste tog imod anmodningen, ikke at telefonen har modtaget beskeden. Læsekvittering kræver, at modtageren markerer beskeden som læst inde i Tiny Family. Ved netværksfejl skal du bekræfte et eventuelt nyt forsøg, da det kan give en dobbeltbesked."],
       ["Automatiske alarmer", "Administrator bestemmer pr. familiemedlem hvilke ankomst-, afgangs-, fart-, batteri- og GPS-advarsler der er aktive. Systemhistorikken viser registrerede hændelser, ikke bekræftet push-levering."],
       ["GPS og sporing", "GPS-sporing bruger den valgte Companion-telefon. Hvis GPS-tilladelsen mangler, vises positionen som forældet eller utilgængelig."],
-      ["Android-widget", "Opret en Action Button-widget i Home Assistant Companion: handling = Kald tjeneste. Vælg person_timeline.mobile_checkin, person_timeline.mobile_heading_home eller person_timeline.mobile_sos."],
+      ["Android-widget", "Opret en Action Button-widget i Home Assistant Companion: handling = Kald tjeneste. Vælg tiny_family.mobile_checkin, tiny_family.mobile_heading_home eller tiny_family.mobile_sos."],
       ["iPhone og iPad", "Brug Home Assistant Companion-genveje eller en iOS-Genvej, der kalder de tilsvarende Tiny Family-tjenester med den indloggede brugers konto."],
       ["Svar direkte fra push", "Ved en Companion notify.mobile_app_*-modtager kan du skrive svar på telefonens notifikation. Svarnøglen gælder én gang i højst 24 timer og udløber ved HA-genstart/genindlæsning. Andre notify-enheder har almindelige beskeder uden hurtigsvar."],
       ["Position ved beskeder", "Check-in, På vej hjem og SOS kan medtage en frisk GPS-position fra den valgte Companion-telefon. Almindelige fritekstbeskeder vedhæfter ikke GPS automatisk. Tidligere privatindstillinger fra gamle installationer bevares indtil migration."],
@@ -2406,10 +2406,10 @@ class TinyFamilyPanel extends HTMLElement {
     guide.textContent="Tilføj en Action Button-widget i Companion på Android, vælg Kald tjeneste og indsæt én af tjenesterne. Slå gerne Kræv godkendelse til for SOS.";
     mobile.appendChild(guide);
     for(const [name,entity] of [
-      ["Check-in", "person_timeline.mobile_checkin"],
-      ["På vej hjem", "person_timeline.mobile_heading_home"],
-      ["SOS", "person_timeline.mobile_sos"],
-      ["Besked", "person_timeline.mobile_message"]
+      ["Check-in", "tiny_family.mobile_checkin"],
+      ["På vej hjem", "tiny_family.mobile_heading_home"],
+      ["SOS", "tiny_family.mobile_sos"],
+      ["Besked", "tiny_family.mobile_message"]
     ]) {
       const line=document.createElement("div");line.className="tf-fields";
       const code=document.createElement("code");
@@ -2427,13 +2427,13 @@ class TinyFamilyPanel extends HTMLElement {
     const slug=this._viewerPerson?.startsWith("person.")
       ? this._viewerPerson.slice("person.".length):"din_person";
     const examples=[
-      ["Android: Entity State-widget","sensor.person_timeline_"+slug+"_movement"],
-      ["Android: GPS-fix alder","sensor.person_timeline_"+slug+"_gps_age_minutes"],
-      ["Android: opladningsstatus","binary_sensor.person_timeline_"+slug+"_charging"],
-      ["Android: destination","sensor.person_timeline_"+slug+"_destination"],
+      ["Android: Entity State-widget","sensor.tiny_family_"+slug+"_movement"],
+      ["Android: GPS-fix alder","sensor.tiny_family_"+slug+"_gps_age_minutes"],
+      ["Android: opladningsstatus","binary_sensor.tiny_family_"+slug+"_charging"],
+      ["Android: destination","sensor.tiny_family_"+slug+"_destination"],
       ["Android: Template-widget",
-       "{{ states('sensor.person_timeline_"+slug+"_distance_today') }} km · "+
-       "{{ states('sensor.person_timeline_"+slug+"_movement') }}"],
+       "{{ states('sensor.tiny_family_"+slug+"_distance_today') }} km · "+
+       "{{ states('sensor.tiny_family_"+slug+"_movement') }}"],
       ["iOS: Open Page / sidepanel","/tiny-family"]
     ];
     const mobileMore=document.createElement("h3");
@@ -3111,9 +3111,66 @@ class TinyFamilyPanel extends HTMLElement {
       adminGroups.appendChild(panel);
       return panel;
     };
+    // Native Tiny Family listeners handle alerts. Legacy HA automations are
+    // optional leftovers, not prerequisites for battery or speed warnings.
+    const managedAlerts=document.createElement("section");
+    managedAlerts.className="tf-person";
+    const managedTitle=document.createElement("strong");
+    managedTitle.textContent="Automatiske alarmer styres af Tiny Family";
+    const managedNote=document.createElement("p");
+    managedNote.className="tf-message";
+    managedNote.textContent="Batteri, fart, zoner, ture og GPS-hændelser registreres direkte i Tiny Family. Ingen separate Home Assistant-automatiseringer er nødvendige. Vælg Companion-telefon og notifikationsmodtagere her; push kræver aktivering.";
+    managedAlerts.append(managedTitle,managedNote);
+    const legacyAlarmEntities=[
+      ["automation.person_timeline_lavt_batteri","Lavt batteri"],
+      ["automation.person_timeline_fartalarm","Fartalarm"]
+    ];
+    const detectedLegacy=legacyAlarmEntities.filter(([entityId])=>
+      Object.prototype.hasOwnProperty.call(this.hassInstance?.states||{},entityId));
+    if(detectedLegacy.length){
+      const legacyStatus=document.createElement("p");
+      legacyStatus.className="tf-message";
+      legacyStatus.setAttribute("role","status");
+      const describeLegacy=()=>detectedLegacy.map(([entityId,label])=>
+        label+": "+(this.hassInstance.states?.[entityId]?.state||"ukendt")).join(" · ");
+      legacyStatus.textContent="Tidligere Home Assistant-automatiseringer: "+describeLegacy();
+      managedAlerts.appendChild(legacyStatus);
+      const legacyEnabled=detectedLegacy.filter(([entityId])=>
+        this.hassInstance.states?.[entityId]?.state==="on");
+      if(legacyEnabled.length){
+        const disableLegacy=document.createElement("button");
+        disableLegacy.type="button";
+        disableLegacy.className="tf-save";
+        disableLegacy.textContent="Deaktiver gamle alarmer ("+legacyEnabled.length+")";
+        disableLegacy.addEventListener("click",async()=>{
+          const entities=legacyEnabled.map(([entityId])=>entityId);
+          if(!window.confirm("Deaktivere de gamle batteri- og fartautomatiseringer? De slettes ikke. Kontrollér først dine personers sensorer og notifikationer i Tiny Family."))return;
+          disableLegacy.disabled=true;
+          try{
+            await this.hassInstance.callService("automation","turn_off",
+              {entity_id:entities});
+            disableLegacy.textContent="Deaktivering sendt";
+            legacyStatus.textContent="Deaktivering af gamle automatiseringer er sendt til Home Assistant. Opdater visningen for at kontrollere resultatet.";
+            this.message("Tiny Family håndterer fortsat alarmer efter de gemte indstillinger.");
+          }catch(error){
+            disableLegacy.disabled=false;
+            this.message("Kunne ikke deaktivere gamle automatiseringer: "+
+              this.errorText(error),true);
+          }
+        });
+        managedAlerts.appendChild(disableLegacy);
+      }
+      if(detectedLegacy.some(([entityId])=>
+        this.hassInstance.states?.[entityId]?.state==="unavailable")){
+        const unavailable=document.createElement("p");
+        unavailable.className="tf-message";
+        unavailable.textContent="En gammel automatisering er utilgængelig. Den kan ikke deaktiveres her, før Home Assistant kan indlæse den.";
+        managedAlerts.appendChild(unavailable);
+      }
+    }
     const peopleGroup=makeGroup("Familiemedlemmer og telefoner",memberSections,true);
     const alertsGroup=makeGroup("Alarmer og fartgrænser",[
-      autoLabel,categoryBox,speedLabel
+      managedAlerts,autoLabel,categoryBox,speedLabel
     ]);
     const routineGroup=makeGroup("Rutiner og samtykke",[routinesLabel]);
     const roadGroup=makeGroup("Vejtilpasning og OSRM",[mapMatchPanel]);

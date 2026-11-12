@@ -106,7 +106,7 @@ class TinyFamilyActivityView(HomeAssistantView):
         rows = [dict(row) for row in archive.get(person, [])
                 if now_ts - RETENTION_DAYS * 86400 <= row.get("ended_at", 0) <= now_ts + 60]
         rows.sort(key=lambda row: row["ended_at"], reverse=True)
-        active = (self.hass.data.get("person_timeline", {})
+        active = (self.hass.data.get("tiny_family", {})
                   .get(person, {}).get("trip_active", False))
         return web.json_response({
             "person": person, "retention_days": RETENTION_DAYS,

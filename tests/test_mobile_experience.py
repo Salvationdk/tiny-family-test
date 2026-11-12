@@ -7,7 +7,7 @@ from pathlib import Path
 import unittest
 
 PANEL=(Path(__file__).resolve().parents[1]/
-       "custom_components/person_timeline/frontend/tiny-family-panel.js")
+       "custom_components/tiny_family/frontend/tiny-family-panel.js")
 
 
 class MobileExperienceTests(unittest.TestCase):
