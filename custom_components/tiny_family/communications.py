@@ -216,7 +216,7 @@ async def deliver(hass, *, sender_user_id: str, sender_person: str,
                  sender_person not in (config.get("message_location_opt_out") or []))
     # Home Assistant may update a Person entity without a new GPS fix.
     # Respect Tiny Family's independent GPS quality and age indicators.
-    runtime_person = hass.data.get("person_timeline", {}).get(sender_person, {})
+    runtime_person = hass.data.get("tiny_family", {}).get(sender_person, {})
     gps_seen = runtime_person.get("gps_seen_at")
     gps_health = runtime_person.get("gps_health")
     reliable_fix = (gps_health == "fresh"
@@ -231,7 +231,7 @@ async def deliver(hass, *, sender_user_id: str, sender_person: str,
     home = (hass.config.latitude, hass.config.longitude)
     speed_kmh = 0.0
     if (sensor := hass.states.get(
-            "sensor.person_timeline_" + sender_person.removeprefix("person.") + "_current_speed"
+            "sensor.tiny_family_" + sender_person.removeprefix("person.") + "_current_speed"
     )) is not None:
         try:
             speed_kmh = float(sensor.state)

@@ -1,4 +1,4 @@
-"""Tiny Family Home Assistant integration, retaining the person_timeline domain."""
+"""Tiny Family Home Assistant integration, retaining the tiny_family domain."""
 
 from __future__ import annotations
 
@@ -31,6 +31,7 @@ from homeassistant.helpers.discovery import async_load_platform
 from homeassistant.helpers.event import async_track_state_change_event, async_track_time_change, async_track_time_interval
 
 from .const import CARD_VERSION, DOMAIN, HISTORY_FILE, HISTORY_KEY, PLACES_FILE, SHARED_PLACES_FILE, STATIC_URL
+from .migration import migrate_local_json_once
 from .places import _predict, _record_place, _seed_zones, estimate_home_eta, estimate_destination_eta
 from .places_api import TinyFamilyPlacesView
 from .motion import update_motion
@@ -92,11 +93,13 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
 async def async_setup_entry(hass: HomeAssistant, entry) -> bool:
     """Set up a UI-configured instance and its independent sidebar panel."""
+    if hass.config_entries.async_entries("person_timeline"):
+        raise HomeAssistantError("Fjern den gamle Tiny Family-testintegration før installation af Tiny Family 0.8.0")
     if hass.data.get(RUNTIME_KEY, {}).get("legacy_yaml_active"):
         # Never overwrite legacy location/history data by setting up twice.
         raise HomeAssistantError(
             "Tiny Family YAML and a UI config entry cannot be active together. "
-            "Back up your files and remove the old person_timeline YAML first."
+            "Back up your files and remove the old tiny_family YAML first."
         )
     cfg = {**entry.data, **entry.options}
     if not await _async_setup_runtime(hass, {DOMAIN: cfg}):
@@ -551,6 +554,8 @@ async def _async_setup_runtime(hass: HomeAssistant, config: dict) -> bool:
         _load_places, hass.config.path(SHARED_PLACES_FILE)
     )
     runtime["shared_places"] = shared if isinstance(shared, list) else []
+    # One-time copy of local test data; original archives are never deleted.
+    await hass.async_add_executor_job(migrate_local_json_once, hass.config.config_dir)
     places_path = hass.config.path(PLACES_FILE)
     try:
         saved = await hass.async_add_executor_job(_load_places, places_path)
