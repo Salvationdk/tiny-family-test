@@ -1,4 +1,4 @@
-"""Stable runtime identifiers; keep the existing entity domain for compatibility."""
+"""Canonical Tiny Family domain and persistent identifiers for version 0.8.0."""
 
 DOMAIN = "tiny_family"
 STATIC_URL = "/tiny_family_static"
