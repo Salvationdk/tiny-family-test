@@ -35,6 +35,8 @@ jobs:
         run: python -m unittest discover -s tests -p "test_managed_alarms.py" -v
       - name: One-time Tiny Family migration test
         run: python -m unittest discover -s tests -p "test_one_time_migration.py" -v
+      - name: Danish speaker message regression tests
+        run: python -m unittest discover -s tests -p "test_speaker_messages.py" -v
       - name: Embedded road engine regression tests
         run: python -m unittest discover -s tests -p "test_road_engine.py" -v
       - name: Verify publishable integration
