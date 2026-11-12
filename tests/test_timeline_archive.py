@@ -10,7 +10,7 @@ import types
 import unittest
 
 
-ROOT = Path(__file__).resolve().parents[1] / "custom_components" / "person_timeline"
+ROOT = Path(__file__).resolve().parents[1] / "custom_components" / "tiny_family"
 PKG = "_tiny_family_archive_test"
 
 
