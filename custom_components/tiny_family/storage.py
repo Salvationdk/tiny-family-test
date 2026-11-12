@@ -52,13 +52,13 @@ def _publish_history(hass):
     # HA state attributes may be readable to unrelated HA accounts.
     # Never expose message text or recipient metadata via public sensors.
     system = []
-    hass.states.async_set("sensor.person_timeline_beskeder", str(len(data["chat"])),
-                          {"friendly_name": "Person Timeline beskeder",
+    hass.states.async_set("sensor.tiny_family_beskeder", str(len(data["chat"])),
+                          {"friendly_name": "Tiny Family beskeder",
                            "icon": "mdi:message-text-multiple",
                            "unit_of_measurement": "beskeder",
                            "gemt": len(data["chat"])})
-    hass.states.async_set("sensor.person_timeline_systembeskeder", str(len(data["system"])),
-                          {"friendly_name": "Person Timeline systembeskeder",
+    hass.states.async_set("sensor.tiny_family_systembeskeder", str(len(data["system"])),
+                          {"friendly_name": "Tiny Family systembeskeder",
                            "icon": "mdi:bell-ring-outline",
                            "unit_of_measurement": "beskeder",
                            "gemt": len(data["system"])})

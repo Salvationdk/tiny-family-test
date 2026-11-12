@@ -1,4 +1,4 @@
-"""Switch entities for Person Timeline."""
+"""Switch entities for Tiny Family."""
 
 from __future__ import annotations
 
@@ -14,12 +14,12 @@ async def async_setup_platform(
 
 
 class PersonTimelineCompactSwitch(SwitchEntity, RestoreEntity):
-    """Control compact display across Person Timeline cards and dashboards."""
+    """Control compact display across Tiny Family cards and dashboards."""
 
     _attr_icon = "mdi:view-compact"
-    _attr_name = "Person Timeline compact"
+    _attr_name = "Tiny Family compact"
     _attr_should_poll = False
-    _attr_unique_id = "person_timeline_compact"
+    _attr_unique_id = "tiny_family_compact"
 
     def __init__(self) -> None:
         self._attr_is_on = False
