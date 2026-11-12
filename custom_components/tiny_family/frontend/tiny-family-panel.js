@@ -1277,7 +1277,7 @@ class TinyFamilyPanel extends HTMLElement {
           <span data-role="timeline-stats">Vælg dato og person</span></div>
         <label class="tf-road-matching" data-role="road-matching-label" hidden>
           <input type="checkbox" data-role="road-matching-toggle">
-          Følg vejene (sender GPS til valgt OSRM-server)
+          Følg vejene (vejtilpasning efter eget valg)
         </label>
         <div class="tf-road-match-status" data-role="road-matching-status" aria-live="polite"></div>
         <div class="tf-event-strip" data-role="timeline-events" hidden></div>
@@ -1306,6 +1306,9 @@ class TinyFamilyPanel extends HTMLElement {
     const roadMatchToggle=dock.querySelector('[data-role="road-matching-toggle"]');
     const roadMatchStatus=dock.querySelector('[data-role="road-matching-status"]');
     roadMatchLabel.hidden=!this.settings?.map_matching_enabled;
+    roadMatchLabel.title=(this.settings?.map_matching_backend==="osrm")
+      ?"OSRM får GPS-koordinater og tidspunkter ved aktivering."
+      :"Indbygget motor: kun et vejområdes koordinatgrænser deles med OpenStreetMap ved aktivering.";
     const eventStrip=dock.querySelector('[data-role="timeline-events"]');
     const localDate=d=>new Intl.DateTimeFormat("sv-SE",{
       timeZone:this.hassInstance.config.time_zone||undefined,
@@ -2886,16 +2889,29 @@ class TinyFamilyPanel extends HTMLElement {
     const mapMatchPanel=document.createElement("details");
     mapMatchPanel.className="tf-person tf-advanced tf-osrm-setting";
     const mapMatchTitle=document.createElement("summary");
-    mapMatchTitle.textContent="Vejtilpasning / OSRM (valgfrit)";
+    mapMatchTitle.textContent="Vejtilpasning / Snap-on-road";
     mapMatchPanel.appendChild(mapMatchTitle);
     const mapMatchLabel=document.createElement("label");
     const mapMatchEnabled=document.createElement("input");
     mapMatchEnabled.type="checkbox";
     mapMatchEnabled.checked=Boolean(this.settings.map_matching_enabled);
     mapMatchLabel.append(mapMatchEnabled,document.createTextNode(
-      " Tillad familiemedlemmer selv at vælge vejtilpasning på deres tidslinje"));
+      " Tillad Følg vejene på familiens tidslinjer"));
+    const mapMatchBackendLabel=document.createElement("label");
+    mapMatchBackendLabel.textContent="Vejmotor";
+    const mapMatchBackend=document.createElement("select");
+    for(const [id,label] of [
+      ["builtin","Indbygget OpenStreetMap-vejtilpasning (ingen OSRM)"],
+      ["osrm","Ekstern / selvhostet OSRM Match-server"]
+    ]){
+      const option=document.createElement("option");
+      option.value=id;option.textContent=label;mapMatchBackend.appendChild(option);
+    }
+    mapMatchBackend.value=this.settings.map_matching_backend||
+      (this.settings.map_matching_url?"osrm":"builtin");
+    mapMatchBackendLabel.appendChild(mapMatchBackend);
     const mapMatchUrlLabel=document.createElement("label");
-    mapMatchUrlLabel.textContent="Adresse til OSRM Match-server";
+    mapMatchUrlLabel.textContent="OSRM-server (kun ved valg af OSRM)";
     const mapMatchUrl=document.createElement("input");
     mapMatchUrl.type="url";
     mapMatchUrl.placeholder="http://192.168.1.20:5000";
@@ -2904,8 +2920,15 @@ class TinyFamilyPanel extends HTMLElement {
     mapMatchUrlLabel.appendChild(mapMatchUrl);
     const mapMatchNote=document.createElement("p");
     mapMatchNote.className="tf-message";
-    mapMatchNote.textContent="Slået fra som standard. En lokal OSRM-server holder GPS-punkter på dit netværk. Vælges en ekstern HTTPS-server, sendes GPS-koordinater og tidspunkter til denne tjeneste, men kun når en bruger selv aktiverer Følg vejene. Ved fejl vises den originale GPS-rute.";
-    mapMatchPanel.append(mapMatchLabel,mapMatchUrlLabel,mapMatchNote);
+    const updateMapBackend=()=>{
+      mapMatchUrlLabel.hidden=mapMatchBackend.value!=="osrm";
+      mapMatchNote.textContent=mapMatchBackend.value==="builtin"
+        ?"Den indbyggede vejtilpasning kræver ingen OSRM-server. Når et familiemedlem vælger Følg vejene, henter Tiny Family vejgeometri fra OpenStreetMap Overpass via HTTPS. Kun et afgrænset geografisk område (ikke person-id eller GPS-tidspunkter) sendes ud. Store eller usikre ture kan kun matche delvist. Originale GPS-spor ændres aldrig."
+        :"OSRM er valgfrit og kan være selvhostet. Når et familiemedlem vælger Følg vejene, sender Tiny Family udvalgte GPS-koordinater og tidspunkter til den angivne OSRM-server. Brug helst en lokal server af hensyn til privatlivet.";
+    };
+    mapMatchBackend.addEventListener("change",updateMapBackend);
+    updateMapBackend();
+    mapMatchPanel.append(mapMatchLabel,mapMatchBackendLabel,mapMatchUrlLabel,mapMatchNote);
     form.appendChild(mapMatchPanel);
     const rows = [];
     const memberSections=[];
@@ -3142,6 +3165,7 @@ class TinyFamilyPanel extends HTMLElement {
           auto_notifications_enabled:autoNotifications.checked,
           learn_routines_enabled:routineLearning.checked,
           map_matching_enabled:mapMatchEnabled.checked,
+          map_matching_backend:mapMatchBackend.value,
           map_matching_url:mapMatchUrl.value.trim()
         });
         await this.refreshSettings();
