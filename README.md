@@ -1,4 +1,4 @@
-# Tiny Family — offentlig testversion 0.7.1
+# Tiny Family — offentlig testversion 0.7.2
 
 <!-- BEGIN: Salvationdk repository metrics -->
 [![Release downloads](https://img.shields.io/github/downloads/Salvationdk/tiny-family-test/total?label=Release%20downloads&style=flat-square)](https://github.com/Salvationdk/tiny-family-test/releases)
@@ -22,6 +22,12 @@
 Tiny Family er en Home Assistant-integration til familiekort, GPS-ruter, opdagelse af steder, 30-dages turhistorik, beskeder, SOS og familieadvarsler.
 
 **Testversion:** Integrationen er stadig under praktisk afprøvning. SOS er ikke en certificeret nødtjeneste, og Home Assistant-notifikationer garanterer ikke levering på en telefon.
+
+## Nyt i 0.7.2 – integrationen styrer selv alarmerne
+- Tiny Family registrerer selv batteri-, fart-, zone-, tur- og GPS-hændelser og gemmer dem i systemhistorikken uden særskilte Home Assistant-automatiseringer.
+- Under **Administration → Alarmer og fartgrænser** kan administrator se to kendte gamle `Person Timeline`-automatiseringer og deaktivere aktive eksemplarer med bekræftelse. Automatiseringerne slettes ikke.
+- Kontrollér Companion-telefon, notifikationsmodtagere og aktiverede alarmkategorier før oprydning. Systemhistorik og eksisterende GPS-arkiver ændres ikke.
+- Integrationsdomænet `person_timeline` bevares indtil en særskilt sikker migrering, så eksisterende enheder, historik og config entries ikke brydes.
 
 ## Mobilforbedringer i 0.7.1 – én skærm pr. hovedfane
 - **Kort:** Under 24-timers afspilning og manuel tidslinjesøgning følger kortet den valgte person i fast gadeniveau-zoom; markeringsikonet viser personens initialer. Liveopdateringer afbryder ikke historisk afspilning.
@@ -91,6 +97,6 @@ Ghost Mode fra tidligere installationer ændrer ikke Home Assistants `person`, `
 
 ## Teknisk
 
-Home Assistant-domæne: `person_timeline`. Version: `0.7.1`. Integrationens filer ligger i `custom_components/person_timeline/`.
+Home Assistant-domæne: `person_timeline`. Version: `0.7.2`. Integrationens filer ligger i `custom_components/person_timeline/`.
 
 Dette offentlige testrepository indeholder kun installationskode og dokumentation, ikke den private udviklingshistorik, personlige GPS-ruter, telefonnumre eller Home Assistant-konfigurationsdata.
