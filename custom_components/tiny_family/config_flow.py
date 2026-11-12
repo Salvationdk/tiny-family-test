@@ -33,6 +33,7 @@ class TinyFamilyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             "persons": list(self._setup_persons),
             "trackers": dict(self._setup_trackers),
             "smart_speakers": dict(self._setup_speakers),
+            "tts_engines": dict(self._setup_tts_engines),
             "batteries": {},
             "charging_sensors": {},
             "activity_sensors": {},
@@ -58,6 +59,7 @@ class TinyFamilyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._setup_persons = list(dict.fromkeys(user_input.get("persons") or []))
             self._setup_trackers = {}
             self._setup_speakers = {}
+            self._setup_tts_engines = {}
             self._setup_owners = {}
             self._setup_index = 0
             if not self._setup_persons:
@@ -75,7 +77,10 @@ class TinyFamilyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             tracker = user_input.get("tracker")
             speaker = user_input.get("speaker")
+            tts_engine = user_input.get("tts_engine")
             owner = user_input.get("owner")
+            if bool(speaker) != bool(tts_engine):
+                errors["tts_engine" if speaker else "speaker"] = "required"
             if tracker and tracker in self._setup_trackers.values():
                 errors["tracker"] = "already_assigned"
             if owner and owner in self._setup_owners.values():
@@ -85,6 +90,7 @@ class TinyFamilyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     self._setup_trackers[person] = tracker
                 if speaker:
                     self._setup_speakers[person] = speaker
+                    self._setup_tts_engines[person] = tts_engine
                 if owner:
                     self._setup_owners[person] = owner
                 self._setup_index += 1
@@ -98,6 +104,9 @@ class TinyFamilyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             ),
             vol.Optional("speaker"): selector.EntitySelector(
                 selector.EntitySelectorConfig(domain="media_player"),
+            ),
+            vol.Optional("tts_engine"): selector.EntitySelector(
+                selector.EntitySelectorConfig(domain="tts"),
             ),
         }
         users = [user for user in await self.hass.auth.async_get_users()
@@ -132,6 +141,7 @@ class TinyFamilyOptionsFlow(config_entries.OptionsFlow):
                 "persons": persons,
                 "trackers": {k: v for k, v in options.get("trackers", {}).items() if k in persons},
                 "smart_speakers": {k: v for k, v in options.get("smart_speakers", {}).items() if k in persons},
+                "tts_engines": {k: v for k, v in options.get("tts_engines", {}).items() if k in persons},
                 "batteries": {k: v for k, v in options.get("batteries", {}).items() if k in persons},
                 "charging_sensors": {k: v for k, v in options.get("charging_sensors", {}).items() if k in persons},
                 "activity_sensors": {k: v for k, v in options.get("activity_sensors", {}).items() if k in persons},
