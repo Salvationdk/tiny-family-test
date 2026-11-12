@@ -67,6 +67,14 @@ class LegacyAlarmMigrationTests(unittest.TestCase):
         self.assertNotIn('callService("automation","turn_on"', panel)
         self.assertNotIn('callService("automation","remove"', panel)
 
+    def test_canonical_domain_and_no_old_integration_directory(self):
+        import json
+        manifest = json.loads((COMPONENT / "manifest.json").read_text(encoding="utf-8"))
+        self.assertEqual(manifest["domain"], "tiny_family")
+        self.assertFalse((ROOT / "custom_components" / "person_timeline").exists())
+        source = (COMPONENT / "__init__.py").read_text(encoding="utf-8")
+        self.assertIn('migrate_local_json_once', source)
+
     def test_versions_match(self):
         import json
         manifest = json.loads((COMPONENT / "manifest.json").read_text(encoding="utf-8"))

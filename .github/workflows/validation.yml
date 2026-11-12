@@ -33,6 +33,8 @@ jobs:
         run: python -m unittest discover -s tests -p "test_mobile_experience.py" -v
       - name: Verify integration-owned alarms and safe migration
         run: python -m unittest discover -s tests -p "test_managed_alarms.py" -v
+      - name: One-time Tiny Family migration test
+        run: python -m unittest discover -s tests -p "test_one_time_migration.py" -v
       - name: Verify publishable integration
         run: |
           python -m compileall -q custom_components/tiny_family

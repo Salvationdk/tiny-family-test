@@ -24,6 +24,8 @@ jobs:
         run: python -m unittest discover -s tests -p "test_mobile_experience.py" -v
       - name: Integration-owned alarm regression
         run: python -m unittest discover -s tests -p "test_managed_alarms.py" -v
+      - name: One-time Tiny Family migration test
+        run: python -m unittest discover -s tests -p "test_one_time_migration.py" -v
       - name: Check JavaScript syntax
         run: |
           node --check custom_components/tiny_family/frontend/tiny-family-panel.js
