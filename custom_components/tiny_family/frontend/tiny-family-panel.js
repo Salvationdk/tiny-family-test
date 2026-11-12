@@ -2028,7 +2028,12 @@ class TinyFamilyPanel extends HTMLElement {
       if(!privacy.routine_learning_available){
         routineNote.textContent="Administrator skal først aktivere lokal rutineindlæring i Administration.";
       }
-    }catch(error){sharing.remove();}
+    }catch(error){
+      // A new setup often has no linked HA user yet. Keep the anchor in the
+      // DOM so later status widgets can be inserted without NotFoundError.
+      routineCheckbox.disabled=true;
+      routineNote.textContent="Tilknyt din Home Assistant-bruger til et familiemedlem under Administration for at se personlige data.";
+    }
     if(sharing.isConnected)await refreshPermissions();
     const personalData=document.createElement("section");
     personalData.className="tf-person";
@@ -2113,8 +2118,9 @@ class TinyFamilyPanel extends HTMLElement {
     }catch(error){recentBody.textContent="Arkivet er ikke tilgængeligt endnu.";}
     const values = document.createElement("div");
     values.className = "tf-metrics";
-    // Show live status first on mobile instead of putting settings before it.
-    root.insertBefore(values,sharing);
+    // Show live status first on mobile, without using a detached DOM anchor.
+    if(this.active!=="today" || !root.isConnected)return;
+    root.insertBefore(values,sharing.parentNode===root?sharing:null);
     const extraDetails=document.createElement("details");
     extraDetails.className="tf-person tf-advanced";
     const extraTitle=document.createElement("summary");
@@ -2122,7 +2128,7 @@ class TinyFamilyPanel extends HTMLElement {
     const extraMetrics=document.createElement("div");
     extraMetrics.className="tf-metrics";
     extraDetails.append(extraTitle,extraMetrics);
-    root.insertBefore(extraDetails,sharing);
+    root.insertBefore(extraDetails,sharing.parentNode===root?sharing:null);
     const primaryMetrics=new Set([
       "place","battery","charging","activity","speed",
       "gpsHealth","gpsAge","homeEta"
