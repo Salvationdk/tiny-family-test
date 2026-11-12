@@ -11,12 +11,13 @@
       },
       "member": {
         "title": "Enheder til {person}",
-        "description": "Familiemedlem {number} af {total}. Vælg personens telefon, eventuelle Home Assistant-bruger og en smart speaker med tilhørende TTS-stemme. Oplæsning på smart speaker kræver, at afsenderen vælger det aktivt.",
+        "description": "Familiemedlem {number} af {total}. Vælg personens Companion-telefon, tilhørende pushmodtager, Home Assistant-bruger og eventuel smart speaker med dansk TTS. En smart speaker bruges kun ved aktivt valg af oplæsning.",
         "data": {
           "tracker": "Personens telefon (GPS)",
           "speaker": "Smart speaker i personens rum (valgfri)",
           "tts_engine": "TTS-stemme til dansk oplæsning (valgfri)",
-          "owner": "Personens Home Assistant-bruger"
+          "owner": "Personens Home Assistant-bruger",
+          "notify_target": "Telefonens pushmodtager (valgfri, til beskeder og alarmer)"
         }
       }
     },
