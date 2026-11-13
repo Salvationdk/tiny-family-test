@@ -9,7 +9,21 @@ import sys
 import types
 import unittest
 
-from aiohttp import web
+try:
+    from aiohttp import web
+except ModuleNotFoundError:
+    # Isolated CI tests intentionally do not install all of Home Assistant's
+    # dependencies. These views only need json_response's status and body.
+    fake_aiohttp = types.ModuleType("aiohttp")
+    web = types.ModuleType("aiohttp.web")
+
+    def json_response(body, *, status=200, headers=None):
+        return types.SimpleNamespace(status=status, text=json.dumps(body))
+
+    web.json_response = json_response
+    fake_aiohttp.web = web
+    sys.modules["aiohttp"] = fake_aiohttp
+    sys.modules["aiohttp.web"] = web
 
 COMPONENT = Path(__file__).resolve().parents[1] / "custom_components" / "tiny_family"
 PKG = "_tiny_family_places_permission_tests"
