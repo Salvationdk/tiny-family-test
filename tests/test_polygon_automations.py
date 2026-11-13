@@ -16,6 +16,14 @@ saved = []
 
 
 def load_geofences():
+    # GitHub's standalone regression runner has no HA/aiohttp dependencies.
+    try:
+        from aiohttp import web  # noqa: F401
+    except ImportError:
+        aiohttp = types.ModuleType("aiohttp")
+        aiohttp.web = types.SimpleNamespace(json_response=lambda _data, status=200,
+                                             headers=None: types.SimpleNamespace(status=status))
+        sys.modules["aiohttp"] = aiohttp
     for name in ("homeassistant", "homeassistant.components", PACKAGE):
         mod = types.ModuleType(name)
         mod.__path__ = []
