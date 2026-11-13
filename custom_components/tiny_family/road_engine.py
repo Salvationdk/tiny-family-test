@@ -107,7 +107,7 @@ async def match_day_embedded(hass, raw_segments, cache=None):
                         async with session.post(
                             OSM_ROADS_URL,
                             data={"data": overpass_query(bbox)},
-                            headers={"User-Agent": "TinyFamily/0.8.1 (Home Assistant integration)"},
+                            headers={"User-Agent": "TinyFamily/0.8.3 (Home Assistant integration)"},
                             allow_redirects=False,
                             timeout=ClientTimeout(total=11),
                         ) as response:

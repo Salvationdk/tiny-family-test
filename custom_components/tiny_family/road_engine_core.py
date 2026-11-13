@@ -203,7 +203,10 @@ def snap_trace(points, roads):
         pt_a, pt_b = points[i-1:i+1]
         dt = pt_b["t"] - pt_a["t"]
         air = meters((pt_a["lat"], pt_a["lon"]), (pt_b["lat"], pt_b["lon"]))
-        if prev is None or not candidates[i] or not (0 < dt <= 90) or air < 5:
+        # Respect the archive's five-minute gap boundary. Sparse Companion
+        # background fixes can still be matched when road continuity is real.
+        if (prev is None or not candidates[i] or not (0 < dt <= 300)
+                or air < 5 or air / dt > 55.56):
             flush()
             prev = candidates[i][0] if candidates[i] else None
             continue

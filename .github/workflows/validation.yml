@@ -50,17 +50,18 @@ jobs:
           python -m compileall -q custom_components/tiny_family
           node --check custom_components/tiny_family/frontend/tiny-family-panel.js
           node --check custom_components/tiny_family/frontend/tiny-family-card.js
+          node tests/test_timeline_replay.js
           python - <<'PY'
           import json
           from pathlib import Path
           meta=json.loads(Path("custom_components/tiny_family/manifest.json").read_text())
           hacs=json.loads(Path("hacs.json").read_text())
           assert meta["domain"] == "tiny_family"
-          assert meta["version"] == "0.8.2"
+          assert meta["version"] == "0.8.3"
           assert hacs["name"] == "Tiny Family"
           assert Path("custom_components/tiny_family/device_binding.py").is_file()
           assert Path("custom_components/tiny_family/frontend/leaflet/LICENSE").is_file()
-          print("Tiny Family 0.8.2 public package verified")
+          print("Tiny Family 0.8.3 public package verified")
           PY
 
   hassfest:

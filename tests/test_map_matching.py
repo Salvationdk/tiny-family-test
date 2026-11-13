@@ -82,11 +82,11 @@ class MatchTests(unittest.TestCase):
 
     def test_chunks_never_bridge_missing_gps(self):
         first=fixes()
-        second=fixes(1300)
+        second=fixes(1400)
         pieces=M._chunks([first+second])
         self.assertEqual(len(pieces),2)
         self.assertEqual(pieces[0][-1]["t"],1040)
-        self.assertEqual(pieces[1][0]["t"],1300)
+        self.assertEqual(pieces[1][0]["t"],1400)
 
     def test_request_parameters_bounded_and_ordered(self):
         url,params=M.build_match_request("http://192.168.1.50:5000",fixes())

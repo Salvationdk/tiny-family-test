@@ -77,6 +77,22 @@ class RoadCoreTests(unittest.TestCase):
         self.assertEqual(result[0]["end_t"], 1050)
         self.assertTrue(all(abs(lat-55.670) < 1e-6 for lat, lon in result[0]["coordinates"]))
 
+    def test_sparse_companion_fixes_up_to_five_minutes_still_snap(self):
+        sparse = fixes()
+        for index, fix in enumerate(sparse):
+            fix["t"] = 1000 + index * 120
+        self.assertEqual(len(ENGINE.road_windows([sparse])), 1)
+        matched = CORE.snap_trace(sparse, osm_roads())
+        self.assertEqual(len(matched), 1)
+        self.assertEqual(matched[0]["end_t"], 1240)
+
+    def test_missing_gps_over_five_minutes_is_not_connected(self):
+        interrupted = fixes()
+        for index, fix in enumerate(interrupted):
+            fix["t"] = 1000 + index * 360
+        self.assertEqual(ENGINE.road_windows([interrupted]), [])
+        self.assertEqual(CORE.snap_trace(interrupted, osm_roads()), [])
+
     def test_one_way_is_not_reversed(self):
         result = CORE.snap_trace(fixes(reverse=True), osm_roads("yes"))
         self.assertEqual(result, [])

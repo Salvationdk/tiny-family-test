@@ -20,6 +20,10 @@ MAX_GEOMETRY_POINTS = 1800
 MIN_CONFIDENCE = 0.65
 MAX_RESPONSE_BYTES = 1_500_000
 MAX_MATCH_SECONDS = 18
+# Align road matching with the archived timeline's discontinuity threshold.
+# Companion background fixes may legitimately be minutes apart; 90 seconds
+# discarded nearly all real journeys when Android battery saving was active.
+MAX_CONTIGUOUS_FIX_GAP_SECONDS = 300
 
 
 def validate_match_server(value: str) -> str:
@@ -69,7 +73,7 @@ def _meters(a, b):
 
 
 def _chunks(raw_segments):
-    """Never bridge >90 s missing data or a private/GPS gap."""
+    """Never bridge >5 min missing data or a private/GPS gap."""
     chunks = []
     for segment in raw_segments or ():
         current = []
@@ -82,7 +86,7 @@ def _chunks(raw_segments):
                     chunks.append(current)
                 current = []
                 continue
-            if current and (item["t"] - current[-1]["t"] > 90
+            if current and (item["t"] - current[-1]["t"] > MAX_CONTIGUOUS_FIX_GAP_SECONDS
                             or item["t"] <= current[-1]["t"]):
                 if len(current) >= 3:
                     chunks.append(current)

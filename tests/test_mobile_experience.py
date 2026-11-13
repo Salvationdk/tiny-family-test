@@ -47,9 +47,20 @@ class MobileExperienceTests(unittest.TestCase):
     def test_person_stays_centered_during_timeline_replay(self):
         self.assertIn("timelineMarker.setLatLng(loc)",self.js)
         self.assertIn("activeMap.panTo(loc,{animate:false})",self.js)
-        self.assertIn("previousCenteredFix=closest.t",self.js)
+        self.assertIn('previousCenteredFix=loc.join(",")',self.js)
         self.assertIn("!timelineMode)draw()",self.js)
         self.assertIn("map_match=1",self.js)
+
+    def test_replay_uses_real_elapsed_time_and_resets_date_when_person_changes(self):
+        self.assertIn('data-role="timeline-speed"',self.js)
+        self.assertIn('option value="1">1× realtid',self.js)
+        self.assertIn('performance.now()',self.js)
+        self.assertIn('playbackTime+=elapsed*Number(playbackSpeed.value)',self.js)
+        self.assertIn('stopPlayback(false);return;',self.js)
+        self.assertIn('if(playbackTime===null){',self.js)
+        self.assertIn('dockPerson.addEventListener("change",()=>{',self.js)
+        self.assertIn('resetToToday();',self.js)
+        self.assertIn('playbackLocation(closest,',self.js)
 
 
 if __name__=="__main__":
