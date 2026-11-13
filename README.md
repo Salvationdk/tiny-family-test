@@ -1,4 +1,4 @@
-# Tiny Family — offentlig testversion 0.8.7
+# Tiny Family — offentlig testversion 0.8.8
 
 <!-- BEGIN: Salvationdk repository metrics -->
 [![Release downloads](https://img.shields.io/github/downloads/Salvationdk/tiny-family-test/total?label=Release%20downloads&style=flat-square)](https://github.com/Salvationdk/tiny-family-test/releases)
@@ -22,6 +22,11 @@
 Tiny Family er en Home Assistant-integration til familiekort, GPS-ruter, opdagelse af steder, datobaserede tidslinjer, beskeder, SOS og familieadvarsler.
 
 **Testversion:** Integrationen er stadig under praktisk afprøvning. SOS er ikke en certificeret nødtjeneste, og Home Assistant-notifikationer garanterer ikke levering på en telefon.
+
+## Nyt i 0.8.8 – stabilt kort under afspilning
+- **Leaflet-fejl beskyttet:** Tidslinjens personbadges centreres nu med ét samlet kameraskift. Mobilens betjeningspanel tages stadig med i beregningen, men gentagne pan-forskydninger under afspilning fjernes.
+- **Sikre kortgrænser:** Ugyldige GPS-positioner og zoomniveauer afvises før kameraflytning. Kortfliser med ugyldige eller urealistisk store beregnede områder indlæses ikke, så fejlen `Attempted to load an infinite number of tiles` ikke lukker familiekortet.
+- **Ingen ændring af spor:** Oprindelige GPS-målinger og gemte tidslinjer berøres ikke. Automatiske regressionstests dækker denne kortfejl.
 
 ## Nyt i 0.8.7 – kortvindue og bedre tidslinjefokus
 - **Ingen tvungen overgang til eksterne kortapps:** Under Steder vises fælles og personlige steder i en kortdialog direkte i Tiny Family, med Leaflet, stedmarkør, koordinater og lukknap. Familiekortets personknap viser også den valgte position i panelet. Baggrundskort bruger Home Assistants kortfliser, når tilgængelige, og ellers OpenStreetMaps direkte kortfliser. Lovelace-kortets stedforslag beholder desuden sin indlejrede kortdialog uden knapper til eksterne kortapps. Ingen anden app skal åbnes.
@@ -175,6 +180,6 @@ Ghost Mode fra tidligere installationer ændrer ikke Home Assistants `person`, `
 
 ## Teknisk
 
-Home Assistant-domæne: `tiny_family`. Version: `0.8.7`. Integrationens filer ligger i `custom_components/tiny_family/`.
+Home Assistant-domæne: `tiny_family`. Version: `0.8.8`. Integrationens filer ligger i `custom_components/tiny_family/`.
 
 Dette offentlige testrepository indeholder kun installationskode og dokumentation, ikke den private udviklingshistorik, personlige GPS-ruter, telefonnumre eller Home Assistant-konfigurationsdata.
