@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import importlib.util
 from pathlib import Path
+import sqlite3
 import sys
 import tempfile
 import types
@@ -102,6 +103,52 @@ class TimelineTests(unittest.TestCase):
         self.assertEqual(day["points_count"],1)
         self.assertEqual(day["summary"]["stays"],1)
         self.assertEqual(day["events"][0]["label"],"Arbejdsplads")
+
+    def test_event_anchor_is_preserved_when_route_samples_are_missing(self):
+        base=self.now-600
+        T.persist_archive(self.path,activity={"person.one":[{
+            "id":"b"*32,"kind":"trip","started_at":base-240,
+            "ended_at":base,"duration_min":4,"distance_km":1.1,
+            "private":False,"start_lat":55.67,"start_lon":12.2,
+            "end_lat":55.68,"end_lon":12.21,
+        }]})
+        visible=T.query_day(self.path,"person.one",base-400,base+1,
+                            viewer="person.two")
+        self.assertEqual(visible["points_count"],0)
+        self.assertEqual(visible["events"][0]["start_lat"],55.67)
+        self.assertEqual(visible["events"][0]["end_lon"],12.21)
+
+    def test_private_event_anchor_is_not_visible_to_other_people(self):
+        base=self.now-600
+        T.persist_archive(self.path,activity={"person.one":[{
+            "id":"c"*32,"kind":"stay","started_at":base-600,
+            "ended_at":base,"duration_min":10,"private":True,
+            "start_lat":55.67,"start_lon":12.2,
+        }]})
+        stranger=T.query_day(self.path,"person.one",base-800,base+1,
+                             viewer="person.two")
+        owner=T.query_day(self.path,"person.one",base-800,base+1,
+                          viewer="person.one")
+        self.assertEqual(stranger["events"],[])
+        self.assertEqual(owner["events"][0]["start_lat"],55.67)
+
+    def test_old_events_table_is_upgraded_without_removing_events(self):
+        old_path=Path(self.tmp.name)/"old.sqlite3"
+        base=self.now-600
+        with sqlite3.connect(old_path) as conn:
+            conn.execute("""CREATE TABLE events (
+              id TEXT PRIMARY KEY, person TEXT NOT NULL, kind TEXT NOT NULL,
+              started_at REAL NOT NULL, ended_at REAL NOT NULL,
+              duration_min INTEGER NOT NULL, distance_km REAL NOT NULL,
+              max_speed_kmh REAL NOT NULL, label TEXT NOT NULL,
+              gap INTEGER NOT NULL, private INTEGER NOT NULL)""")
+            conn.execute("""INSERT INTO events VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+              ("d"*32,"person.one","trip",base-180,base,3,0.5,35,"",0,0))
+        T.initialize_archive(old_path,now=self.now)
+        result=T.query_day(old_path,"person.one",base-200,base+1,
+                           viewer="person.one")
+        self.assertEqual(result["summary"]["trips"],1)
+        self.assertIsNone(result["events"][0]["start_lat"])
 
     def test_private_fix_creates_visible_gap_for_other_family(self):
         base=self.now-800

@@ -354,7 +354,7 @@ return '<div class="pt-place" data-index="' + index + '">'
 + '<div class="pt-status" data-status="' + index + '"></div></div>';
 }).join("") : '<div class="pt-empty">Ingen ukendte steder at behandle.</div>';
 this.innerHTML = '<ha-card><div class="pt-wrap' + (compact ? ' compact' : '') + '">' + body + '</div></ha-card>'
-+ '<div class="pt-modal" hidden><div class="pt-dialog"><div class="pt-dialog-head"><strong>Placering</strong><button class="pt-close" aria-label="Luk">✕</button></div><iframe title="Kort over foreslået sted"></iframe><div class="pt-map-links"></div></div></div>'
++ '<div class="pt-modal" hidden><div class="pt-dialog"><div class="pt-dialog-head"><strong>Placering</strong><button class="pt-close" aria-label="Luk">✕</button></div><iframe title="Kort over foreslået sted"></iframe><div class="pt-map-info"></div></div></div>'
 + '<style>'
 + '.pt-wrap{display:flex;flex-direction:column;gap:8px;padding:8px}.pt-place{border:1px solid var(--pt-outline,var(--divider-color));border-radius:10px;padding:9px;background:color-mix(in srgb,var(--pt-base,#fff) 88%,white 12%)}'
 + '.pt-place-head{display:flex;justify-content:space-between;gap:8px;font-size:12px;color:var(--pt-muted,var(--secondary-text-color));margin-bottom:5px}.pt-person{font-weight:700;color:var(--pt-text,var(--primary-text-color))}'
@@ -363,7 +363,7 @@ this.innerHTML = '<ha-card><div class="pt-wrap' + (compact ? ' compact' : '') + 
 + PERSON_TIMELINE_NEON_CSS
 + '.pt-save,.pt-delete{min-height:30px;border-radius:9px;padding:5px 9px;cursor:pointer;white-space:nowrap;font:600 12px/1.15 inherit;transition:transform .14s ease,box-shadow .14s ease}.pt-save{border:1px solid rgba(0,229,255,.65);background:linear-gradient(135deg,rgba(0,229,255,.22),rgba(185,103,255,.16));color:var(--primary-text-color,#eaf6ff);box-shadow:0 0 12px rgba(0,229,255,.10)}.pt-delete{border:1px solid rgba(255,82,82,.62);background:rgba(255,82,82,.08);color:#ffb4b4}.pt-save:hover,.pt-delete:hover{transform:translateY(-1px);box-shadow:0 0 15px rgba(0,229,255,.22)}.pt-save:disabled,.pt-delete:disabled{opacity:.55;transform:none}.pt-status{font-size:12px;margin-top:5px;color:var(--pt-muted,var(--secondary-text-color))}.pt-empty{padding:12px;color:var(--pt-muted,var(--secondary-text-color))}'
 + '.pt-wrap.compact{gap:4px;padding:4px}.compact .pt-place{padding:6px;border-radius:8px}.compact .pt-place-head{font-size:11px;margin-bottom:2px}.compact .pt-coord{font-size:11px;margin-bottom:4px}.compact .pt-place-actions{gap:4px}.compact .pt-place-actions input,.compact .pt-save,.compact .pt-delete{font-size:12px;padding:5px 7px}.compact .pt-status{font-size:11px;margin-top:3px}.compact .pt-empty{padding:8px}'
-+ '.pt-modal{position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px}.pt-modal[hidden]{display:none}.pt-dialog{width:min(680px,96vw);background:color-mix(in srgb,var(--pt-base,#fff) 88%,white 12%);border-radius:12px;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.35)}.pt-dialog-head{display:flex;justify-content:space-between;align-items:center;padding:10px 12px}.pt-close{border:0;background:none;color:var(--pt-text,var(--primary-text-color));font-size:20px;cursor:pointer}.pt-dialog iframe{display:block;width:100%;height:min(55vh,450px);border:0}.pt-map-links{padding:10px 12px;font-size:13px}.pt-map-links a{margin-right:14px;color:var(--primary-color)}'
++ '.pt-modal{position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;padding:16px}.pt-modal[hidden]{display:none}.pt-dialog{width:min(680px,96vw);background:color-mix(in srgb,var(--pt-base,#fff) 88%,white 12%);border-radius:12px;overflow:hidden;box-shadow:0 12px 40px rgba(0,0,0,.35)}.pt-dialog-head{display:flex;justify-content:space-between;align-items:center;padding:10px 12px}.pt-close{border:0;background:none;color:var(--pt-text,var(--primary-text-color));font-size:20px;cursor:pointer}.pt-dialog iframe{display:block;width:100%;height:min(55vh,450px);border:0}.pt-map-info{padding:10px 12px;font-size:13px;color:var(--pt-muted,var(--secondary-text-color))}'
 + '@media(max-width:600px){.pt-place-actions{flex-direction:column}.pt-save,.pt-delete{width:100%}.compact .pt-place-actions{display:grid;grid-template-columns:1fr 1fr}.compact .pt-place-actions input{grid-column:1/-1}.compact .pt-save,.compact .pt-delete{width:auto}}'
 + '</style>';
 this.querySelectorAll("[data-map]").forEach(button => button.onclick = () => this._openMap(rows[Number(button.dataset.map)].item));
@@ -375,10 +375,11 @@ modal.onclick = event => { if (event.target === modal) modal.hidden = true; };
 }
 _openMap(item) {
 const lat = Number(item.lat), lon = Number(item.lon), delta = 0.004;
+if (!Number.isFinite(lat) || !Number.isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) return;
 const bbox = [lon - delta, lat - delta, lon + delta, lat + delta].join("%2C");
 const modal = this.querySelector(".pt-modal");
 modal.querySelector("iframe").src = "https://www.openstreetmap.org/export/embed.html?bbox=" + bbox + "&layer=mapnik&marker=" + lat + "%2C" + lon;
-modal.querySelector(".pt-map-links").innerHTML = '<a target="_blank" rel="noopener" href="https://www.openstreetmap.org/?mlat=' + lat + '&mlon=' + lon + '#map=18/' + lat + '/' + lon + '">OpenStreetMap</a><a target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=' + lat + ',' + lon + '">Google Maps</a><a target="_blank" rel="noopener" href="https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=' + lat + ',' + lon + '">Street View</a>';
+modal.querySelector(".pt-map-info").textContent = "Position: " + lat.toFixed(6) + ", " + lon.toFixed(6) + " · Kortet vises direkte i Home Assistant.";
 modal.hidden = false;
 }
 async _save(rows, index, button) {

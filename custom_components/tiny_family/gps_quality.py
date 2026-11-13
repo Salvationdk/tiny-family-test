@@ -111,6 +111,7 @@ def reset_continuity(state: dict) -> None:
     state.update({
         "last_t": None, "last_lat": None, "last_lon": None,
         "trip_active": False, "trip_start": None, "trip_last_move": None,
+        "trip_start_lat": None, "trip_start_lon": None,
         "trip_dist_m": 0.0, "trip_max_speed": 0.0,
         "stay_start": None, "stay_n": 0, "current_stay_min": 0,
         "stay_lat_sum": 0.0, "stay_lon_sum": 0.0,

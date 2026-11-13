@@ -8,12 +8,15 @@ import unittest
 
 PANEL=(Path(__file__).resolve().parents[1]/
        "custom_components/tiny_family/frontend/tiny-family-panel.js")
+CARD=(Path(__file__).resolve().parents[1]/
+      "custom_components/tiny_family/frontend/tiny-family-card.js")
 
 
 class MobileExperienceTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.js=PANEL.read_text(encoding="utf-8")
+        cls.card=CARD.read_text(encoding="utf-8")
 
     def test_four_primary_tabs_remain_compact(self):
         tabs=self.js.split("const TF_VIEWS =",1)[1].split("];",1)[0]
@@ -46,6 +49,16 @@ class MobileExperienceTests(unittest.TestCase):
         self.assertIn('zoneTools.hidden=!data.can_manage_all_places',self.js)
         self.assertIn('Destinationer inde i zonen:',self.js)
 
+    def test_place_coordinates_open_inside_panel_not_external_maps(self):
+        self.assertIn('async openLocationDialog(place,opener=null)',self.js)
+        self.assertIn('dialog.setAttribute("role","dialog")',self.js)
+        self.assertIn('this._locationDialogMap=map',self.js)
+        self.assertIn('this.openLocationDialog(place,button)',self.js)
+        self.assertIn('this.closeLocationDialog();',self.js)
+        self.assertNotIn('https://www.google.com/maps',self.js)
+        self.assertNotIn('https://www.google.com/maps',self.card)
+        self.assertIn('class="pt-map-info"',self.card)
+
     def test_unsaved_inputs_are_preserved_and_member_settings_collapsed(self):
         self.assertIn('this.readDraft("places-create")',self.js)
         self.assertIn('this.writeDraft("places-create"',self.js)
@@ -77,6 +90,9 @@ class MobileExperienceTests(unittest.TestCase):
         self.assertIn('timelineData.inferred_segments=overlay.inferred_segments||[]',self.js)
         self.assertIn('dashArray:"6 8"',self.js)
         self.assertIn('Anslået position',self.js)
+        self.assertIn('const focusEventObservation=(event,segments)=>',self.js)
+        self.assertIn('eventFocus=focus?{...focus,kind:event.kind}:null;',self.js)
+        self.assertIn('activeMap.panBy([0,Math.round(offset)]',self.js)
 
     def test_replay_uses_real_elapsed_time_and_resets_date_when_person_changes(self):
         self.assertIn('data-role="timeline-speed"',self.js)

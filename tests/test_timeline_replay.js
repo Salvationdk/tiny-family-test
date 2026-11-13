@@ -32,4 +32,21 @@ assert(Math.abs(rawMidpoint[0] - 55.0005) < 1e-9);
 assert(Math.abs(rawMidpoint[1] - 12.0005) < 1e-9);
 assert.deepEqual(raw(fixA, {...fixB,t:1200}, 1100), [55.0, 12.0]);
 
+// Event selection must prefer a fix inside the event rather than the first
+// minute (which may have no GPS). Anchors are a transparent fallback only.
+const focusStart=panel.indexOf("const focusEventObservation=");
+const focusEnd=panel.indexOf("const inferredLocation=",focusStart);
+assert(focusStart>=0 && focusEnd>focusStart,"Event focus helper is missing");
+const focusEvent=new Function(panel.slice(focusStart,focusEnd)+
+  "\nreturn focusEventObservation;")();
+const event={started_at:1000,ended_at:1500,start_lat:55.0,start_lon:12.0};
+const focused=focusEvent(event,[[{t:1450,lat:55.5,lon:12.5},
+  {t:1410,lat:55.4,lon:12.4}]]);
+assert.equal(focused.source,"gps");
+assert.deepEqual(focused.point,[55.4,12.4]);
+assert.equal(focusEvent(event,[]).source,"anchor");
+assert.deepEqual(focusEvent(event,[]).point,[55.0,12.0]);
+assert.equal(focusEvent({started_at:1000,ended_at:1500},[]),null,
+  "Never invent a location for a time-only old event");
+
 console.log("Timeline road-follow and GPS-gap replay tests passed");

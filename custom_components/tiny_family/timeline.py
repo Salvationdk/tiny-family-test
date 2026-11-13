@@ -71,6 +71,12 @@ def initialize_archive(path, legacy_routes=None, legacy_activity=None, *, now=No
               gap INTEGER NOT NULL, private INTEGER NOT NULL
             )""")
             conn.execute("CREATE INDEX IF NOT EXISTS events_by_date ON events(person, started_at)")
+            # Older databases contain event times only. Keep their rows and
+            # add optional measured anchors without inventing old positions.
+            existing={item[1] for item in conn.execute("PRAGMA table_info(events)")}
+            for field in ("start_lat","start_lon","end_lat","end_lon"):
+                if field not in existing:
+                    conn.execute(f"ALTER TABLE events ADD COLUMN {field} REAL")
             conn.execute("""CREATE TABLE IF NOT EXISTS matched_days (
               person TEXT NOT NULL, day TEXT NOT NULL, viewer TEXT NOT NULL,
               source_hash TEXT NOT NULL, matched_json TEXT NOT NULL,
@@ -121,15 +127,26 @@ def _insert_events(conn, events_by_person):
                     continue
                 if not all(isfinite(v) for v in (start, end)) or not 0 <= end - start <= 86400:
                     continue
+                def anchor(prefix):
+                    lat,lon=event.get(prefix+"_lat"),event.get(prefix+"_lon")
+                    if (type(lat) in (int,float) and type(lon) in (int,float)
+                            and isfinite(lat) and isfinite(lon)
+                            and -90<=lat<=90 and -180<=lon<=180):
+                        return float(lat),float(lon)
+                    return None,None
+                a,b=anchor("start")
+                c,d=anchor("end")
                 conn.execute("""INSERT OR IGNORE INTO events
                   (id,person,kind,started_at,ended_at,duration_min,distance_km,
-                   max_speed_kmh,label,gap,private) VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                   max_speed_kmh,label,gap,private,start_lat,start_lon,end_lat,end_lon)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                   (event_id, person, event["kind"], start, end,
                    max(0, int(event.get("duration_min") or 0)),
                    max(0, float(event.get("distance_km") or 0)),
                    max(0, float(event.get("max_speed_kmh") or 0)),
                    str(event.get("label") or "")[:80],
-                   int(bool(event.get("gps_gap"))), int(bool(event.get("private")))))
+                   int(bool(event.get("gps_gap"))), int(bool(event.get("private"))),
+                   a,b,c,d))
             except (KeyError, TypeError, ValueError, OverflowError, sqlite3.Error):
                 continue
 
@@ -370,7 +387,7 @@ def query_day(path, person, start, end, *, viewer, ghost=False):
                 break
         events = [dict(row) for row in conn.execute(
             """SELECT id,kind,started_at,ended_at,duration_min,distance_km,
-                max_speed_kmh,label,gap FROM events
+                max_speed_kmh,label,gap,start_lat,start_lon,end_lat,end_lon FROM events
                 WHERE person=? AND started_at<? AND ended_at>=?""" +
             visibility + " ORDER BY started_at ASC LIMIT ?",
             (person,end,start,MAX_DAY_EVENTS))]

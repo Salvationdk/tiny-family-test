@@ -1,7 +1,8 @@
 """Own-account activity archive with bounded local retention.
 
-Only completed trips and stays are recorded. Coordinates are intentionally
-kept in the separate 24-hour routes store, never in activity summaries.
+Only completed trips and stays are recorded. Optional measured start/end
+anchors support safe timeline focusing if route samples were lost. They use
+the same per-person privacy controls as the corresponding activity events.
 """
 from __future__ import annotations
 from datetime import datetime, timezone
@@ -44,7 +45,9 @@ def prune_activity(records: dict, now_ts: float) -> bool:
 def add_activity(records: dict, person: str, *, kind: str,
                  started_at: float, ended_at: float, private: bool,
                  distance_km: float = 0, max_speed_kmh: float = 0,
-                 label: str = "", gps_gap: bool = False) -> dict:
+                 label: str = "", gps_gap: bool = False,
+                 start_lat=None, start_lon=None,
+                 end_lat=None, end_lon=None) -> dict:
     if kind not in KINDS or not person.startswith("person."):
         raise ValueError("Invalid activity")
     if not all(type(n) in (int, float) and isfinite(n)
@@ -61,6 +64,13 @@ def add_activity(records: dict, person: str, *, kind: str,
         "label": str(label)[:80], "private": bool(private),
         "gps_gap": bool(gps_gap),
     }
+    for prefix, latitude, longitude in (("start",start_lat,start_lon),
+                                         ("end",end_lat,end_lon)):
+        if (type(latitude) in (float,int) and type(longitude) in (float,int)
+                and isfinite(latitude) and isfinite(longitude)
+                and -90<=latitude<=90 and -180<=longitude<=180):
+            row[prefix+"_lat"] = round(float(latitude),6)
+            row[prefix+"_lon"] = round(float(longitude),6)
     records.setdefault(person, []).append(row)
     prune_activity(records, datetime.now(timezone.utc).timestamp())
     return row
@@ -79,6 +89,8 @@ def archive_interrupted_trip(records: dict, person: str, state: dict,
         private=private, distance_km=max(0, state.get("trip_dist_m") or 0) / 1000,
         max_speed_kmh=max(0, state.get("trip_max_speed") or 0) * 3.6,
         label="GPS-afbrudt – ingen registreret afslutning", gps_gap=True,
+        start_lat=state.get("trip_start_lat"),start_lon=state.get("trip_start_lon"),
+        end_lat=state.get("last_lat"),end_lon=state.get("last_lon"),
     )
     return True
 
