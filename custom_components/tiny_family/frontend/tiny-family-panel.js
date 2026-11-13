@@ -1584,6 +1584,49 @@ class TinyFamilyPanel extends HTMLElement {
       }
       return [fix.lat,fix.lon];
     };
+    const moveTimelineMarker=loc=>{
+      if(!activeMap)return;
+      if(!timelineMarker){
+        const selected=[...dockPerson.options]
+          .find(option=>option.value===dockPerson.value);
+        const initials=(selected?.textContent||"?").trim()
+          .split(/\s+/).slice(0,2).map(word=>word[0]||"")
+          .join("").toUpperCase();
+        const pin=document.createElement("span");
+        pin.className="tf-person-pin";
+        pin.style.borderColor="#2ce2eb";
+        pin.textContent=initials;
+        timelineMarker=window.L.marker(loc,{
+          icon:window.L.divIcon({
+            className:"tf-person-icon",html:pin.outerHTML,
+            iconSize:[48,48],iconAnchor:[24,24]
+          }),
+          zIndexOffset:1000
+        }).addTo(activeMap);
+      }else{
+        timelineMarker.setLatLng(loc);
+      }
+      // Follow the selected person, including explicitly labeled inferred
+      // positions. The first location is centered at street-level.
+      if(previousCenteredFix===null){
+        activeMap.setView(loc,Math.max(15,activeMap.getZoom()),{animate:false});
+      }else if(previousCenteredFix!==loc.join(",")){
+        activeMap.panTo(loc,{animate:false});
+      }
+      previousCenteredFix=loc.join(",");
+    };
+    const inferredLocation=(road,t)=>{
+      const coords=road.coordinates;
+      let meters=0;
+      for(let i=1;i<coords.length;i++){
+        meters+=Math.hypot((coords[i][0]-coords[i-1][0])*111320,
+          (coords[i][1]-coords[i-1][1])*111320*Math.max(.05,
+            Math.cos(coords[i-1][0]*Math.PI/180)));
+      }
+      const portion=Math.max(0,Math.min(1,
+        (t-road.start_t)/(road.end_t-road.start_t)));
+      return positionOnRoad(coords,meters*portion);
+    };
     const updateCursor=(selectedTime=null)=>{
       if(!timelineMode||!timelineData)return;
       // Select the end of each displayed minute so real fixes with seconds
@@ -1607,6 +1650,18 @@ class TinyFamilyPanel extends HTMLElement {
         }
       }
       if(!closest || desired-closest.t>300){
+        const estimated=roadMatchToggle.checked?
+          (timelineData.inferred_segments||[]).find(road=>
+            road.start_t<=desired && road.end_t>=desired &&
+            road.end_t>road.start_t && Array.isArray(road.coordinates) &&
+            road.coordinates.length>1):null;
+        if(estimated){
+          const source=estimated.basis==="previous_road_history"
+            ?"tidligere rute":"vejnet";
+          statsLabel.textContent="Anslået position ("+source+") · Fart ukendt · GPS-afbrud";
+          moveTimelineMarker(inferredLocation(estimated,desired));
+          return;
+        }
         const event=(timelineData.events||[]).find(item=>
           item.started_at<=desired && item.ended_at>=desired);
         statsLabel.textContent=event
@@ -1632,35 +1687,36 @@ class TinyFamilyPanel extends HTMLElement {
       if(activeMap){
         const loc=playbackLocation(closest,
           next && next.t>closest.t && next.t-closest.t<=300?next:null,desired);
-        if(!timelineMarker){
-          const selected=[...dockPerson.options]
-            .find(option=>option.value===dockPerson.value);
-          const initials=(selected?.textContent||"?").trim()
-            .split(/\s+/).slice(0,2).map(word=>word[0]||"")
-            .join("").toUpperCase();
-          const pin=document.createElement("span");
-          pin.className="tf-person-pin";
-          pin.style.borderColor="#2ce2eb";
-          pin.textContent=initials;
-          timelineMarker=window.L.marker(loc,{
-            icon:window.L.divIcon({
-              className:"tf-person-icon",html:pin.outerHTML,
-              iconSize:[48,48],iconAnchor:[24,24]
-            }),
-            zIndexOffset:1000
-          }).addTo(activeMap);
-        }else{
-          timelineMarker.setLatLng(loc);
-        }
-        // Follow the person on every manual scrub/playback tick. This keeps
-        // the selected phone at the centre without continuously auto-zooming.
-        // The very first point is zoomed to street-level for a Zenly-like view.
-        if(previousCenteredFix===null){
-          activeMap.setView(loc,Math.max(15,activeMap.getZoom()),{animate:false});
-        }else if(previousCenteredFix!==loc.join(",")){
-          activeMap.panTo(loc,{animate:false});
-        }
-        previousCenteredFix=loc.join(",");
+        moveTimelineMarker(loc);
+      }
+    };
+    const loadRoadOverlay=async(person,date,requestId)=>{
+      try{
+        const overlay=await this.hassInstance.callApi("GET",
+          "tiny_family/timeline?person="+encodeURIComponent(person)+
+          "&date="+encodeURIComponent(date)+"&phase=matching");
+        if(requestId!==timelineRequest||this.active!=="live"||
+           !timelineMode||dockPerson.value!==person||dockDate.value!==date)return;
+        if(!timelineData)return;
+        timelineData.matched_segments=overlay.matched_segments||[];
+        timelineData.inferred_segments=overlay.inferred_segments||[];
+        timelineData.matching_status=overlay.matching_status;
+        const verified=timelineData.matched_segments.length;
+        const estimated=timelineData.inferred_segments.length;
+        roadMatchStatus.textContent=verified||estimated
+          ?(verified?"✓ "+verified+" vejtilpassede stykker":"Ingen sikre vejmatch")+
+            (estimated?" · ≈ "+estimated+" anslåede vejstykker (stiplet)":"")
+          :overlay.matching_status==="not_enough_points"
+            ?"For få sammenhængende GPS-målinger. Ukendte vejstykker vises som GPS-spor."
+            :"Kunne ikke fastslå vejen. Rå GPS-målinger bevares.";
+        roadMatchStatus.title=estimated
+          ?"Stiplede vejstykker er estimater fra tidligere ture eller OpenStreetMap, ikke GPS-målinger."
+          :"Turens bekræftede vejmatch og de oprindelige GPS-målinger.";
+        timelineRevision++;previousSignature="";
+        await draw();
+      }catch(error){
+        if(requestId!==timelineRequest||this.active!=="live")return;
+        roadMatchStatus.textContent="Vejmotoren svarer ikke. GPS-tidslinjen er stadig tilgængelig.";
       }
     };
     const loadTimeline=async()=>{
@@ -1676,22 +1732,17 @@ class TinyFamilyPanel extends HTMLElement {
       previousCenteredFix=null;previousSignature="";
       void draw();
       timeLabel.textContent="Henter tidslinje…";
+      const selectedDate=dockDate.value;
       try{
         const url="tiny_family/timeline?person="+encodeURIComponent(person)+
-          "&date="+encodeURIComponent(dockDate.value)+
-          (roadMatchToggle.checked && this.settings?.map_matching_enabled?"&map_match=1":"");
+          "&date="+encodeURIComponent(selectedDate)+"&map_match=0";
         const result=await this.hassInstance.callApi("GET",url);
         if(requestId!==timelineRequest||this.active!=="live")return;
         timelineData=result;
         timelineRevision++;
-        const matchCount=(result.matched_segments||[]).length;
-        roadMatchStatus.textContent=roadMatchToggle.checked?
-          (matchCount?"✓ "+matchCount+" vejtilpassede rutestykker"+
-           (result.matching_status==="partial"?" · Delvist match":""):
-           result.matching_status==="disabled"?"Vejtilpasning er deaktiveret af administrator.":
-           result.matching_status==="not_enough_points"?"For få GPS-punkter til vejtilpasning.":
-           "Vejtilpasning kunne ikke beregnes. GPS-sporet vises uden gættede veje.")
-          :"Vejtilpasning er slået fra. Administrator kan aktivere den indbyggede vejmotor i Administration.";
+        roadMatchStatus.textContent=roadMatchToggle.checked
+          ?"Beregner vejtilpasning i baggrunden…"
+          :"Vejtilpasning er slået fra. Administrator kan aktivere den i Administration.";
         eventStrip.replaceChildren();
         for(const event of (result.events||[]).slice(0,40)){
           const eventButton=document.createElement("button");
@@ -1725,14 +1776,27 @@ class TinyFamilyPanel extends HTMLElement {
             Math.floor((lastFix.t-result.start)/60))):
           Number(minuteSlider.max));
         const sum=result.summary||{};
+        const diagnostic=result.gps_diagnostics||{};
         summaryLabel.textContent=(result.points_count||0)+" GPS-punkter · "+
           (Number.isFinite(sum.distance_km)?sum.distance_km+" km":"ukendt distance")+
-          (Number.isFinite(sum.max_speed_kmh)?" · top "+sum.max_speed_kmh+" km/t":"")+
+          (diagnostic.speed_health==="zero_despite_movement"?
+            " · Fartmålinger mangler (0 trods bevægelse)":
+            Number.isFinite(sum.max_speed_kmh)?" · top "+sum.max_speed_kmh+" km/t":"")+
           (sum.stays?" · "+sum.stays+" ophold":"")+
-          (result.gaps?" · "+result.gaps+" GPS-afbrud":"")+
+          (result.gaps?" · "+result.gaps+" GPS-afbrud"+
+            (diagnostic.gap_causes?
+              " ("+diagnostic.gap_causes.time+" lange pauser)":""):"")+
           " · Faktiske målinger";
+        summaryLabel.title=diagnostic.speed_health==="zero_despite_movement"
+          ?"Telefonen melder 0 km/t trods bevægelse. Kontrollér Companion-hastighedssensor, positionstilladelser og batterisparefunktion."
+          :diagnostic.speed_health==="missing"
+            ?"Der blev ikke leveret brugbare fartmålinger for denne dag."
+            :"Rute og afstand baseret på faktisk registrerede GPS-fixes.";
         previousSignature="";
         await draw();
+        if(roadMatchToggle.checked&&this.settings?.map_matching_enabled){
+          void loadRoadOverlay(person,selectedDate,requestId);
+        }
       }catch(error){
         if(requestId!==timelineRequest)return;
         timelineData=null;
@@ -2228,6 +2292,17 @@ class TinyFamilyPanel extends HTMLElement {
               color:"#2ce2eb",weight:4,opacity:1
             }).addTo(map);
           }
+          const inferred=roadMatchToggle.checked?
+            (timelineData.inferred_segments||[]):[];
+          for(const road of inferred){
+            if(!Array.isArray(road.coordinates)||road.coordinates.length<2)continue;
+            const guess=window.L.polyline(road.coordinates,{
+              color:"#eeb968",weight:4,opacity:.9,dashArray:"6 8"
+            }).addTo(map);
+            guess.bindTooltip("≈ Anslået vej ("+
+              (road.basis==="previous_road_history"?"tidligere ture":"vejnet")+
+              ") · ikke GPS-målt");
+          }
           for(const event of timelineData.events||[]){
             if(event.kind!=="stay")continue;
             const observed=(timelineData.segments||[]).flat().find(p=>
@@ -2247,7 +2322,7 @@ class TinyFamilyPanel extends HTMLElement {
             map.setView(focusedLivePoint,15,{animate:false});
           }else map.setView([this.hassInstance.config.latitude||0,
                             this.hassInstance.config.longitude||0],11);
-          updateCursor();
+          updateCursor(playbackTime);
         }else if(focusedLivePoint){
           map.setView(focusedLivePoint,14);
         }else if(!timelineMode && bounds.length){
@@ -2626,6 +2701,7 @@ class TinyFamilyPanel extends HTMLElement {
     const types={
       zone_arrived:"zones",zone_departed:"zones",
       speed_warning:"speed",battery_low:"battery",
+      battery_saver_warning:"battery",
       tracking_stale:"gps",tracking_restored:"gps",
       trip_ended:"trip",weekly_summary:"weekly",
     };
@@ -3146,11 +3222,12 @@ class TinyFamilyPanel extends HTMLElement {
     autoNotifications.type="checkbox";
     autoNotifications.checked=Boolean(this.settings.auto_notifications_enabled);
     autoLabel.append(autoNotifications,document.createTextNode(
-      " Send automatisk ankomst-, batteri-, fart- og turalarmer til familiens tilknyttede telefoner"));
+      " Send administratorvalgte hændelser og advarsler til tilknyttede telefoner"));
     form.appendChild(autoLabel);
     const alertCategoryNames = {
       zone_arrived:"Ankomst", zone_departed:"Afgang",
-      battery_low:"Lavt batteri", speed_warning:"Høj fart",
+      battery_low:"Lavt batteri", battery_saver_warning:"Batterisparer over 30 % (kun egen telefon)",
+      speed_warning:"Høj fart",
       trip_ended:"Afsluttet tur", weekly_summary:"Ugerapport",
       tracking_stale:"GPS-opdatering mangler", tracking_restored:"GPS igen aktiv"
     };
@@ -3163,7 +3240,7 @@ class TinyFamilyPanel extends HTMLElement {
     categoryBox.appendChild(categoryHeading);
     const alertHelp=document.createElement("p");
     alertHelp.className="tf-message";
-    alertHelp.textContent="Notifikationer er frivillige og kræver en aktiv indstilling og en gyldig Companion-modtager. Fartadvarsler kræver to troværdige GPS-målinger over grænsen. Zoner kræver stabil position. Et registreret event er ikke en bekræftet pushlevering.";
+    alertHelp.textContent="Notifikationer styres af administrator og kræver en gyldig Companion-modtager. Advarslen om batterisparer sendes kun til telefonens egen bruger, når den er aktiv over 30 %; den gentages ikke inden for seks timer. Fartadvarsler kræver to troværdige målinger. Et event garanterer ikke pushlevering.";
     categoryBox.appendChild(alertHelp);
     for(const [key, label] of Object.entries(alertCategoryNames)){
       const labelElement=document.createElement("label");

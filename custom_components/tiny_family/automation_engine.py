@@ -8,7 +8,7 @@ from __future__ import annotations
 import math
 
 ALERT_EVENTS = frozenset((
-    "zone_arrived", "zone_departed", "battery_low",
+    "zone_arrived", "zone_departed", "battery_low", "battery_saver_warning",
     "speed_warning", "trip_ended", "weekly_summary",
     "tracking_stale", "tracking_restored",
 ))
@@ -21,6 +21,8 @@ SPEED_WARNING_KMH = 130
 SPEED_REARM_KMH = 120
 BATTERY_LOW = 20
 BATTERY_REARM = 25
+BATTERY_SAVER_WARNING_ABOVE = 30
+BATTERY_SAVER_WARNING_COOLDOWN = 6 * 60 * 60
 
 
 def update_zone(state: dict, zone: str, observed_at: float) -> list[tuple[str, dict]]:
@@ -73,6 +75,30 @@ def update_battery(state: dict, percent: float | None) -> list[tuple[str, dict]]
     return []
 
 
+def update_battery_saver_warning(state: dict, power_save: bool | None,
+                                 observed_at: float) -> list[tuple[str, dict]]:
+    """Warn once per activation above 30%, with a six-hour cooldown.
+
+    The Companion power-saver sensor must explicitly report on. Unknown
+    readings, absent battery percentage and ordinary low battery never warn.
+    """
+    battery = state.get("battery_percent")
+    if (type(battery) not in (float, int) or not math.isfinite(battery)
+            or not 0 <= battery <= 100 or power_save is None):
+        return []
+    eligible = power_save is True and battery > BATTERY_SAVER_WARNING_ABOVE
+    previous = state.get("battery_saver_warning_active")
+    state["battery_saver_warning_active"] = eligible
+    if previous is None or not eligible or previous:
+        return []
+    last_alert = state.get("battery_saver_warning_last_at")
+    if (type(last_alert) in (float, int) and
+            observed_at - last_alert < BATTERY_SAVER_WARNING_COOLDOWN):
+        return []
+    state["battery_saver_warning_last_at"] = observed_at
+    return [("battery_saver_warning", {"battery": round(battery)})]
+
+
 def update_speed(state: dict, kmh: float, accuracy_m: float | None,
                  observed_at: float, threshold_kmh: int = SPEED_WARNING_KMH
                  ) -> list[tuple[str, dict]]:
@@ -115,6 +141,11 @@ def message_for_event(event: str, name: str, details: dict) -> tuple[str, str]:
         return "Tiny Family – afgang", f"{name} har forladt {details['zone']}."
     if event == "battery_low":
         return "Tiny Family – batteri", f"{name}s telefon er nede på {details['battery']} %."
+    if event == "battery_saver_warning":
+        return "Tiny Family – GPS og batterisparer", (
+            f"Batterisparetilstand er aktiv på din telefon ({details['battery']} %). "
+            "Det kan gøre GPS-sporing unøjagtig og forsinket. "
+            "Slå batterisparer fra, når du har mulighed for at oplade telefonen.")
     if event == "speed_warning":
         return "Tiny Family – fart", f"{name} er registreret med {details['speed_kmh']} km/t. GPS-data kan være upræcise."
     if event == "trip_ended":
@@ -163,8 +194,11 @@ async def notify_family(hass, config: dict, person: str, event: str, details: di
     entities = {s.entity_id for s in hass.states.async_all("notify")}
     sent, failed = 0, 0
     eligible = 0
-    for other in selected:
-        if other == person or not owners.get(other) or other in (config.get("ghost_people") or []):
+    # The power-saving warning concerns the affected phone owner, never the
+    # wider family's location or tracking state.
+    recipients = [person] if event == "battery_saver_warning" else selected
+    for other in recipients:
+        if (event != "battery_saver_warning" and other == person) or not owners.get(other) or other in (config.get("ghost_people") or []):
             continue
         target = targets.get(other)
         if not target:

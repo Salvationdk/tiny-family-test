@@ -133,6 +133,52 @@ class RoadCoreTests(unittest.TestCase):
         roads["elements"][0]["tags"]["access"] = "private"
         self.assertEqual(CORE.snap_trace(fixes(), roads), [])
 
+    def test_sparse_two_point_route_is_inference_not_verified_measurement(self):
+        first, last = fixes()[0], fixes()[-1]
+        last["t"] = 1300
+        estimated = CORE.infer_road_gap(first, last, osm_roads())
+        self.assertIsNotNone(estimated)
+        self.assertEqual(estimated["basis"], "road_network")
+        self.assertLessEqual(estimated["confidence"], .62)
+        self.assertLess(estimated["confidence"], .65)
+        self.assertEqual((estimated["start_t"], estimated["end_t"]), (1000, 1300))
+        self.assertGreaterEqual(len(estimated["coordinates"]), 2)
+        self.assertTrue(all(lat == 55.67 for lat, _ in estimated["coordinates"]))
+
+    def test_road_estimate_respects_direction_and_plausible_speed(self):
+        first, last = fixes()[0], fixes()[-1]
+        last["t"] = 1300
+        self.assertIsNone(CORE.infer_road_gap(last, first, osm_roads("yes")))
+        self.assertIsNone(CORE.infer_road_gap(first, {**last,"t":1001},osm_roads()))
+        self.assertIsNone(CORE.infer_road_gap(first, {**last,"t":3001},osm_roads()))
+        self.assertIsNone(CORE.infer_road_gap(first, last,
+            {"elements": [{**osm_roads()["elements"][0],
+                "tags":{"highway":"service","access":"private"}}]}))
+
+    def test_historical_estimate_requires_correct_direction_and_corridor(self):
+        first, last = fixes()[0], fixes()[-1]
+        last["t"] = 1300
+        previous = CORE.snap_trace(fixes(), osm_roads())
+        estimated = CORE.infer_historical_gap(first, last, previous)
+        self.assertIsNotNone(estimated)
+        self.assertEqual(estimated["basis"], "previous_road_history")
+        self.assertGreater(estimated["confidence"], .5)
+        self.assertIsNone(CORE.infer_historical_gap(last,
+            {**first,"t":1600}, previous))
+        self.assertIsNone(CORE.infer_historical_gap(first, last, []))
+
+    def test_sparse_pairs_never_bridge_explicit_privacy_discontinuity(self):
+        first, last = fixes()[0], fixes()[-1]
+        last["t"] = 1300
+        self.assertEqual(len(ENGINE.sparse_road_pairs([[first],
+            [{**last,"gap_origin":"time"}]])), 1)
+        self.assertEqual(ENGINE.sparse_road_pairs([[first],
+            [{**last,"gap_origin":"explicit"}]]), [])
+        self.assertEqual(len(ENGINE.sparse_road_pairs([[first],
+            [{**last,"gap_origin":"explicit"}]],allow_explicit=True)),1)
+        self.assertEqual(ENGINE.sparse_road_pairs([[first],
+            [{**last,"gap_origin":"implausible"}]]), [])
+
 
 class FakeResponse:
     def __init__(self, code=200, body=None):
@@ -170,6 +216,30 @@ class FakeHass:
 
 
 class RoadNetworkTests(unittest.IsolatedAsyncioTestCase):
+    async def test_two_point_sparse_trace_returns_separate_dashed_estimate(self):
+        first, last = fixes()[0], fixes()[-1]
+        last["t"] = 1300
+        hass=FakeHass()
+        matched, inferred, status=await ENGINE.match_day_embedded(
+            hass,[[first,last]],{},include_inferences=True)
+        self.assertEqual(matched, [])
+        self.assertEqual(status, "inferred")
+        self.assertEqual(len(inferred), 1)
+        self.assertEqual(len(hass.session.calls), 1)
+
+    async def test_existing_road_history_avoids_external_network_call(self):
+        first, last = fixes()[0], fixes()[-1]
+        last["t"] = 1300
+        hass=FakeHass()
+        past=CORE.snap_trace(fixes(), osm_roads())
+        matched, inferred, status=await ENGINE.match_day_embedded(
+            hass,[[first,last]],{},include_inferences=True,
+            historical_roads=past)
+        self.assertEqual(matched, [])
+        self.assertEqual(status, "inferred")
+        self.assertEqual(inferred[0]["basis"], "previous_road_history")
+        self.assertFalse(hass.session.calls)
+
     async def test_public_road_geometry_fetch_contains_no_raw_gps_or_times(self):
         hass = FakeHass()
         data, status = await ENGINE.match_day_embedded(hass, [fixes()], {})

@@ -38,7 +38,10 @@ from .historical_prediction import load_historical_patterns
 from .places_api import TinyFamilyPlacesView
 from .motion import update_motion
 from .gps_quality import assess_sample, mark_stale, reset_continuity, screen_gps_drift
-from .automation_engine import update_zone, update_battery, update_speed, notify_family, message_for_event
+from .automation_engine import (
+    update_zone, update_battery, update_battery_saver_warning,
+    update_speed, notify_family, message_for_event,
+)
 from .privacy import TinyFamilyStatusView, TinyFamilyPrivacyView
 from .sharing import TinyFamilySharingView
 from .zones_api import TinyFamilyZonesView
@@ -821,6 +824,10 @@ async def _async_setup_runtime(hass: HomeAssistant, config: dict) -> bool:
                 state=hass.data[DOMAIN][target_person]
                 for event_name, details in update_battery(state, battery):
                     emit_alert(target_person, event_name, details)
+                for event_name, details in update_battery_saver_warning(
+                        state, state.get("power_save"),
+                        datetime.now(timezone.utc).timestamp()):
+                    emit_alert(target_person, event_name, details)
             return _handler
         initial=hass.states.get(sensor)
         if initial is not None:
@@ -1144,6 +1151,14 @@ async def _async_setup_runtime(hass: HomeAssistant, config: dict) -> bool:
                 ))
         power_entity = (cfg.get("power_save_sensors") or {}).get(person)
         if power_entity:
+            current=hass.states.get(power_entity)
+            st=hass.data[DOMAIN][person]
+            st["power_save"] = (current.state == "on" if current is not None
+                and current.state in ("on", "off") else None)
+            # Establish the first reading silently: an HA restart must not
+            # repeatedly notify a phone with battery saver already on.
+            update_battery_saver_warning(
+                st, st["power_save"], datetime.now(timezone.utc).timestamp())
             def power_save_listener(member):
                 @callback
                 def on_change(event):
@@ -1155,6 +1170,10 @@ async def _async_setup_runtime(hass: HomeAssistant, config: dict) -> bool:
                             state.state in ("on", "off") else None
                         )
                         _publish(hass, member)
+                        for event_name, details in update_battery_saver_warning(
+                                st, st["power_save"],
+                                datetime.now(timezone.utc).timestamp()):
+                            emit_alert(member, event_name, details)
                 return on_change
             runtime["unsubscribers"].append(
                 async_track_state_change_event(hass, [power_entity],

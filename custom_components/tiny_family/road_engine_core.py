@@ -240,3 +240,109 @@ def snap_trace(points, roads):
             flush()
     flush()
     return matched
+
+
+def eligible_sparse_pair(start, end):
+    """A safe candidate, never evidence that a route actually happened."""
+    if not valid_point(start) or not valid_point(end):
+        return False
+    if any(type(p.get("t")) not in (int, float) or not math.isfinite(p["t"])
+           for p in (start, end)):
+        return False
+    elapsed = end["t"] - start["t"]
+    direct = meters((start["lat"], start["lon"]),
+                    (end["lat"], end["lon"]))
+    return (60 <= elapsed <= 1800 and 75 <= direct <= 2500 and
+            direct / elapsed <= 40)
+
+
+def infer_road_gap(start, end, roads):
+    """Guess a connected, directed OSM road between sparse observed fixes.
+
+    Always visibly labelled as an inference; never inserted into GPS history.
+    """
+    if not eligible_sparse_pair(start, end):
+        return None
+    graph = road_graph(roads)
+    if graph is None:
+        return None
+    edges = graph[2]
+    starts, ends = nearest(start, edges), nearest(end, edges)
+    if not starts or not ends:
+        return None
+    direct = meters((start["lat"], start["lon"]),
+                    (end["lat"], end["lon"]))
+    maximum = min(3500, direct * 1.65 + 160)
+    best = None
+    for a in starts:
+        for b in ends:
+            found = shortest_path(a, b, graph, maximum)
+            if found is None:
+                continue
+            length, coords = found
+            if not 2 <= len(coords) <= MAX_PATH_POINTS:
+                continue
+            rank = length + (a[0] + b[0]) * 4
+            if best is None or rank < best[0]:
+                best = (rank, length, coords, a[0] + b[0])
+    if best is None:
+        return None
+    _, length, coords, offset = best
+    confidence = max(.25, min(.62,
+        .60 - offset / 400 - max(0, length / direct - 1) * .16))
+    return {
+        "start_t": start["t"], "end_t": end["t"],
+        "confidence": round(confidence, 2), "basis": "road_network",
+        "coordinates": [[round(lat, 6), round(lon, 6)] for lat, lon in coords],
+    }
+
+
+def _project_to_polyline(point, coordinates):
+    """Return nearest position and distance along a known road corridor."""
+    best, walked = None, 0.0
+    for index in range(1, len(coordinates)):
+        a, b = coordinates[index - 1:index + 1]
+        if (not isinstance(a, (list, tuple)) or
+                not isinstance(b, (list, tuple)) or len(a) != 2 or len(b) != 2):
+            continue
+        edge = (0, 1, tuple(a), tuple(b), meters(a, b), True, True)
+        if edge[4] < .01:
+            continue
+        t, loc, offset = project(point, edge)
+        if best is None or offset < best[0]:
+            best = (offset, walked + t * edge[4], index, loc)
+        walked += edge[4]
+    return best
+
+
+def infer_historical_gap(start, end, previous_roads):
+    """Reuse observed road corridors from the same viewer's earlier days."""
+    if not eligible_sparse_pair(start, end):
+        return None
+    direct = meters((start["lat"], start["lon"]),
+                    (end["lat"], end["lon"]))
+    best, confirmations = None, 0
+    for road in list(previous_roads or ())[:60]:
+        coords = road.get("coordinates") if isinstance(road, dict) else None
+        if not isinstance(coords, list) or not 2 <= len(coords) <= MAX_PATH_POINTS:
+            continue
+        a = _project_to_polyline(start, coords)
+        b = _project_to_polyline(end, coords)
+        if (not a or not b or a[0] > 65 or b[0] > 65 or
+                b[1] <= a[1] + 50 or b[1] - a[1] > direct * 1.75 + 150):
+            continue
+        geometry = [a[3], *[tuple(pt) for pt in coords[a[2]:b[2]]], b[3]]
+        if not 2 <= len(geometry) <= MAX_PATH_POINTS:
+            continue
+        confirmations += 1
+        rank = a[0] + b[0] + (b[1] - a[1] - direct) * .2
+        if best is None or rank < best[0]:
+            best = (rank, geometry)
+    if best is None:
+        return None
+    return {
+        "start_t": start["t"], "end_t": end["t"],
+        "confidence": round(min(.78, .55 + .07 * (confirmations - 1)), 2),
+        "basis": "previous_road_history",
+        "coordinates": [[round(lat, 6), round(lon, 6)] for lat, lon in best[1]],
+    }

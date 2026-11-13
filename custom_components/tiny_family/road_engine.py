@@ -15,7 +15,9 @@ from aiohttp import ClientError, ClientTimeout
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .map_matching import _chunks, _meters
-from .road_engine_core import snap_trace
+from .road_engine_core import (
+    eligible_sparse_pair, infer_historical_gap, infer_road_gap, snap_trace,
+)
 
 OSM_ROADS_URL = "https://overpass-api.de/api/interpreter"
 MAX_WINDOWS = 8
@@ -57,6 +59,27 @@ def road_windows(raw_segments):
     return windows
 
 
+def sparse_road_pairs(raw_segments, *, allow_explicit=False):
+    """Bounded guesses. Only an owner may estimate across ambiguous breaks.
+
+    Old archives used one generic `gap` flag both for GPS outages and
+    privacy discontinuities. We cannot tell them apart for other viewers.
+    """
+    pairs = []
+    segments = [s for s in (raw_segments or []) if isinstance(s, list) and s]
+    for segment in segments:
+        if len(segment) == 2 and eligible_sparse_pair(*segment):
+            pairs.append(segment)
+    for previous, following in zip(segments, segments[1:]):
+        reason = following[0].get("gap_origin")
+        if reason != "time" and not (allow_explicit and reason == "explicit"):
+            continue
+        candidate = [previous[-1], following[0]]
+        if eligible_sparse_pair(*candidate):
+            pairs.append(candidate)
+    return pairs[:16]
+
+
 def bounding_box(points):
     latitudes = [p["lat"] for p in points]
     longitudes = [p["lon"] for p in points]
@@ -82,18 +105,37 @@ def overpass_query(bbox):
     )
 
 
-async def match_day_embedded(hass, raw_segments, cache=None):
+async def match_day_embedded(hass, raw_segments, cache=None, *,
+                             include_inferences=False, historical_roads=None,
+                             allow_owner_gaps=False):
     """Return matched road segments, or let timeline show untouched GPS fixes."""
     candidates = road_windows(raw_segments)
-    if not candidates:
-        return [], "not_enough_points"
-    skipped = len(candidates) > MAX_WINDOWS
+    sparse = sparse_road_pairs(raw_segments, allow_explicit=allow_owner_gaps) \
+        if include_inferences else []
+    inferred = []
+    road_guesses = []
+    for pair in sparse:
+        previous = infer_historical_gap(*pair, historical_roads or [])
+        if previous:
+            inferred.append(previous)
+        else:
+            road_guesses.append(pair)
+    if not candidates and not road_guesses:
+        status = "inferred" if inferred else "not_enough_points"
+        return ([], inferred, status) if include_inferences else ([], status)
+    # Four live/archived road windows and four sparse possibilities bound
+    # Overpass usage; historical matches require no external request.
+    verified_budget = MAX_WINDOWS // 2 if include_inferences and road_guesses else MAX_WINDOWS
+    request_windows = [(p, False) for p in candidates[:verified_budget]]
+    available = max(0, MAX_WINDOWS - len(request_windows))
+    request_windows.extend((p, True) for p in road_guesses[:available])
+    skipped = len(candidates) + len(road_guesses) > MAX_WINDOWS
     cache = cache if isinstance(cache, dict) else {}
     session = async_get_clientsession(hass)
     matched, errors = [], 0
     try:
         async with asyncio.timeout(MAX_SECONDS):
-            for points in candidates[:MAX_WINDOWS]:
+            for points, is_inference in request_windows:
                 bbox = bounding_box(points)
                 if bbox is None:
                     errors += 1
@@ -107,7 +149,7 @@ async def match_day_embedded(hass, raw_segments, cache=None):
                         async with session.post(
                             OSM_ROADS_URL,
                             data={"data": overpass_query(bbox)},
-                            headers={"User-Agent": "TinyFamily/0.8.4 (Home Assistant integration)"},
+                            headers={"User-Agent": "TinyFamily/0.8.5 (Home Assistant integration)"},
                             allow_redirects=False,
                             timeout=ClientTimeout(total=11),
                         ) as response:
@@ -134,14 +176,23 @@ async def match_day_embedded(hass, raw_segments, cache=None):
                     if len(cache) > 36:
                         oldest = min(cache, key=lambda key: cache[key][0])
                         cache.pop(oldest, None)
-                roads = await hass.async_add_executor_job(snap_trace, points, response_data)
-                if roads:
-                    matched.extend(roads)
+                if is_inference:
+                    guess = await hass.async_add_executor_job(
+                        infer_road_gap, points[0], points[1], response_data)
+                    if guess:
+                        inferred.append(guess)
+                    else:
+                        errors += 1
                 else:
-                    errors += 1
+                    roads = await hass.async_add_executor_job(snap_trace, points, response_data)
+                    if roads:
+                        matched.extend(roads)
+                    else:
+                        errors += 1
     except TimeoutError:
         errors += 1
-    return matched, (
+    status = (
         "matched" if matched and not errors and not skipped else
-        "partial" if matched else "unavailable"
+        "partial" if matched else "inferred" if inferred else "unavailable"
     )
+    return (matched, inferred, status) if include_inferences else (matched, status)
