@@ -37,6 +37,28 @@ class MobileExperienceTests(unittest.TestCase):
         self.assertIn('selectActivity("all")',self.js)
         self.assertIn('selectMessages("compose")',self.js)
 
+    def test_zone_drawing_is_in_places_panel_with_admin_permissions(self):
+        self.assertIn('{key:"zones",title:"Zoner",pane:zonePane}',self.js)
+        self.assertIn('editingMode="circle"',self.js)
+        self.assertIn('editingMode==="polygon"',self.js)
+        self.assertIn('"tiny_family/zones"',self.js)
+        self.assertIn('"tiny_family/geofences"',self.js)
+        self.assertIn('zoneTools.hidden=!data.can_manage_all_places',self.js)
+        self.assertIn('Destinationer inde i zonen:',self.js)
+
+    def test_unsaved_inputs_are_preserved_and_member_settings_collapsed(self):
+        self.assertIn('this.readDraft("places-create")',self.js)
+        self.assertIn('this.writeDraft("places-create"',self.js)
+        self.assertIn('this.readDraft("places-zone")',self.js)
+        self.assertIn('this.readDraft("editor")',self.js)
+        self.assertIn('this.clearDraft("editor")',self.js)
+        self.assertIn('this.readDraft("contact-compose")',self.js)
+        self.assertIn('this.writeDraft("contact-compose"',self.js)
+        self.assertIn('className = "tf-person tf-member-settings"',self.js)
+        self.assertIn('.tf-member-settings:not([open])>*:not(summary)',self.js)
+        self.assertIn('if(requestedView===this.active',self.js)
+        self.assertIn('root.classList.remove("tf-places-view","tf-activity-view",',self.js)
+
     def test_admin_settings_remain_complete_in_accordion(self):
         for marker in ('tf-admin-groups','makeGroup("Familiemedlemmer og telefoner"',
                        'makeGroup("Alarmer og fartgrænser"',

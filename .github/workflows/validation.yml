@@ -43,6 +43,8 @@ jobs:
         run: python -m unittest discover -s tests -p "test_phone_sensors_and_gps.py" -v
       - name: Admin-only place and timeline deletion tests
         run: python -m unittest discover -s tests -p "test_admin_place_permissions.py" -v
+      - name: Independent destinations inside drawn zones
+        run: python -m unittest discover -s tests -p "test_zone_destinations.py" -v
       - name: Historical destination prediction regression tests
         run: python -m unittest discover -s tests -p "test_historical_destination_prediction.py" -v
       - name: Default-on embedded road engine and admin override tests
@@ -59,11 +61,11 @@ jobs:
           meta=json.loads(Path("custom_components/tiny_family/manifest.json").read_text())
           hacs=json.loads(Path("hacs.json").read_text())
           assert meta["domain"] == "tiny_family"
-          assert meta["version"] == "0.8.5"
+          assert meta["version"] == "0.8.6"
           assert hacs["name"] == "Tiny Family"
           assert Path("custom_components/tiny_family/device_binding.py").is_file()
           assert Path("custom_components/tiny_family/frontend/leaflet/LICENSE").is_file()
-          print("Tiny Family 0.8.5 public package verified")
+          print("Tiny Family 0.8.6 public package verified")
           PY
 
   hassfest:

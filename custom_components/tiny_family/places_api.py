@@ -30,15 +30,18 @@ def describe_places(hass, places):
                 continue
         except (KeyError, ValueError, TypeError):
             continue
-        in_zone = any(_hav(lat, lon, z["latitude"], z["longitude"]) <=
-                      z["radius_m"] + 10 for z in zones)
+        containing_zones = [z["name"] for z in zones if
+                            _hav(lat, lon, z["latitude"], z["longitude"]) <=
+                            z["radius_m"] + 10]
         name = str(pl.get("label") or "").strip()[:80]
         try:
             visits = max(0, int(pl.get("visits") or 0))
             mins = max(0, int(pl.get("min") or 0))
         except (ValueError, TypeError):
             continue
-        if in_zone or pl.get("source") == "zone":
+        # A destination may be located *inside* a zone. Only actual
+        # zone-seeded entries are zones, never an unrelated learned stay.
+        if pl.get("source") == "zone":
             status = "zone"
         elif name and name.casefold() not in ("ukendt sted", "ukendt", "unknown"):
             status = "named"
@@ -51,6 +54,7 @@ def describe_places(hass, places):
             "name": name or "Ukendt sted", "visits": visits, "minutes": mins,
             "last": str(pl.get("last") or "")[:40], "status": status,
             "private": pl.get("private") is True,
+            "zones": containing_zones[:5],
         })
     return sorted(out, key=lambda row: (row["status"] != "suggested", -row["visits"]))
 
@@ -69,6 +73,34 @@ def match_place(places, lat, lon):
             except (KeyError, TypeError, ValueError):
                 pass
     return None
+
+
+def collapse_suggestions(places, *, radius_m=35):
+    """Group nearby unpromoted stays without deleting original observations.
+
+    Only the presentation layer is grouped; personal place edits remain
+    addressable under each person's own history.
+    """
+    groups = []
+    for place in places:
+        duplicate = next((group for group in groups if
+            _hav(place["latitude"], place["longitude"],
+                 group["latitude"], group["longitude"]) <= radius_m), None)
+        if duplicate is None:
+            groups.append({**place, "sources_count": 1,
+                           "people": [place["person_name"]],
+                           "sources": [place]})
+            continue
+        duplicate["sources_count"] += 1
+        duplicate["visits"] += place["visits"]
+        duplicate["minutes"] += place["minutes"]
+        if place["person_name"] not in duplicate["people"]:
+            duplicate["people"].append(place["person_name"])
+        duplicate["sources"].append(place)
+        # Do not expose a private learned place as another member's
+        # shared suggestion, nor merge its counts into a public item.
+        duplicate["private"] = duplicate["private"] or place["private"]
+    return groups
 
 
 
@@ -164,7 +196,7 @@ class TinyFamilyPlacesView(HomeAssistantView):
                        math.isfinite(saved[key])
                        for key in ("latitude", "longitude"))
                 and _hav(place["latitude"], place["longitude"],
-                         saved["latitude"], saved["longitude"]) <= 75), None)
+                         saved["latitude"], saved["longitude"]) <= 45), None)
 
         own_places = describe_places(self.hass, state.get("places")) if state else []
         for place in own_places:
@@ -175,6 +207,7 @@ class TinyFamilyPlacesView(HomeAssistantView):
                     place["name"] = str(published["name"])
         proposals = []
         managed = []
+        known_names = []
         cfg = {**entry.data, **entry.options}
         for member in cfg.get("persons") or []:
             if not admin and member != person and member in (cfg.get("ghost_people") or []):
@@ -191,6 +224,7 @@ class TinyFamilyPlacesView(HomeAssistantView):
                     continue
                 record = {**place, "person": member, "person_name": display}
                 if place["status"] == "named":
+                    known_names.append(record)
                     if admin:
                         managed.append(record)
                     continue
@@ -201,7 +235,18 @@ class TinyFamilyPlacesView(HomeAssistantView):
                 if published_at(place):
                     continue
                 proposals.append(record)
+        # A named learned destination also supersedes nearby suggestions
+        # from other people. Preserve their personal history for themselves.
+        proposals = [p for p in proposals if not any(
+            _hav(p["latitude"], p["longitude"],
+                 target["latitude"], target["longitude"]) <= 35
+            for target in known_names)]
+        # Do not group private and public records together.
         proposals.sort(key=lambda item: (-item["visits"], -item["minutes"]))
+        public = collapse_suggestions([p for p in proposals if not p["private"]])
+        private = collapse_suggestions([p for p in proposals if p["private"]])
+        proposals = sorted(public + private,
+                           key=lambda item: (-item["visits"], -item["minutes"]))
         managed.sort(key=lambda item: (item["person_name"], item["name"]))
         return web.json_response({
             "person": person, "places": own_places,
@@ -267,9 +312,17 @@ class TinyFamilyPlacesView(HomeAssistantView):
                             return web.json_response({"message": "Private place"}, status=403)
                 if len(shared) >= 1000:
                     return web.json_response({"message": "Too many shared places"}, status=409)
-                if any(_hav(lat, lon, float(p["latitude"]), float(p["longitude"])) < 10
-                       for p in shared):
-                    return web.json_response({"message": "Shared place already nearby"}, status=409)
+                existing = next((p for p in shared if
+                    _hav(lat, lon, float(p["latitude"]), float(p["longitude"])) < 10 or
+                    (str(p.get("name", "")).casefold() == name.casefold() and
+                     _hav(lat, lon, float(p["latitude"]), float(p["longitude"])) < 75)), None)
+                if existing:
+                    # Idempotent creation: do not surface a duplicate error
+                    # or insert a second copy of the same destination.
+                    return web.json_response({
+                        "saved": True, "existing": True,
+                        "shared_id": existing["id"], "name": existing["name"],
+                    }, headers={"Cache-Control": "no-store"})
                 person_state = self.hass.states.get(person) if person else None
                 place = {
                     "id": uuid4().hex, "name": name, "latitude": lat, "longitude": lon,
@@ -334,7 +387,10 @@ class TinyFamilyPlacesView(HomeAssistantView):
             if collection is None:
                 return web.json_response({"message": "Zone storage unavailable"}, status=503)
             await collection.async_create_item(candidate)
-            pl["label"], pl["source"] = name, "zone"
+            # The newly created HA zone is separate from the observed stay.
+            # Naming the stay completes its proposal while keeping it a
+            # distinct destination, including when inside its new zone.
+            pl["label"], pl["source"] = name, "named"
         elif action == "rename":
             pl["label"], pl["source"] = self._name(payload), "named"
         elif action == "privacy":

@@ -45,7 +45,10 @@ def _record_place(hass, person, lat, lon, mins):
     best = None
     for pl in places:
         d = _hav(pl["lat"], pl["lon"], lat, lon)
-        if d <= 25 and (best is None or d < best[0]):
+        # A zone centre is not every destination inside its radius. Keep a
+        # tighter GPS tolerance for seeded zones than for learned stays.
+        threshold = 10 if pl.get("source") == "zone" else 25
+        if d <= threshold and (best is None or d < best[0]):
             best = (d, pl)
     if best is not None:
         pl = best[1]
@@ -58,8 +61,10 @@ def _record_place(hass, person, lat, lon, mins):
         pl["min"] = pl.get("min", 0) + mins
         pl["last"] = datetime.now().isoformat(timespec="seconds")
     else:
+        # A stay inside Home, School, etc. may be a distinct destination.
+        # Only explicitly seeded HA-zone centres inherit the zone label.
         places.append({"lat": lat, "lon": lon,
-                       "label": _nearest_zone_label(hass, lat, lon),
+                       "label": "",
                        "visits": 1, "min": mins, "n": 1,
                        "last": datetime.now().isoformat(timespec="seconds"), "source": "learned"})
 

@@ -1,4 +1,4 @@
-# Tiny Family — offentlig testversion 0.8.5
+# Tiny Family — offentlig testversion 0.8.6
 
 <!-- BEGIN: Salvationdk repository metrics -->
 [![Release downloads](https://img.shields.io/github/downloads/Salvationdk/tiny-family-test/total?label=Release%20downloads&style=flat-square)](https://github.com/Salvationdk/tiny-family-test/releases)
@@ -22,6 +22,13 @@
 Tiny Family er en Home Assistant-integration til familiekort, GPS-ruter, opdagelse af steder, datobaserede tidslinjer, beskeder, SOS og familieadvarsler.
 
 **Testversion:** Integrationen er stadig under praktisk afprøvning. SOS er ikke en certificeret nødtjeneste, og Home Assistant-notifikationer garanterer ikke levering på en telefon.
+
+## Nyt i 0.8.6 – zonekort, selvstændige destinationer og kladder
+- **Steder → Zoner:** Administrator kan tegne og redigere både Home Assistant-cirkelzoner (centrum og radius) og Tiny Family-polygonzoner (3–32 hjørner) direkte på mobilkortet. Andre familiemedlemmer kan se zonerne. Eksisterende Home Assistant-zoner vises; kun zoner, som Home Assistant tillader at redigere via lagring, kan ændres her.
+- **Zoner og destinationer er forskellige:** Kortet viser også familiens fælles destinationer. En zone kan få et fælles destinationspunkt i centrum, men separate destinationer kan også ligge inden for en zone. Et indlært ophold inde i en HA-zone bliver ikke automatisk omdøbt til zonen. Polygonzoner er Tiny Family-områder og bliver ikke `zone.*`-entiteter i Home Assistant.
+- **Oprydning i forslag:** Nærliggende registreringer inden for 35 m grupperes i visningen, mens de oprindelige opholdsdata og deres ejerskab bevares. Allerede oprettede, delte eller navngivne steder skjules fra forslaglisten. Et forsøg på at oprette et eksisterende fælles sted på næsten samme punkt – eller med samme navn inden for 75 m – returnerer det eksisterende sted frem for at oprette en dublet. Administrator kan fortsat rette og slette hvert ophold separat.
+- **Kladder bevares:** Indtastede stednavne, koordinater, zonehjørner, åbne redigeringer, beskedudkast og administrationens endnu ikke gemte felter overlever panelnavigation eller genindlæsning i samme browserfane i op til 24 timer. Kladder gemmes kun i browserens session og er knyttet til den indloggede Home Assistant-konto. Farlige slettebekræftelser gemmes aldrig.
+- **En mere ensartet mobilvisning:** Zoneeditoren og øvrige stedfaner bruger Tiny Neon-layoutet med indvendig rulning. Hvert familiemedlems indstillinger er nu sammenklappet under eget navn. Hvis dagens tidslinje har ture, men ingen arkiverede GPS-målinger, står det tydeligt, at ruten ikke kan rekonstrueres.
 
 ## Nyt i 0.8.5 – hurtig historik, forsigtige vejgæt og GPS-advarsler
 - **Tidslinjedato åbnes uden vejventetid:** Den lokale SQLite-historik vises straks efter API-svaret. Bekræftet vejtilpasning og eventuelle vejgæt hentes i en **anden, asynkron forespørgsel**, så Overpass ikke holder datoens GPS-data tilbage. Ved fejl forbliver tidslinjen brugbar.
@@ -162,6 +169,6 @@ Ghost Mode fra tidligere installationer ændrer ikke Home Assistants `person`, `
 
 ## Teknisk
 
-Home Assistant-domæne: `tiny_family`. Version: `0.8.5`. Integrationens filer ligger i `custom_components/tiny_family/`.
+Home Assistant-domæne: `tiny_family`. Version: `0.8.6`. Integrationens filer ligger i `custom_components/tiny_family/`.
 
 Dette offentlige testrepository indeholder kun installationskode og dokumentation, ikke den private udviklingshistorik, personlige GPS-ruter, telefonnumre eller Home Assistant-konfigurationsdata.
