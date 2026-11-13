@@ -1,4 +1,4 @@
-# Tiny Family — offentlig testversion 0.8.6
+# Tiny Family — offentlig testversion 0.8.7
 
 <!-- BEGIN: Salvationdk repository metrics -->
 [![Release downloads](https://img.shields.io/github/downloads/Salvationdk/tiny-family-test/total?label=Release%20downloads&style=flat-square)](https://github.com/Salvationdk/tiny-family-test/releases)
@@ -22,6 +22,12 @@
 Tiny Family er en Home Assistant-integration til familiekort, GPS-ruter, opdagelse af steder, datobaserede tidslinjer, beskeder, SOS og familieadvarsler.
 
 **Testversion:** Integrationen er stadig under praktisk afprøvning. SOS er ikke en certificeret nødtjeneste, og Home Assistant-notifikationer garanterer ikke levering på en telefon.
+
+## Nyt i 0.8.7 – kortvindue og bedre tidslinjefokus
+- **Ingen tvungen overgang til eksterne kortapps:** Under Steder vises fælles og personlige steder i en kortdialog direkte i Tiny Family, med Leaflet, stedmarkør, koordinater og lukknap. Familiekortets personknap viser også den valgte position i panelet. Baggrundskort bruger Home Assistants kortfliser, når tilgængelige, og ellers OpenStreetMaps direkte kortfliser. Lovelace-kortets stedforslag beholder desuden sin indlejrede kortdialog uden knapper til eksterne kortapps. Ingen anden app skal åbnes.
+- **Valgte aktiviteter følger personen:** Når en tur eller et ophold vælges i tidslinjen, fokuseres på en faktisk GPS-måling inden for begivenheden, helst nær midten af tidsintervallet. På mobil placeres badget i centrum af det synlige kortareal **over** tidslinjens betjeningspanel.
+- **Position når ruten mangler:** Fremtidige afsluttede ture gemmer validerede start-/slutkoordinater, og ophold gemmer deres målte centrum, sammen med aktivitetsarkivet. En begivenhed kan derved vise en markeret registreret position, selv hvis ruteprøverne er gået tabt. Positionen er ikke en rekonstrueret rute eller bevægelse. Eksisterende arkiver opgraderes skånsomt uden at slette historik. Gamle begivenheder, der kun har tidsstempler og ingen GPS-prøver, kan fortsat **ikke** placeres sikkert på kortet.
+- **Privatliv:** Begivenheder og deres måleankre følger samme adgangskontrol som tidligere. Private begivenheder fra andre familiemedlemmer eksponeres ikke.
 
 ## Nyt i 0.8.6 – zonekort, selvstændige destinationer og kladder
 - **Steder → Zoner:** Administrator kan tegne og redigere både Home Assistant-cirkelzoner (centrum og radius) og Tiny Family-polygonzoner (3–32 hjørner) direkte på mobilkortet. Andre familiemedlemmer kan se zonerne. Eksisterende Home Assistant-zoner vises; kun zoner, som Home Assistant tillader at redigere via lagring, kan ændres her.
@@ -169,6 +175,6 @@ Ghost Mode fra tidligere installationer ændrer ikke Home Assistants `person`, `
 
 ## Teknisk
 
-Home Assistant-domæne: `tiny_family`. Version: `0.8.6`. Integrationens filer ligger i `custom_components/tiny_family/`.
+Home Assistant-domæne: `tiny_family`. Version: `0.8.7`. Integrationens filer ligger i `custom_components/tiny_family/`.
 
 Dette offentlige testrepository indeholder kun installationskode og dokumentation, ikke den private udviklingshistorik, personlige GPS-ruter, telefonnumre eller Home Assistant-konfigurationsdata.

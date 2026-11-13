@@ -25,6 +25,7 @@ class TinyFamilyPanel extends HTMLElement {
   disconnectedCallback() {
     if(this._familyTimer){clearInterval(this._familyTimer);this._familyTimer=null;}
     if(this._timelinePlaybackTimer){clearInterval(this._timelinePlaybackTimer);this._timelinePlaybackTimer=null;}
+    this.closeLocationDialog();
     if(this._familyMap){this._familyMap.remove();this._familyMap=null;}
   }
   async initialize() {
@@ -57,6 +58,16 @@ class TinyFamilyPanel extends HTMLElement {
       .tf-member-settings[open]{border-color:#36bbc9}
       .tf-member-summary .tf-chip{font-size:11px;flex:none}
       .tf-wrap .tf-save.tf-danger{background:#a33842;color:#fff}
+      /* Map detail is a true in-panel dialog, above the fixed mobile tabs. */
+      .tf-location-overlay{position:fixed;inset:0;z-index:2400;display:grid;place-items:center;padding:12px;background:rgba(8,16,28,.74);backdrop-filter:blur(3px)}
+      .tf-location-dialog{width:min(680px,100%);max-height:calc(100dvh - 24px);display:flex;flex-direction:column;gap:9px;overflow:hidden;padding:13px;border:1px solid rgba(57,213,226,.65);border-radius:18px;background:var(--card-background-color);color:var(--primary-text-color);box-shadow:0 12px 50px rgba(0,0,0,.45)}
+      .tf-location-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+      .tf-location-head h2{font-size:18px;margin:0;overflow-wrap:anywhere}
+      .tf-location-map{height:min(63dvh,530px);min-height:240px;flex:1 1 auto;width:100%;border-radius:12px;border:1px solid var(--divider-color);overflow:hidden}
+      .tf-location-coords{font-size:12px;color:var(--secondary-text-color);font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+      .tf-location-actions{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:9px;align-items:center}
+      .tf-location-actions button{min-height:42px}
+      @media(max-width:380px){.tf-location-actions{grid-template-columns:minmax(0,1fr)}}
       .tf-head{display:flex;align-items:center;gap:10px;margin-bottom:12px}
       .tf-head h1{flex:1;min-width:0}
       .tf-header-action{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:44px;min-width:44px;padding:8px;border:1px solid var(--divider-color);border-radius:12px;background:var(--card-background-color);color:var(--primary-text-color);cursor:pointer}
@@ -334,6 +345,106 @@ class TinyFamilyPanel extends HTMLElement {
     if(!this.hassInstance?.user?.id)return;
     try{sessionStorage.removeItem(this.draftKey(scope));}catch(_){}
   }
+  closeLocationDialog() {
+    const overlay=this._locationOverlay;
+    if(!overlay)return;
+    this._locationOverlay=null;
+    this._locationDialogMap?.remove();this._locationDialogMap=null;
+    document.removeEventListener("keydown",this._locationKeyHandler);
+    overlay.remove();
+    if(this._locationDialogReturnFocus?.isConnected)
+      this._locationDialogReturnFocus.focus({preventScroll:true});
+    this._locationDialogReturnFocus=null;
+  }
+  async openLocationDialog(place,opener=null) {
+    const latitude=Number(place?.latitude),longitude=Number(place?.longitude);
+    if(place?.latitude==null||place?.longitude==null||
+       !Number.isFinite(latitude)||!Number.isFinite(longitude)||
+       latitude < -90||latitude > 90||longitude < -180||longitude > 180){
+      this.message("Placeringen har ikke gyldige koordinater.",true);return;
+    }
+    this.closeLocationDialog();
+    const overlay=document.createElement("div");overlay.className="tf-location-overlay";
+    const dialog=document.createElement("section");dialog.className="tf-location-dialog";
+    dialog.setAttribute("role","dialog");dialog.setAttribute("aria-modal","true");
+    const header=document.createElement("div");header.className="tf-location-head";
+    const title=document.createElement("h2");title.textContent=String(place.name||"Placering");
+    title.id="tf-location-heading";dialog.setAttribute("aria-labelledby",title.id);
+    const close=document.createElement("button");close.type="button";
+    close.className="tf-header-action";close.textContent="✕";
+    close.setAttribute("aria-label","Luk kortvisning");
+    close.addEventListener("click",()=>this.closeLocationDialog());
+    header.append(title,close);
+    const mapElement=document.createElement("div");mapElement.className="tf-location-map";
+    mapElement.setAttribute("aria-label","Kort med markeret placering");
+    const coordinates=document.createElement("span");coordinates.className="tf-location-coords";
+    coordinates.textContent="Position: "+latitude.toFixed(6)+", "+longitude.toFixed(6);
+    const status=document.createElement("span");status.className="tf-location-coords";
+    status.textContent="Henter kortgrundlag…";
+    const actions=document.createElement("div");actions.className="tf-location-actions";
+    const copy=document.createElement("button");copy.type="button";
+    copy.className="tf-save";copy.textContent="Kopiér koordinater";
+    copy.addEventListener("click",async()=>{
+      try{await navigator.clipboard.writeText(latitude+", "+longitude);
+        copy.textContent="Kopieret";
+      }catch(_){copy.textContent="Markér koordinaterne ovenfor for at kopiere";}
+    });
+    actions.append(coordinates,copy);
+    dialog.append(header,mapElement,status,actions);overlay.appendChild(dialog);
+    overlay.addEventListener("click",event=>{
+      if(event.target===overlay)this.closeLocationDialog();
+    });
+    this._locationDialogReturnFocus=opener;
+    this._locationKeyHandler=event=>{
+      if(event.key==="Escape"){event.preventDefault();this.closeLocationDialog();}
+      if(event.key==="Tab"&&this._locationOverlay===overlay){
+        const focusable=[...overlay.querySelectorAll("button,a[href],input,select")]
+          .filter(item=>!item.disabled && item.getClientRects().length);
+        const current=overlay.getRootNode().activeElement;
+        if(focusable.length&&event.shiftKey&&current===focusable[0]){
+          event.preventDefault();focusable[focusable.length-1].focus();
+        }else if(focusable.length&&!event.shiftKey&&
+                 current===focusable[focusable.length-1]){
+          event.preventDefault();focusable[0].focus();
+        }
+      }
+    };
+    document.addEventListener("keydown",this._locationKeyHandler);
+    this._locationOverlay=overlay;
+    (this.querySelector(".tf-wrap")||this).appendChild(overlay);
+    close.focus({preventScroll:true});
+    try{
+      const L=await this.leaflet();
+      if(this._locationOverlay!==overlay)return;
+      // This second Leaflet map must not replace _familyMap: the live family
+      // map and its timeline keep running behind the dialog.
+      const map=L.map(mapElement,{zoomControl:true}).setView([latitude,longitude],16);
+      this._locationDialogMap=map;
+      L.circleMarker([latitude,longitude],{radius:10,color:"#fff",weight:3,
+        fillColor:"#19bacb",fillOpacity:1}).addTo(map);
+      let url="https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+      if(this.hassInstance?.config?.components?.includes("map_tiles")){
+        try{const token=await this.mapTilesAccessToken();
+          if(this._locationOverlay!==overlay)return;
+          if(token)url="/api/map_tiles/raster/{z}/{x}/{y}.png?token="+
+            encodeURIComponent(token);
+        }catch(_){status.textContent="HA-kortfliser er utilgængelige. Viser placeringen på alternativt kortgrundlag.";}
+      }
+      if(this._locationOverlay!==overlay)return;
+      const tiles=L.tileLayer(url,{maxZoom:19,maxNativeZoom:19,
+        referrerPolicy:"origin",attribution:
+          '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'});
+      tiles.on("tileload",()=>{if(this._locationOverlay===overlay)
+        status.textContent="Placeringen er markeret på kortet.";});
+      tiles.on("tileerror",()=>{if(this._locationOverlay===overlay)
+        status.textContent="Kortfliser kunne ikke indlæses. Koordinaterne og markøren vises fortsat.";});
+      tiles.addTo(map);
+      setTimeout(()=>{if(this._locationDialogMap===map)map.invalidateSize();},100);
+    }catch(error){
+      if(this._locationOverlay===overlay)
+        status.textContent="Kortet kunne ikke indlæses: "+this.errorText(error);
+    }
+  }
   async refreshSettings() {
     this.settings = await this.hassInstance.callApi("GET", "tiny_family/settings");
   }
@@ -348,6 +459,7 @@ class TinyFamilyPanel extends HTMLElement {
     }
     // Tapping the current mobile tab must not throw away unsaved fields.
     if(requestedView===this.active && this.querySelector("#tf-main")?.children.length)return;
+    this.closeLocationDialog();
     this.active = key; this.card = null; this._todayPerson = null; this.message("");
     if(this._familyTimer){clearInterval(this._familyTimer);this._familyTimer=null;}
     if(this._timelinePlaybackTimer){clearInterval(this._timelinePlaybackTimer);this._timelinePlaybackTimer=null;}
@@ -1288,12 +1400,10 @@ class TinyFamilyPanel extends HTMLElement {
       }catch(error){this.message("Stedet kunne ikke gemmes: "+this.errorText(error),true);return false;}
     };
     const openMaps=place=>{
-      const link=document.createElement("a");
-      link.textContent="Vis i kortapp";
-      link.href="https://www.google.com/maps/search/?api=1&query="+
-        encodeURIComponent(place.latitude+","+place.longitude);
-      link.target="_blank";link.rel="noopener noreferrer";
-      return link;
+      const button=document.createElement("button");button.type="button";
+      button.className="tf-save";button.textContent="Vis på kort";
+      button.addEventListener("click",()=>this.openLocationDialog(place,button));
+      return button;
     };
     const labelInput=(title,value)=>{
       const wrapper=document.createElement("label");wrapper.textContent=title;
@@ -2084,6 +2194,7 @@ class TinyFamilyPanel extends HTMLElement {
       ((this.settings?.timeline_retention_days??365)-1)*86400000));
     let timelineMode=false,timelineData=null,timelineMarker=null,activeMap=null;
     let cursorManuallyMoved=false;
+    let eventFocus=null;
     let timelineRequest=0,timelineRevision=0;
     let previousCenteredFix=null;
     let drawing=false,pendingRedraw=false;
@@ -2184,7 +2295,47 @@ class TinyFamilyPanel extends HTMLElement {
       }else if(previousCenteredFix!==loc.join(",")){
         activeMap.panTo(loc,{animate:false});
       }
+      if(previousCenteredFix!==loc.join(",") &&
+         window.matchMedia?.("(max-width: 600px)").matches){
+        // The timeline dock covers the lower part of the phone map. Place
+        // the badge at the centre of the *visible* map above the dock.
+        const mapRect=mapElement.getBoundingClientRect();
+        const dockRect=dock.getBoundingClientRect();
+        const hiddenHeight=Math.max(0,mapRect.bottom-
+          Math.max(mapRect.top,Math.min(mapRect.bottom,dockRect.top-8)));
+        const offset=Math.min(mapRect.height*.4,hiddenHeight/2);
+        if(offset>1)activeMap.panBy([0,Math.round(offset)],{animate:false});
+      }
       previousCenteredFix=loc.join(",");
+    };
+    const focusEventObservation=(event,segments)=>{
+      // Prefer a *measured* point within the selected event. Picking the
+      // event's minute start is unreliable because the first fix may be
+      // several minutes later, or missing altogether.
+      const middle=(event.started_at+event.ended_at)/2;
+      let observed=null;
+      for(const segment of segments||[]){
+        for(const fix of segment||[]){
+          if(!Number.isFinite(fix.t)||!Number.isFinite(fix.lat)||
+             !Number.isFinite(fix.lon)||fix.t<event.started_at||
+             fix.t>event.ended_at)continue;
+          if(!observed||Math.abs(fix.t-middle)<Math.abs(observed.t-middle))
+            observed=fix;
+        }
+      }
+      if(observed)return {point:[observed.lat,observed.lon],
+        time:observed.t,source:"gps"};
+      // Activity events from 0.8.7 can carry measured start/end anchors,
+      // independently of the sampled route. Never fabricate an old route.
+      for(const prefix of ["start","end"]){
+        const lat=event[prefix+"_lat"],lon=event[prefix+"_lon"];
+        if(Number.isFinite(lat)&&Number.isFinite(lon)&&
+           lat>=-90&&lat<=90&&lon>=-180&&lon<=180){
+          return {point:[lat,lon],time:prefix==="start"?
+            event.started_at:event.ended_at,source:"anchor",prefix};
+        }
+      }
+      return null;
     };
     const inferredLocation=(road,t)=>{
       const coords=road.coordinates;
@@ -2204,13 +2355,22 @@ class TinyFamilyPanel extends HTMLElement {
       // (e.g. 12:23:50) remain visible at 12:23 on the slider.
       const desired=Number.isFinite(selectedTime)?
         Math.max(timelineData.start,Math.min(timelineData.end-1,selectedTime)):
-        Math.min(timelineData.end-1,
-          timelineData.start+(Number(minuteSlider.value)+1)*60-1);
+        eventFocus?Math.max(timelineData.start,Math.min(timelineData.end-1,
+          eventFocus.time)):
+          Math.min(timelineData.end-1,
+            timelineData.start+(Number(minuteSlider.value)+1)*60-1);
       const prettyTime=ts=>new Date(ts*1000).toLocaleTimeString("da-DK",{
         hour:"2-digit",minute:"2-digit",second:"2-digit",
         timeZone:timelineData.timezone||undefined
       });
       timeLabel.textContent=prettyTime(desired);
+      if(eventFocus?.source==="anchor"){
+        statsLabel.textContent=(eventFocus.kind==="stay"?"Ophold":"Tur")+
+          " · Registreret "+(eventFocus.prefix==="start"?"start":"slut")+
+          "position · Ingen GPS-rute for denne begivenhed";
+        moveTimelineMarker(eventFocus.point);
+        return;
+      }
       let closest=null,next=null;
       for(const segment of timelineData.segments||[]){
         for(let i=0;i<segment.length;i++){
@@ -2292,6 +2452,7 @@ class TinyFamilyPanel extends HTMLElement {
     };
     const loadTimeline=async()=>{
       stopPlayback();
+      eventFocus=null;
       chooseMode("history");
       const person=dockPerson.value||this._viewerPerson;
       if(!person){summaryLabel.textContent="Ingen tilknyttet person.";return;}
@@ -2326,12 +2487,23 @@ class TinyFamilyPanel extends HTMLElement {
             :"↗ "+eventTime+" · Tur "+event.duration_min+" min";
           eventButton.title=event.label||eventButton.textContent;
           eventButton.addEventListener("click",()=>{
+            const focus=focusEventObservation(event,timelineData?.segments);
+            eventFocus=focus?{...focus,kind:event.kind}:null;
             minuteSlider.value=String(Math.max(0,Math.min(
               Number(minuteSlider.max),
-              Math.floor((event.started_at-result.start)/60)
+              Math.floor(((focus?.time??event.started_at)-result.start)/60)
             )));
             stopPlayback();
             cursorManuallyMoved=true;
+            previousCenteredFix=null;
+            if(!focus){
+              statsLabel.textContent="Denne historiske begivenhed mangler både GPS-punkter og gemt position.";
+              if(timelineMarker&&activeMap){
+                activeMap.removeLayer(timelineMarker);timelineMarker=null;
+              }
+              timeLabel.textContent=eventTime;
+              return;
+            }
             updateCursor();
           });
           eventStrip.appendChild(eventButton);
@@ -2382,6 +2554,7 @@ class TinyFamilyPanel extends HTMLElement {
     };
     liveTab.addEventListener("click",()=>{
       stopPlayback();
+      eventFocus=null;
       previousCenteredFix=null;
       timelineRequest++;timelineData=null;timelineRevision++;
       chooseMode("live");previousSignature="";draw();
@@ -2406,12 +2579,14 @@ class TinyFamilyPanel extends HTMLElement {
     });
     minuteSlider.addEventListener("input",()=>{
       stopPlayback();
+      eventFocus=null;
       cursorManuallyMoved=true;
       updateCursor();
     });
     playButton.addEventListener("click",()=>{
       if(this._timelinePlaybackTimer){stopPlayback(false);return;}
       if(!timelineData || !timelineMode)return;
+      eventFocus=null;
       if(playbackTime===null){
         if(!cursorManuallyMoved){
           const first=(timelineData.segments||[]).find(segment=>segment.length)?.[0];
@@ -2783,11 +2958,12 @@ class TinyFamilyPanel extends HTMLElement {
             mapMarker.bindPopup(popup);
             bounds.push(point);
             if(!person.stale){
-              const navigate=document.createElement("a");
-              navigate.href="https://www.google.com/maps/dir/?api=1&destination="+
-                encodeURIComponent(person.latitude+","+person.longitude);
-              navigate.target="_blank";navigate.rel="noopener noreferrer";
-              navigate.textContent="Naviger til personen";
+              const navigate=document.createElement("button");
+              navigate.type="button";navigate.className="tf-save";
+              navigate.textContent="Se personens position";
+              navigate.addEventListener("click",()=>this.openLocationDialog({
+                latitude:person.latitude,longitude:person.longitude,name:person.name
+              },navigate));
               box.appendChild(navigate);
             }
           }

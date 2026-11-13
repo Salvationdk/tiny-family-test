@@ -748,6 +748,7 @@ async def _async_setup_runtime(hass: HomeAssistant, config: dict) -> bool:
                                      "last_t": None, "max_speed": 0.0,
                                      "distance_week_m": float((weekly.get("totals") or {}).get(person,0)),
                                      "trip_active": False, "trip_start": None, "trip_last_move": None,
+                                     "trip_start_lat": None, "trip_start_lon": None,
                                      "trip_dist_m": 0.0, "trip_max_speed": 0.0, "last_trip": "Ingen ture endnu",
                                      "places": list(saved.get(person, [])),
                                      "family_places": runtime["shared_places"],
@@ -983,6 +984,10 @@ async def _async_setup_runtime(hass: HomeAssistant, config: dict) -> bool:
                                     private=person in ghost_people,
                                     label=polygon_zone(polygons, lat, lon) or
                                           _nearest_zone_label(hass, lat, lon),
+                                    start_lat=st["stay_lat_sum"] / st["stay_n"],
+                                    start_lon=st["stay_lon_sum"] / st["stay_n"],
+                                    end_lat=st["stay_lat_sum"] / st["stay_n"],
+                                    end_lon=st["stay_lon_sum"] / st["stay_n"],
                                 )
                                 _record_place(hass, person,
                                               st["stay_lat_sum"] / st["stay_n"],
@@ -1046,6 +1051,7 @@ async def _async_setup_runtime(hass: HomeAssistant, config: dict) -> bool:
             if speed >= 2.8 and quality == "continuous":
                 if not st["trip_active"]:
                     st.update({"trip_active": True, "trip_start": t,
+                               "trip_start_lat": lat,"trip_start_lon": lon,
                                "trip_dist_m": 0.0, "trip_max_speed": speed})
                     fire("trip_started")
                 st["trip_last_move"] = t
@@ -1069,6 +1075,9 @@ async def _async_setup_runtime(hass: HomeAssistant, config: dict) -> bool:
                     ended_at=t, private=person in ghost_people,
                     distance_km=details["distance_km"],
                     max_speed_kmh=details["max_speed_kmh"],
+                    start_lat=st.get("trip_start_lat"),
+                    start_lon=st.get("trip_start_lon"),
+                    end_lat=lat,end_lon=lon,
                 )
                 fire("trip_ended", **details)
                 emit_alert(person, "trip_ended", details, has_event=False)
