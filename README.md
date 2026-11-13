@@ -1,4 +1,4 @@
-# Tiny Family — offentlig testversion 0.8.12
+# Tiny Family — offentlig testversion 0.8.13
 
 <!-- BEGIN: Salvationdk repository metrics -->
 [![Release downloads](https://img.shields.io/github/downloads/Salvationdk/tiny-family-test/total?label=Release%20downloads&style=flat-square)](https://github.com/Salvationdk/tiny-family-test/releases)
@@ -22,6 +22,13 @@
 Tiny Family er en Home Assistant-integration til familiekort, GPS-ruter, opdagelse af steder, datobaserede tidslinjer, beskeder, SOS og familieadvarsler.
 
 **Testversion:** Integrationen er stadig under praktisk afprøvning. SOS er ikke en certificeret nødtjeneste, og Home Assistant-notifikationer garanterer ikke levering på en telefon.
+
+## Nyt i 0.8.13 – kontrollér telefon og rummelig mobilhistorik
+- **Tryg telefonbinding:** Administratorens telefonvælger viser nu det faktiske `device_tracker.*`-id, GPS-type og den fysiske enheds model/navn, når Home Assistant kender dem. GPS-trackere vises først. Enheder, der kun registrerer router-/Bluetooth-forbindelse, kan ikke gemmes som GPS-telefon. Samme telefon kan ikke tildeles to familiemedlemmer ved en fejl.
+- **Tjek GPS og sensorer:** Under *Administration → Familiemedlemmer og telefoner* viser hvert medlem GPS-status, seneste trackeropdatering, nøjagtighed, hastighed rapporteret af telefonen og modellens oplysninger. Knappen **Kontrollér GPS og sensorer nu** henter en ny status fra Home Assistant uden at overskrive ikke-gemte ændringer. Grøn status betyder en positions-tracker med koordinater og en opdatering på højst 5 minutter; forsinket (5–15 minutter) og forældet (over 15 minutter) markeres særskilt. Denne kontrol tvinger **ikke** Android/iOS til at sende GPS.
+- **Ved stillestående telefoner:** Companion-appen kan undlade at sende uændrede GPS-positioner. En ældre opdatering er derfor ikke i sig selv bevis på en fejl. Vælg korrekt positions-tracker og kontrollér igen, mens telefonen flyttes; vurder også telefonens egne baggrundstilladelser.
+- **Et mobilvenligt historikfelt:** Den daglige teksthistorik og administratorens personhistorik bruger nu én samlet rulleflade i stedet for et lille indlejret rullevindue. GPS-distance, gang, kørsel og gennemsnitlig fart er synlige som fire nøgletal, mens seks ekstra nøgletal kan udvides på samme side. Historiske GPS-data ændres ikke.
+- **Flere egne Tiny Neon-ikoner:** GPS, telefon, fart, batteri, ture, ophold, tidslinje, afspilning og advarsler har nu deres egne indbyggede SVG-ikoner – uden eksternt tema og uden at ændre andre integrationer.
 
 ## Nyt i 0.8.12 – levende familiekort og flere åbne GPS-motorer
 - **Reel opdatering af familiekortet:** Positionen på kortet bruger nu Tiny Familys senest **accepterede GPS-måling fra den tilknyttede telefon**, i stedet for at læne sig op ad Home Assistants `person.*`-entitet, der kan være forældet. Nye målinger udløser en opdateringshændelse. Derudover opdateres kortet med lette statusopslag hver 6. sekund, **uden at rive Leaflet-kortet ned**, nulstille zoom eller afbryde den historiske tidslinje. Telefonen skal naturligvis selv levere nye GPS-målinger; panelet kan ikke fjernstyre Android/iOS' baggrunds-GPS.
@@ -217,6 +224,6 @@ Ghost Mode fra tidligere installationer ændrer ikke Home Assistants `person`, `
 
 ## Teknisk
 
-Home Assistant-domæne: `tiny_family`. Version: `0.8.12`. Integrationens filer ligger i `custom_components/tiny_family/`.
+Home Assistant-domæne: `tiny_family`. Version: `0.8.13`. Integrationens filer ligger i `custom_components/tiny_family/`.
 
 Dette offentlige testrepository indeholder kun installationskode og dokumentation, ikke den private udviklingshistorik, personlige GPS-ruter, telefonnumre eller Home Assistant-konfigurationsdata.

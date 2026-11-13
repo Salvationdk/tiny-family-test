@@ -77,6 +77,26 @@ class MobileExperienceTests(unittest.TestCase):
                        '.tf-wrap [hidden]{display:none!important}'):
             self.assertIn(marker,self.js)
 
+    def test_phone_diagnostics_and_original_neon_icons(self):
+        for marker in ('phone:', 'gps:', 'speed:', 'battery:', 'refresh:',
+                       'check:', 'warning:', 'trip:', 'stay:',
+                       'this.settings.tracker_diagnostics',
+                       'tf-phone-diagnostic', 'tf-phone-state',
+                       'Kontrollér GPS og sensorer nu',
+                       'this.hassInstance.callApi("GET","tiny_family/settings")',
+                       'Den samme GPS-telefon må ikke være valgt til to personer'):
+            self.assertIn(marker,self.js)
+
+    def test_person_diary_and_activity_share_full_size_scroll_surface(self):
+        self.assertIn('.tf-person-diary .tf-daily-scroll{overflow:visible',self.js)
+        self.assertIn('.tf-activity-view .tf-daily-scroll{overflow:visible',self.js)
+        self.assertIn('const extraStats=document.createElement("details")',self.js)
+        self.assertIn('Vis alle 10 nøgletal',self.js)
+        self.assertIn('"Gns. målt fart i bevægelse",count(s.avg_recorded_moving_speed_kmh,"km/t"),"speed",true',self.js)
+        self.assertIn('summaryFact("speed","Gns. målt "',self.js)
+        self.assertIn('.tf-timeline-warning{display:flex;flex-wrap:wrap',self.js)
+        self.assertIn('setTimelineFacts([["clock","Målt "',self.js)
+
     def test_text_diary_has_per_trip_speed_and_messages_use_step_rows(self):
         for marker in ('item.avg_speed_kmh','Gns. ', 'Topfart ',
                        'tf-daily-facts','tf-delivery-steps',
@@ -157,10 +177,10 @@ class MobileExperienceTests(unittest.TestCase):
         self.assertIn('if(requestedDate && requestedDate>=dockDate.min',self.js)
         self.assertIn('this._activityRequestedPerson=person.person;',self.js)
         self.assertIn('archive.className="tf-person tf-activity-archive";',self.js)
-        self.assertIn('diaryHeading.textContent="Min teksttidslinje · "',self.js)
+        self.assertIn('diaryHeading.append(tinyNeonIcon("history")',self.js)
         self.assertIn('void this.dailyReport(ownDiary,{view:"today",ownOnly:true});',self.js)
         self.assertIn('void this.dailyReport(memberDiary,{view:"editor",fixedPerson:person.id});',self.js)
-        self.assertIn('diarySummary.textContent="Administrator: personhistorik i tekst ("',self.js)
+        self.assertIn('diarySummary.append(tinyNeonIcon("history")',self.js)
 
 
 if __name__=="__main__":
