@@ -293,7 +293,7 @@ class TimelineTests(unittest.TestCase):
                             "view":"report"}
         view=T.TinyFamilyTimelineView(Hass())
         response=lambda payload,status=200,headers=None:(status,payload)
-        with patch.object(T.web,"json_response",side_effect=response):
+        with patch.object(T.web,"json_response",side_effect=response,create=True):
             allowed=asyncio.run(view.get(Request(types.SimpleNamespace(
                 id="admin",is_admin=True))))
             denied=asyncio.run(view.get(Request(types.SimpleNamespace(
