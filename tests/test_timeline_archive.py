@@ -8,6 +8,7 @@ import sys
 import tempfile
 import types
 import unittest
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1] / "custom_components" / "tiny_family"
@@ -116,6 +117,7 @@ class TimelineTests(unittest.TestCase):
                         viewer="person.one")
         self.assertEqual(theirs["points_count"],2)
         self.assertEqual(len(theirs["segments"]),2)
+        self.assertEqual(theirs["segments"][1][0]["gap_origin"], "explicit")
         self.assertEqual(own["points_count"],3)
         self.assertEqual(len(own["segments"]),1)
 
@@ -127,6 +129,26 @@ class TimelineTests(unittest.TestCase):
         self.assertEqual(result["points_count"],2)
         self.assertEqual(len(result["segments"]),2)
         self.assertEqual(result["summary"]["distance_km"],0)
+
+    def test_time_gap_is_distinguished_from_hidden_or_invalid_jump(self):
+        base=self.now-1500
+        short=T.build_day([
+            self.sample(base),self.sample(base+600,55.67,12.202)],[])
+        self.assertEqual(short["segments"][1][0]["gap_origin"], "time")
+        self.assertEqual(short["gps_diagnostics"]["gap_causes"]["time"],1)
+        explicitly_broken=T.build_day([
+            self.sample(base),self.sample(base+600,55.67,12.202,gap=True)],[])
+        self.assertEqual(explicitly_broken["segments"][1][0]["gap_origin"],"explicit")
+
+    def test_stationary_speed_sensor_during_movement_is_diagnosed(self):
+        base=self.now-1500
+        points=[self.sample(base+30*i,55.67,12.200+i*.0002,speed=0)
+                for i in range(12)]
+        report=T.build_day(points,[])
+        self.assertEqual(report["gps_diagnostics"]["speed_health"],
+                         "zero_despite_movement")
+        self.assertEqual(report["gps_diagnostics"]["moving_speed_samples"],0)
+        self.assertGreater(report["summary"]["distance_km"],.1)
 
     def test_calendar_day_uses_local_timezone_and_dst(self):
         now=datetime(2026,11,9,tzinfo=timezone.utc)
@@ -187,6 +209,75 @@ class TimelineTests(unittest.TestCase):
         T.delete_archive(self.path,"person.one",routes=True)
         self.assertIsNone(T.read_matched_day(self.path,"person.one","2026-11-09",
                                              "person.one",source))
+
+    def test_historical_road_cache_is_isolated_by_viewer_and_date(self):
+        path=[[55.67,12.200],[55.67,12.202],[55.67,12.204]]
+        owner=[{"start_t":self.now-300,"end_t":self.now-280,
+                "coordinates":path}]
+        other=[{"start_t":self.now-300,"end_t":self.now-280,
+                "coordinates":[[55.69,12.3],[55.69,12.302]]}]
+        for viewer, lines in (("person.one",owner),("person.two",other)):
+            T.save_matched_day(self.path,"person.one","2026-11-09",
+                               viewer,"hash",lines,"matched")
+        self.assertEqual(T.earlier_matched_roads(self.path,"person.one",
+            "2026-11-10","person.one"),owner)
+        self.assertEqual(T.earlier_matched_roads(self.path,"person.one",
+            "2026-11-10","person.two"),other)
+        self.assertEqual(T.earlier_matched_roads(self.path,"person.one",
+            "2026-11-09","person.one"),[])
+
+
+class TimelineApiTests(unittest.IsolatedAsyncioTestCase):
+    async def test_history_returns_before_slow_road_match_and_overlay_is_separate(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path=Path(folder)/"timeline.sqlite"
+            now=datetime.now(timezone.utc).timestamp()
+            T.initialize_archive(path,now=now)
+            T.persist_archive(path,[
+                {"person":"person.one","ts":now-120+idx*30,
+                 "lat":55.67,"lon":12.2+idx*.0002,"speed":30,
+                 "battery":74,"movement":"moving","accuracy":8,
+                 "stay_min":0,"gap":False,"private":False}
+                for idx in range(3)
+            ])
+            entry=types.SimpleNamespace(data={"persons":["person.one"],
+                "owners":{"person.one":"owner1"},
+                "map_matching_enabled":True,"map_matching_backend":"builtin"},
+                options={})
+            runtime={"entry":entry,"timeline_path":path,"timeline_pending":[]}
+            async def exec_job(fn,*args):return fn(*args)
+            hass=types.SimpleNamespace(
+                data={"tiny_family_runtime":runtime},
+                config=types.SimpleNamespace(time_zone="UTC"),
+                async_add_executor_job=exec_job,
+            )
+            view=T.TinyFamilyTimelineView(hass)
+            user=types.SimpleNamespace(id="owner1")
+            day=datetime.fromtimestamp(now,timezone.utc).date().isoformat()
+            class Request(dict):
+                def __init__(self,query):
+                    super().__init__({"hass_user":user})
+                    self.query=query
+            matches=[]
+            async def fake_match(*args,**kwargs):
+                matches.append(True)
+                return ([{"start_t":now-120,"end_t":now-60,
+                          "coordinates":[[55.67,12.2],[55.67,12.201]]}],
+                        [],"matched")
+            with patch.object(T.web,"json_response",lambda data,**kw:data,
+                              create=True), patch.object(T,"match_day_embedded",fake_match):
+                raw=await view.get(Request({"person":"person.one",
+                                            "date":day,"map_match":"0"}))
+                self.assertEqual(raw["points_count"],3)
+                self.assertEqual(raw["matched_segments"],[])
+                self.assertFalse(matches,"Loading a date must not run network road matching")
+                overlay=await view.get(Request({"person":"person.one",
+                                                "date":day,"phase":"matching"}))
+                self.assertEqual(len(matches),1)
+                self.assertEqual(overlay["matching_status"],"matched")
+                self.assertIn("matched_segments",overlay)
+                self.assertNotIn("segments",overlay,
+                    "Road-overlay response must never resend raw personal GPS")
 
 
 if __name__=="__main__":

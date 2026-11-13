@@ -1,4 +1,4 @@
-# Tiny Family — offentlig testversion 0.8.4
+# Tiny Family — offentlig testversion 0.8.5
 
 <!-- BEGIN: Salvationdk repository metrics -->
 [![Release downloads](https://img.shields.io/github/downloads/Salvationdk/tiny-family-test/total?label=Release%20downloads&style=flat-square)](https://github.com/Salvationdk/tiny-family-test/releases)
@@ -22,6 +22,12 @@
 Tiny Family er en Home Assistant-integration til familiekort, GPS-ruter, opdagelse af steder, datobaserede tidslinjer, beskeder, SOS og familieadvarsler.
 
 **Testversion:** Integrationen er stadig under praktisk afprøvning. SOS er ikke en certificeret nødtjeneste, og Home Assistant-notifikationer garanterer ikke levering på en telefon.
+
+## Nyt i 0.8.5 – hurtig historik, forsigtige vejgæt og GPS-advarsler
+- **Tidslinjedato åbnes uden vejventetid:** Den lokale SQLite-historik vises straks efter API-svaret. Bekræftet vejtilpasning og eventuelle vejgæt hentes i en **anden, asynkron forespørgsel**, så Overpass ikke holder datoens GPS-data tilbage. Ved fejl forbliver tidslinjen brugbar.
+- **To slags vejstykker:** Faktiske, sammenhængende OSM-match tegnes med fuldt optrukket cyan. Forsigtige *anslåede* veje mellem sparsomme GPS-fix tegnes med **stiplet gul streg** og forklarende tekst. Motoren forsøger først at genbruge tidligere matchede vejforløb for **samme person og den samme seer**, derefter OSM-veje. Gæt er ikke målt kørsel; de bruges ikke som GPS-data til distance, hastighed, zonealarmer eller indlæring. Skjulte private GPS-afbrud forbindes aldrig af gæt.
+- **Tidslinjefart og GPS-afbrud:** Hvis telefonen kun leverer 0 km/t trods registreret bevægelse, får dagsvisningen en diagnostisk advarsel. Under et anslået rutestykke kan afspilningsmarkøren følge en tydeligt markeret anslået position, og fart står som *ukendt*.
+- **Advarsel om batterisparetilstand:** Administrator kan vælge automatisk push til telefonens **egen bruger**, hvis dens Companion-batterisparer er aktiv ved **over 30 %** strøm. Teksten advarer om upræcis/forsinket GPS og anbefaler at slå batterisparer fra, når opladning er mulig. Kræver både aktiv fælles notifikationsindstilling, kategorien og en fungerende Companion-pushmodtager; gentages ikke ved vedvarende batterisparetilstand og har seks timers køletid ved gentagne aktiveringer.
 
 ## Nyt i 0.8.4 – indbygget vejtilpasning er tændt som standard
 - **Ny installation:** Indbygget OpenStreetMap/Snap-on-road er aktiveret fra første opsætning. Ingen OSRM-server eller API-nøgle kræves.
@@ -156,6 +162,6 @@ Ghost Mode fra tidligere installationer ændrer ikke Home Assistants `person`, `
 
 ## Teknisk
 
-Home Assistant-domæne: `tiny_family`. Version: `0.8.4`. Integrationens filer ligger i `custom_components/tiny_family/`.
+Home Assistant-domæne: `tiny_family`. Version: `0.8.5`. Integrationens filer ligger i `custom_components/tiny_family/`.
 
 Dette offentlige testrepository indeholder kun installationskode og dokumentation, ikke den private udviklingshistorik, personlige GPS-ruter, telefonnumre eller Home Assistant-konfigurationsdata.

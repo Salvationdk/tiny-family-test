@@ -49,7 +49,12 @@ class MobileExperienceTests(unittest.TestCase):
         self.assertIn("activeMap.panTo(loc,{animate:false})",self.js)
         self.assertIn('previousCenteredFix=loc.join(",")',self.js)
         self.assertIn("!timelineMode)draw()",self.js)
-        self.assertIn("map_match=1",self.js)
+        self.assertIn('"&map_match=0"',self.js)
+        self.assertIn('"&phase=matching"',self.js)
+        self.assertIn('void loadRoadOverlay(person,selectedDate,requestId)',self.js)
+        self.assertIn('timelineData.inferred_segments=overlay.inferred_segments||[]',self.js)
+        self.assertIn('dashArray:"6 8"',self.js)
+        self.assertIn('Anslået position',self.js)
 
     def test_replay_uses_real_elapsed_time_and_resets_date_when_person_changes(self):
         self.assertIn('data-role="timeline-speed"',self.js)

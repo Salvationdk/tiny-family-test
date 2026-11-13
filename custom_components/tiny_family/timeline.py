@@ -234,7 +234,7 @@ def delete_archive(path, person, *, routes=False, activities=False):
 def match_fingerprint(segments, backend, server=""):
     """Hash only the GPS samples visible to this viewer, never a global track."""
     hasher = hashlib.sha256()
-    hasher.update(f"{backend}|{server}|".encode("utf-8"))
+    hasher.update(f"v2-sparse|{backend}|{server}|".encode("utf-8"))
     for segment in segments:
         hasher.update(b"|")
         for fix in segment:
@@ -255,6 +255,34 @@ def read_matched_day(path, person, day, viewer, source_hash):
         return json.loads(row[0]), row[1]
     finally:
         conn.close()
+
+
+def earlier_matched_roads(path, person, day, viewer, *, limit=20):
+    """Use only road overlays previously visible to this same viewer.
+
+    Private observations from another family member cannot become inferred
+    travel by reading the owner's separate archive or cache.
+    """
+    conn = _connect(path)
+    try:
+        rows = conn.execute("""SELECT matched_json FROM matched_days
+          WHERE person=? AND viewer=? AND day<>? ORDER BY day DESC LIMIT ?""",
+          (person, viewer, day, min(20, max(0, limit)))).fetchall()
+    finally:
+        conn.close()
+    result = []
+    for (encoded,) in rows:
+        try:
+            segments = json.loads(encoded)
+        except (TypeError, ValueError):
+            continue
+        if isinstance(segments, list):
+            result.extend(item for item in segments[:40]
+                          if isinstance(item, dict) and
+                          isinstance(item.get("coordinates"), list))
+        if len(result) >= 60:
+            break
+    return result[:60]
 
 
 def save_matched_day(path, person, day, viewer, source_hash, segments, status):
@@ -356,10 +384,14 @@ def build_day(points, events):
     segments, current = [], []
     distance_m = 0.0
     last = None
+    gap_causes = {"time": 0, "explicit": 0, "implausible": 0}
     for point in points:
+        reason = ""
         if last is not None and (
             point.get("gap") or point["ts"] - last["ts"] > GAP_SECONDS
         ):
+            reason = "explicit" if point.get("gap") else "time"
+            gap_causes[reason] += 1
             if current:
                 segments.append(current)
             current=[]
@@ -370,22 +402,39 @@ def build_day(points, events):
             if elapsed>0 and displacement/elapsed<=55.56:
                 distance_m+=displacement
             else:
+                reason = "implausible"
+                gap_causes[reason] += 1
                 if current:segments.append(current)
                 current=[]
-        current.append({
+        fix = {
             "t":point["ts"],"lat":point["lat"],"lon":point["lon"],
             "speed":point.get("speed"),"battery":point.get("battery"),
             "movement":point.get("movement") or "unknown",
             "stay_min":point.get("stay_min"),"accuracy":point.get("accuracy"),
-        })
+        }
+        if not current and reason:
+            fix["gap_origin"] = reason
+        current.append(fix)
         last=point
     if current:
         segments.append(current)
     valid_speeds=[p["speed"] for p in points if type(p.get("speed")) in (int,float)
                   and isfinite(p["speed"])]
+    measured_moving = sum(1 for speed in valid_speeds if speed >= 2)
+    speed_health = (
+        "missing" if not valid_speeds else
+        "zero_despite_movement" if len(valid_speeds) >= 10 and
+            measured_moving == 0 and distance_m >= 100 else
+        "recorded"
+    )
     return {
         "segments":segments,"events":events,
         "points_count":len(points),"gaps":max(0,len(segments)-1),
+        "gps_diagnostics":{
+            "gap_causes":gap_causes,"speed_health":speed_health,
+            "speed_samples":len(valid_speeds),
+            "moving_speed_samples":measured_moving,
+        },
         "summary":{
             "distance_km":round(distance_m/1000,2),
             "max_speed_kmh":round(max(valid_speeds),1) if valid_speeds else None,
@@ -461,9 +510,11 @@ class TinyFamilyTimelineView(HomeAssistantView):
         # Admin-enabled matching also applies to old archived days. Derive
         # lines when a date is viewed, and cache per viewer on disk; an
         # unbounded eager backfill could overload OSM and leak private fixes.
+        matching_only = request.query.get("phase") == "matching"
         data["matched_segments"]=[]
+        data["inferred_segments"]=[]
         data["matching_status"]="off"
-        if request.query.get("map_match") == "1" or (
+        if matching_only or request.query.get("map_match") == "1" or (
             cfg.get("map_matching_enabled") and request.query.get("map_match") != "0"
         ):
             server = cfg.get("map_matching_url", "")
@@ -474,7 +525,7 @@ class TinyFamilyTimelineView(HomeAssistantView):
                     backend not in ("builtin", "osrm") or
                     (backend == "osrm" and not server)):
                 data["matching_status"] = "disabled"
-            elif data["points_count"] >= 3:
+            elif data["points_count"] >= (2 if backend == "builtin" else 3):
                 cache = runtime.setdefault("map_matching_cache", {})
                 source_hash = match_fingerprint(data["segments"], backend, server)
                 cache_key = (
@@ -484,6 +535,7 @@ class TinyFamilyTimelineView(HomeAssistantView):
                 now_ts = datetime.now(timezone.utc).timestamp()
                 if cached is not None and now_ts - cached["at"] < 600:
                     data["matched_segments"] = cached["segments"]
+                    data["inferred_segments"] = cached.get("inferred", [])
                     data["matching_status"] = cached["status"]
                 else:
                     # Cached historical overlays survive HA restarts.
@@ -496,15 +548,34 @@ class TinyFamilyTimelineView(HomeAssistantView):
                         stored = None
                     import asyncio
                     lock = runtime.setdefault("map_matching_lock", asyncio.Lock())
+                    inferred = []
                     if stored is not None:
                         matched, status = stored
+                        # Cache from an earlier viewing is already verified.
+                        # Local history may still identify additional gaps.
+                        if backend == "builtin":
+                            from .road_engine import sparse_road_pairs
+                            from .road_engine_core import infer_historical_gap
+                            past = await self.hass.async_add_executor_job(
+                                earlier_matched_roads, runtime["timeline_path"],
+                                person, day, viewer)
+                            inferred = [item for item in (
+                                infer_historical_gap(*pair, past)
+                                for pair in sparse_road_pairs(data["segments"],
+                                    allow_explicit=(viewer == person)))
+                                if item is not None]
                     else:
                         # One matching request at a time avoids flooding OSM.
                         async with lock:
                             if backend == "builtin":
                                 road_cache = runtime.setdefault("osm_road_cache", {})
-                                matched, status = await match_day_embedded(
-                                    self.hass, data["segments"], road_cache
+                                past = await self.hass.async_add_executor_job(
+                                    earlier_matched_roads, runtime["timeline_path"],
+                                    person, day, viewer)
+                                matched, inferred, status = await match_day_embedded(
+                                    self.hass, data["segments"], road_cache,
+                                    include_inferences=True, historical_roads=past,
+                                    allow_owner_gaps=(viewer == person)
                                 )
                             else:
                                 matched, status = await match_day(
@@ -519,15 +590,26 @@ class TinyFamilyTimelineView(HomeAssistantView):
                             except (OSError, sqlite3.Error, ValueError):
                                 pass  # Overlay is optional; keep original GPS.
                     data["matched_segments"] = matched
+                    data["inferred_segments"] = inferred
                     data["matching_status"] = status
                     cache[cache_key] = {
-                        "at": now_ts, "segments": matched, "status": status,
+                        "at": now_ts, "segments": matched,
+                        "inferred": inferred, "status": status,
                     }
                     if len(cache) > 20:
                         oldest = min(cache, key=lambda key: cache[key]["at"])
                         cache.pop(oldest, None)
             else:
                 data["matching_status"] = "not_enough_points"
+        if matching_only:
+            # In the browser this request happens *after* the raw day has
+            # already rendered. Never resend the private fixes unnecessarily.
+            return web.json_response({
+                "person": person, "date": day,
+                "matched_segments": data["matched_segments"],
+                "inferred_segments": data["inferred_segments"],
+                "matching_status": data["matching_status"],
+            }, headers={"Cache-Control":"no-store, private"})
         return web.json_response({
             "person":person,"date":day,"timezone":self.hass.config.time_zone,
             "retention_days":retention_days,"start":start,"end":end,
