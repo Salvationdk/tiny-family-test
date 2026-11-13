@@ -13,8 +13,8 @@ get_day_summary:
 evaluate_location:
   name: Undersøg position i polygoner
   description: >-
-    Læser Tiny Familys polygonmotor fra en HA-automation eller et YAML-script.
-    Returnerer alle matchende polygoner; kan også beregne luftlinjeafstand og
+    Læser Tiny Familys polygon- og cirkelzonemotor fra en HA-automation eller et YAML-script.
+    Returnerer alle matchende områder; kan også beregne luftlinjeafstand og
     et forsigtigt ETA-skøn. Ingen persons private position læses. Brug
     response_variable til resultatet.
   fields:
@@ -56,6 +56,67 @@ evaluate_location:
           min: 0
           max: 200
           mode: box
+
+analyze_motion:
+  name: Beregn bevægelse mellem to GPS-positioner
+  description: >-
+    Skrivebeskyttet Tiny Family-fartmotor for egne koordinater. Returnerer
+    afstand, fartkilde, bevægelse og kvalitet. Telefonfart er m/s;
+    GPS-estimeret fart markeres tydeligt. Brug response_variable.
+  fields:
+    start_latitude:
+      name: Start-breddegrad
+      required: true
+      selector:
+        number: {min: -90, max: 90, mode: box}
+    start_longitude:
+      name: Start-længdegrad
+      required: true
+      selector:
+        number: {min: -180, max: 180, mode: box}
+    end_latitude:
+      name: Slut-breddegrad
+      required: true
+      selector:
+        number: {min: -90, max: 90, mode: box}
+    end_longitude:
+      name: Slut-længdegrad
+      required: true
+      selector:
+        number: {min: -180, max: 180, mode: box}
+    elapsed_seconds:
+      name: Sekunder mellem målinger
+      required: true
+      selector:
+        number: {min: 0.001, max: 86400, mode: box}
+    accuracy_m:
+      name: GPS-præcision ved sidste måling (meter)
+      selector:
+        number: {min: 0, max: 150, mode: box}
+    previous_accuracy_m:
+      name: GPS-præcision ved første måling (meter)
+      selector:
+        number: {min: 0, max: 150, mode: box}
+    reported_speed_mps:
+      name: Telefonens hastighed (m/s, valgfri)
+      selector:
+        number: {min: 0, max: 55.556, mode: box}
+
+analyze_route:
+  name: Beregn GPS-turens statistik
+  description: >-
+    Analyserer 2–200 egne GPS-punkter uden at lagre dem. Returnerer sammenlagt
+    GPS-distance, varighed, topfart, antal GPS-afbrud og målekilder. Brug
+    response_variable. Store GPS-huller forbindes ikke til falske ture.
+  fields:
+    fixes:
+      name: GPS-punkter (liste af objekter)
+      description: >-
+        Hvert objekt har latitude, longitude, timestamp (Unix-sekunder),
+        samt valgfri accuracy_m og speed_mps. Tidsstempler skal stige.
+      required: true
+      selector:
+        object:
 
 log_message:
   name: Gem besked i historik

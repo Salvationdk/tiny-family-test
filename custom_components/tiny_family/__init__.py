@@ -37,12 +37,13 @@ from .places import _predict, _record_place, _seed_zones, estimate_home_eta, est
 from .historical_prediction import load_historical_patterns
 from .places_api import TinyFamilyPlacesView
 from .motion import update_motion
-from .gps_quality import assess_sample, mark_stale, reset_continuity, screen_gps_drift
+from .gps_quality import (assess_sample, mark_stale, reset_continuity,
+                          resolve_speed_mps, screen_gps_drift)
 from .automation_engine import (
     update_zone, update_battery, update_battery_saver_warning,
     update_speed, notify_family, message_for_event,
 )
-from .privacy import TinyFamilyStatusView, TinyFamilyPrivacyView
+from .privacy import TinyFamilyStatusView, TinyFamilyPrivacyView, shared_map_zones
 from .sharing import TinyFamilySharingView
 from .zones_api import TinyFamilyZonesView
 from .routes import TinyFamilyRoutesView, record_route, prune_routes
@@ -52,7 +53,7 @@ from .activity import TinyFamilyActivityView, add_activity, prune_activity, arch
 from .geofences import (
     TinyFamilyGeofencesView, polygon_zone, polygon_membership_changes, validate_polygon,
 )
-from .automation_api import evaluate_location
+from .automation_api import analyze_motion, analyze_route, evaluate_location
 from .personal_data import TinyFamilyPersonalDataView
 from .export import TinyFamilyPersonalExportView
 from .places import _nearest_zone_label
@@ -768,9 +769,12 @@ async def _async_setup_runtime(hass: HomeAssistant, config: dict) -> bool:
                                      "movement_state": "unknown",
                                      "movement_candidate": "",
                                      "movement_candidate_samples": 0,
-                                     "speed_kmh": 0.0,
+                                     "speed_kmh": None, "speed_source": "unavailable",
                                      "gps_health": "unknown",
                                      "gps_seen_at": None,
+                                     "gps_update_seen_at": None,
+                                     "gps_last_rejection": "awaiting_fix",
+                                     "last_gps_accuracy": None,
                                      "polygon_memberships": None}
         if cfg.get("learn_routines_enabled",False) and person in routine_people:
             learned=typical_departure(routines_data,person,local_now.weekday())
@@ -851,17 +855,19 @@ async def _async_setup_runtime(hass: HomeAssistant, config: dict) -> bool:
             new = event.data.get("new_state")
             if new is None:
                 return
+            st = hass.data.get(DOMAIN, {}).get(person)
+            if st is None:
+                return
+            st["gps_update_seen_at"] = datetime.now(tz=timezone.utc).timestamp()
             a = new.attributes
             if a.get("latitude") is None:
+                st["gps_last_rejection"] = "missing_coordinates"
                 return
             try:
                 # last_changed can remain unchanged while Companion GPS
                 # attributes update inside the same Home Assistant zone.
                 t = new.last_updated.timestamp()
             except Exception:
-                return
-            st = hass.data.get(DOMAIN, {}).get(person)
-            if st is None:
                 return
             try:
                 lat, lon = float(a["latitude"]), float(a["longitude"])
@@ -914,7 +920,9 @@ async def _async_setup_runtime(hass: HomeAssistant, config: dict) -> bool:
                 st["gps_glitch_at"] = t
                 _publish(hass, person)
             if quality in ("invalid", "duplicate", "jump"):
+                st["gps_last_rejection"] = quality
                 return
+            drift = None
             if quality == "continuous":
                 drift = screen_gps_drift(
                     st, observed_at=t, latitude=lat, longitude=lon,
@@ -922,6 +930,7 @@ async def _async_setup_runtime(hass: HomeAssistant, config: dict) -> bool:
                     power_save=power_save is True,
                 )
                 if drift == "discard":
+                    st["gps_last_rejection"] = "drift"
                     st["gps_glitches"] = st.get("gps_glitches", 0) + 1
                     st["gps_glitch_at"] = t
                     _publish(hass, person)
@@ -933,28 +942,33 @@ async def _async_setup_runtime(hass: HomeAssistant, config: dict) -> bool:
                 archive_interrupted_trip(
                     activity_data, person, st, private=person in ghost_people
                 )
+                # A confirmed moving phone can keep its short-lived GPS
+                # confidence after a rebase, but never carry a route over it.
+                confirmed_motion_until = (st.get("gps_motion_confirmed_until")
+                                          if drift == "rebase" else None)
                 reset_continuity(st)
+                if confirmed_motion_until is not None:
+                    st["gps_motion_confirmed_until"] = confirmed_motion_until
                 d = None  # Never add a jump across the GPS outage to a trip.
             st["gps_health"] = "fresh"
             st["gps_seen_at"] = t
+            st["gps_last_rejection"] = None
             timeline_gap = quality == "gap" or bool(st.pop("route_gap_pending", False))
             record_route(
                 routes_data, person, ts=t, lat=lat, lon=lon,
                 private=person in ghost_people, gap=timeline_gap,
             )
-            speed_observed = raw_speed is not None
-            dt_h = ((t - st["last_t"]) / 3600
-                    if st.get("last_t") is not None else 0)
+            elapsed = (t - st["last_t"] if st.get("last_t") is not None else None)
+            resolved_speed, speed_source = resolve_speed_mps(
+                float(raw_speed) if raw_speed is not None else None,
+                distance_m=d, elapsed_seconds=elapsed, accuracy_m=accuracy,
+                previous_accuracy_m=st.get("last_gps_accuracy"),
+            )
+            speed_observed = raw_speed is not None and speed_source == "phone"
+            speed = resolved_speed if resolved_speed is not None else 0.0
+            dt_h = (elapsed / 3600 if elapsed is not None else 0)
             distance_step = 0.0
             if st["last_lat"] is not None and d is not None:
-                if raw_speed is None and dt_h > 0 and dt_h <= (10 / 60):
-                    # Estimate only when Companion did not provide speed.
-                    # A GPS accuracy floor reduces jitter-induced motion.
-                    if (accuracy is None or accuracy <= 100) and d >= max(45, (accuracy or 0) * 1.5):
-                        estimated = d / (dt_h * 3600)
-                        if estimated < 200 / 3.6:
-                            speed = estimated
-                            speed_observed = True
                 if (dt_h > 0 and (d / 1000 / dt_h) <= 200 and
                         d >= max(20.0, 1.5 * (accuracy or 0))):
                     distance_step = d
@@ -1007,8 +1021,22 @@ async def _async_setup_runtime(hass: HomeAssistant, config: dict) -> bool:
                 st, observed_at=t, speed_mps=speed,
                 displacement_m=d, accuracy_m=accuracy,
             )
-            st["speed_kmh"] = round(speed * 3.6, 1)
+            st["speed_kmh"] = (round(speed * 3.6, 1)
+                               if resolved_speed is not None else None)
+            st["speed_source"] = speed_source
             st["max_speed"] = max(st["max_speed"], speed)
+            # Commit the accepted position before any SQLite/learning await.
+            # Otherwise an arriving phone fix can race with an older fix and
+            # the live map waits behind potentially slow history analysis.
+            st["last_lat"], st["last_lon"], st["last_t"] = lat, lon, t
+            st["last_known_lat"], st["last_known_lon"] = lat, lon
+            st["last_gps_accuracy"] = accuracy
+            _publish(hass, person)
+            if person not in ghost_people:
+                hass.bus.async_fire("tiny_family_position_updated", {
+                    "person": person,
+                    "timestamp": datetime.fromtimestamp(t, tz=timezone.utc).isoformat(),
+                })
             battery_entity = (cfg.get("batteries") or {}).get(person)
             battery_state = hass.states.get(battery_entity) if battery_entity else None
             try:
@@ -1156,7 +1184,6 @@ async def _async_setup_runtime(hass: HomeAssistant, config: dict) -> bool:
                      destination=destination,
                      previous_destination=previous_destination,
                      eta_minutes=st.get("dest_eta_min", 0))
-            st["last_lat"], st["last_lon"], st["last_t"] = lat, lon, t
             _publish(hass, person)
         return _cb
 
@@ -1298,11 +1325,31 @@ async def _async_setup_runtime(hass: HomeAssistant, config: dict) -> bool:
 
     async def evaluate_location_service(call):
         try:
-            return evaluate_location(runtime.get("geofences") or [], call.data)
+            return evaluate_location(runtime.get("geofences") or [], call.data,
+                                     circles=shared_map_zones(hass))
         except ValueError as err:
             raise HomeAssistantError(str(err)) from err
 
     hass.services.async_register(DOMAIN, "evaluate_location", evaluate_location_service,
+                                 supports_response=SupportsResponse.ONLY)
+
+    async def analyze_motion_service(call):
+        try:
+            return analyze_motion(call.data)
+        except ValueError as err:
+            raise HomeAssistantError(str(err)) from err
+
+    async def analyze_route_service(call):
+        try:
+            return analyze_route(call.data)
+        except ValueError as err:
+            raise HomeAssistantError(str(err)) from err
+
+    # These calculations use only caller-supplied values, not family history.
+    # System automations (context.user_id=None) can safely invoke both.
+    hass.services.async_register(DOMAIN, "analyze_motion", analyze_motion_service,
+                                 supports_response=SupportsResponse.ONLY)
+    hass.services.async_register(DOMAIN, "analyze_route", analyze_route_service,
                                  supports_response=SupportsResponse.ONLY)
 
     # Companion widgets and iOS shortcuts can call these services as their

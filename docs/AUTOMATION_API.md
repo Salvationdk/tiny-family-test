@@ -1,4 +1,4 @@
-# Tiny Family som byggesten i Home Assistant — 0.8.11
+# Tiny Family som byggesten i Home Assistant — 0.8.12
 
 Tiny Family er ikke kun et kort. Integrationen offentliggør sensorer,
 hændelser og handlinger (*actions/services*), så andre dashboards,
@@ -12,7 +12,11 @@ automationer og custom integrationer kan genbruge resultaterne.
 | Reagere på, at en bestemt person går ind/ud | `binary_sensor.tiny_family_<person>_polygon_<id>` | Registreret HA-entitet; almindelig `state`-trigger, også i andre dashboards. |
 | Reagere på ind-/udgang og få områdets navn med | `tiny_family_polygon_entered` / `tiny_family_polygon_left` | Hændelsen har `polygon_id`, `polygon_name`, `person`, `timestamp`. |
 | Teste vilkårlige koordinater mod **alle** polygoner | Handlingen `tiny_family.evaluate_location` | Genbruger Tiny Familys point-in-polygon-motor fra YAML, også til andre GPS-enheder. |
+| Teste koordinater mod Home Assistants cirkelzoner | `tiny_family.evaluate_location` → `circles` | Kombinerer almindelige `zone.*`-cirkler og Tiny Family-polygoner uden at ændre dem. |
 | Beregne luftlinjeafstand og et forsigtigt ETA-skøn | `tiny_family.evaluate_location` med målkoordinater | Genbruger Tiny Familys afstands- og ETA-udregninger; viser `null`, når data ikke kan give et forsvarligt estimat. |
+| Udregne fart/bevægelse mellem to selvvalgte GPS-fix | `tiny_family.analyze_motion` | Samme hastighedsvurdering som under live tur; viser om hastigheden kommer fra telefonen eller er beregnet fra GPS. |
+| Opsummere en indsendt GPS-rute | `tiny_family.analyze_route` | 2–200 GPS-fix; aggregerer distance, varighed, topfart, afbrud og antal fartkilder uden at gemme koordinaterne. |
+| Bruge personens aktuelle hastighed i en anden automation | `sensor.tiny_family_<person>_current_speed` og `_speed_source` | Ingen opdigtet 0 ved ukendt fart; kilden er `phone`, `gps_estimate` eller `unavailable`. |
 | Hente en persons dagsoversigt | `tiny_family.get_day_summary` | Eksisterende svarservice; kræver et identificerbart, autoriseret HA-brugerkontekst. |
 | Bruge en normal Home Assistant-cirkelzone | `zone.<navn>` | Stadig Home Assistants egen cirkelzone med centrum og radius. |
 
@@ -167,13 +171,111 @@ Så tilføjes `distance_m`, `distance_km`, `eta_minutes`,
 hastighed, afstand eller måledata falder uden for motorens forsigtige
 beregningsgrænser. Afstand er **luftlinje**, ikke faktisk ruteafstand.
 
-## 5. Hvilke andre Tiny Family-motorer kan genbruges?
+Fra 0.8.12 er der også `inside_any_circle`, `circle_count`, `circles`
+og `inside_any_area` i hvert svar. `circles` er de normale Home Assistant-zoner
+med `entity_id` som f.eks. `zone.home`, `name` og `shape: circle`.
+De eksisterende `polygons` / `polygon_count` ændres ikke, så gamle scripts
+fortsætter med at virke. Ingen cirkel ændres til en polygon eller omvendt.
+
+## 5. Nye fart- og ruteberegninger til YAML og scripts
+
+`tiny_family.analyze_motion` beregner forskydning mellem to koordinater i
+meter og returnerer en fart i km/t, `moving` / `stationary` / `uncertain` /
+`unknown`, samt `speed_source`. `reported_speed_mps` er valgfri **m/s**,
+samme enhed som Home Assistant Companion angiver i sin GPS-tracker.
+Inputtid er **sekunder mellem fix**, ikke en dato. Et GPS-skøn vises kun,
+når målingerne ligger tæt nok på hinanden og GPS-nøjagtigheden er tilstrækkelig.
+
+```yaml
+alias: Beregn fart med Tiny Family-motoren
+sequence:
+  - action: tiny_family.analyze_motion
+    data:
+      start_latitude: 55.6700
+      start_longitude: 12.0800
+      end_latitude: 55.6730
+      end_longitude: 12.0800
+      elapsed_seconds: 60
+      accuracy_m: 8
+      previous_accuracy_m: 8
+      reported_speed_mps: 0
+    response_variable: beregning
+  - action: persistent_notification.create
+    data:
+      title: "GPS-beregning"
+      message: >-
+        {{ beregning.speed_kmh }} km/t
+        (kilde: {{ beregning.speed_source }},
+        bevægelse: {{ beregning.movement }})
+```
+
+Svaret indeholder bl.a. `displacement_m`, `displacement_km`,
+`elapsed_seconds`, `continuous`, `speed_kmh`, `speed_source`,
+`movement`, `is_estimate` og `distance_is_airline`. `continuous=false`
+betyder, at punkterne er for langt fra hinanden tidsligt eller geografisk
+til en sammenhængende GPS-tur. En GPS-afstand mellem to punkter er ikke en
+bekræftet vejstrækning.
+
+`tiny_family.analyze_route` kan bruges med en liste af 2–200 fix, som
+kommer fra dit eget script, en anden integration eller et andet køretøj.
+Du skal selv hente og levere GPS-punkterne; Tiny Family læser ikke
+personers historik for denne handling.
+
+```yaml
+sequence:
+  - action: tiny_family.analyze_route
+    data:
+      fixes:
+        - {latitude: 55.6700, longitude: 12.0800, timestamp: 1794580000, accuracy_m: 8}
+        - {latitude: 55.6750, longitude: 12.0800, timestamp: 1794580060, accuracy_m: 8, speed_mps: 0}
+        - {latitude: 55.6800, longitude: 12.0800, timestamp: 1794580120, accuracy_m: 8, speed_mps: 0}
+    response_variable: tur
+  - action: persistent_notification.create
+    data:
+      message: >-
+        Tur: {{ tur.distance_km }} km, {{ tur.duration_minutes }} min,
+        topfart {{ tur.max_speed_kmh }} km/t,
+        GPS-afbrud {{ tur.gps_gaps }}.
+```
+
+Alle tidsstempler er Unix-sekunder, og hvert nyt tidspunkt skal være
+større end det forrige. Svaret indeholder kun samlede tal:
+`fix_count`, `valid_intervals`, `gps_gaps`, `distance_km`,
+`duration_minutes`, `moving_minutes`, `max_speed_kmh`,
+`speed_sources` og `distance_is_gps_estimate`. Det returnerer **ikke**
+rå koordinater. Et GPS-afbrud over 15 minutter eller et usandsynligt
+positionsspring tæller som hul; der lægges ikke fiktiv distance ind.
+Disse motorer er beregninger, ikke dokumentation for en bestemt persons
+faktiske transportform eller en garanti for bilens instrumenthastighed.
+
+## 6. Live-position og genbrugelige hændelser
+
+| Entitet/hændelse | Indhold | Sikker anvendelse |
+|---|---|---|
+| `sensor.tiny_family_<person>_current_speed` | Hastighed i km/t eller `unknown` ved manglende frisk GPS | Brug i grafer og alarmer, hvis målekilden er acceptabel. |
+| `sensor.tiny_family_<person>_speed_source` | `phone`, `gps_estimate`, `unavailable` | Skeln mellem målt og estimeret fart. |
+| `sensor.tiny_family_<person>_gps_health` | `fresh`, `stale`, `unknown` | Styr visninger og automationer ved manglende opdateringer. |
+| `sensor.tiny_family_<person>_gps_age_minutes` | Minutter siden accepteret GPS-fix | Advar om manglende GPS på telefonen. |
+| `tiny_family_position_updated` | `person`, `timestamp` uden koordinater | Opdatér et andet panel straks efter et nyt accepteret fix. |
+
+Den sidste hændelse udsendes ikke for tidligere Ghost-markerede personer.
+**Vigtigt:** Et 6-sekunders statusopslag får ikke telefonen til at sende nye
+GPS-positioner: Android/iOS og Companion bestemmer GPS-opdateringsrytmen.
+Hvis der står `GPS forældet`, skal du kontrollere tilladelsen til *præcis
+position*, baggrundsplacering, Companion-sensorer og batterisparer på den
+konkrete telefon. Under tidslinjeafspilning stoppes live opdateringer,
+så rute og kortcentrum ikke flytter sig uventet.
+
+## 7. Hvilke andre Tiny Family-motorer kan genbruges?
 
 | Motor | Tilgængelig udenfor panelet nu | Begrænsning |
 |---|---|---|
 | Polygongeometri | Ja, sensorattributter (`geojson`, `points`) | En tredjeparts kortvisning skal tegne polygonen selv. |
 | Polygon-test for vilkårlig GPS-position | Ja, `evaluate_location` | Kræver bredde-/længdegrad. |
+| Cirkelzone-test for vilkårlig GPS-position | Ja, `evaluate_location` | Medtager de eksisterende `zone.*`-entiteter. |
 | Luftlinjeafstand og grundlæggende ETA | Ja, `evaluate_location` | Er en beregning, ikke navigation. |
+| Hastighed og bevægelse mellem to GPS-fix | Ja, `analyze_motion` | Meget usikre eller lange spring giver intet falsk GPS-skøn. |
+| Statistik over selvvalgte GPS-punkter | Ja, `analyze_route` | Højst 200 fix pr. kald; ingen lokationshistorik åbnes på tværs af personer. |
 | Personers position i polygoner | Ja, dynamiske `binary_sensor` og bus-hændelser | Kun personer i Tiny Family; GPS-status og privatliv respekteres. |
 | Bevægelse, fart, afstand, batteri mv. | Ja, eksisterende Tiny Family-sensorer og udvalgte hændelser | Afhænger af telefonens reelle GPS-/sensordata. |
 | Daglig personsammenfatning | Ja, `get_day_summary` | Eksisterende adgangskontrol; system-YAML uden brugerkontekst kan afvises. |
@@ -198,10 +300,13 @@ input og sikre svar, når de er klar.
   geometri-sensorer eller polygonhændelser.
 - `evaluate_location` læser kun de koordinater, du selv sender i kaldet;
   den henter ikke andre personers aktuelle eller historiske position.
+- `analyze_motion` og `analyze_route` bruger udelukkende koordinater leveret
+  i kaldet og opbevarer dem ikke efter beregningen. En anden integration
+  er selv ansvarlig for adgang til sine GPS-data.
 - Manglende/ugyldige koordinater giver en fejl i stedet for et opdigtet svar.
 - Det er fortsat administratoren, der kan oprette, rette og slette polygoner.
 
 **Versionsstatus:** Disse grænseflader er udviklet og testet i Tiny Family
-0.8.11. Kontroller entitets-ID'erne i din egen installation, når versionen
+0.8.12. Kontroller entitets-ID'erne i din egen installation, når versionen
 er installeret, og test en automation med kendte koordinater, før den bruges
 til sikkerhedskritiske formål.

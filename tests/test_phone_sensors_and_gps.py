@@ -21,6 +21,24 @@ quality = load_file("_tf_gps_drift_test", "gps_quality.py")
 
 
 class GpsDriftTests(unittest.TestCase):
+    def test_zero_phone_speed_uses_plausible_movement_when_accurate(self):
+        value, source = quality.resolve_speed_mps(
+            0.0, distance_m=150, elapsed_seconds=10,
+            accuracy_m=8, previous_accuracy_m=10)
+        self.assertEqual(source, "gps_estimate")
+        self.assertAlmostEqual(value, 15)
+
+    def test_jitter_is_not_mistaken_for_movement(self):
+        self.assertEqual(quality.resolve_speed_mps(
+            0, distance_m=18, elapsed_seconds=10,
+            accuracy_m=12, previous_accuracy_m=12), (0, "phone"))
+        self.assertEqual(quality.resolve_speed_mps(
+            None, distance_m=70, elapsed_seconds=400,
+            accuracy_m=8, previous_accuracy_m=8), (None, "unavailable"))
+        self.assertEqual(quality.resolve_speed_mps(
+            None, distance_m=100, elapsed_seconds=10,
+            accuracy_m=None, previous_accuracy_m=8), (None, "unavailable"))
+
     def test_power_save_glitch_then_return_does_not_create_movement(self):
         state = {"last_t": 100, "last_lat": 55.0, "last_lon": 11.0}
         first = quality.screen_gps_drift(
@@ -44,6 +62,19 @@ class GpsDriftTests(unittest.TestCase):
         self.assertEqual(quality.screen_gps_drift(
             state, observed_at=220, latitude=55.011, longitude=11.0,
             distance_m=1220, accuracy_m=20, speed_mps=0, power_save=True), "rebase")
+
+    def test_zero_reported_speed_does_not_discard_every_car_fix(self):
+        state = {"last_t": 100}
+        self.assertEqual(quality.screen_gps_drift(
+            state, observed_at=130, latitude=55.003, longitude=11,
+            distance_m=334, accuracy_m=8, speed_mps=0), "discard")
+        self.assertEqual(quality.screen_gps_drift(
+            state, observed_at=160, latitude=55.006, longitude=11,
+            distance_m=668, accuracy_m=8, speed_mps=0), "rebase")
+        state["last_t"] = 160
+        self.assertEqual(quality.screen_gps_drift(
+            state, observed_at=190, latitude=55.009, longitude=11,
+            distance_m=334, accuracy_m=8, speed_mps=0), "accept")
 
     def test_normal_accurate_movement_is_not_filtered(self):
         state = {"last_t": 100}
