@@ -1,16 +1,39 @@
 /* Tiny Family: own Home Assistant panel, independent of Lovelace. */
 const TF_VIEWS = [
-  ["live", "Kort", "mdi:map-marker-multiple-outline"],
-  ["places", "Steder", "mdi:map-marker-radius-outline"],
-  ["activity", "Aktivitet", "mdi:walk"],
-  ["contact", "Beskeder", "mdi:message-text-outline"]
+  ["live", "Kort", "map"],
+  ["places", "Steder", "places"],
+  ["activity", "Aktivitet", "activity"],
+  ["contact", "Beskeder", "messages"]
 ];
 const TF_MORE_VIEWS = [
-  ["today", "Min status", "mdi:home-outline"],
-  ["routes", "Tidslinje", "mdi:map-outline"],
-  ["history", "Hændelser", "mdi:history"],
-  ["help", "Hjælp", "mdi:help-circle-outline"]
+  ["today", "Min status", "home"],
+  ["routes", "Tidslinje", "routes"],
+  ["history", "Hændelser", "history"],
+  ["help", "Hjælp", "help"]
 ];
+// Tiny Family's own lightweight neon-outline icon family. No external font,
+// Material Design icon package, or CSS outside this panel is required.
+const TF_ICON_ART={
+  family:'<circle cx="8" cy="7" r="2.5"/><circle class="tf-ink-violet" cx="17.5" cy="8" r="2.2"/><path d="M2.5 20v-2a5.5 5.5 0 0 1 11 0v2M14 15a4.6 4.6 0 0 1 7.5 3.7V20"/>',
+  map:'<path d="m3 5 6-2 6 2 6-2v16l-6 2-6-2-6 2zM9 3v16M15 5v16"/><circle class="tf-ink-violet" cx="12" cy="10" r="2"/>',
+  places:'<path d="M12 22s-7-6.1-7-12a7 7 0 0 1 14 0c0 5.9-7 12-7 12Z"/><circle class="tf-ink-violet" cx="12" cy="10" r="3"/><path d="m9.5 14.5 2.5 2.3 2.5-2.3"/>',
+  activity:'<circle cx="15.5" cy="4.5" r="2"/><path d="m11 11 3-3 3 2-2 4m-4-3-3 4-4 1m9-2 4 3 3 1M9 16l-2 5M3 10l3-1"/><path class="tf-ink-violet" d="M2 21h3M20 7h2"/>',
+  messages:'<path d="M4 4h16v13H9l-5 4V4Z"/><path class="tf-ink-violet" d="M7 9h10M7 13h7"/>',
+  admin:'<path d="M12 2 21 6v6c0 5-3.7 8.4-9 10-5.3-1.6-9-5-9-10V6l9-4Z"/><path class="tf-ink-violet" d="m7.5 10 2 2 2.5-3 2.5 3 2-2-.8 5H8.3l-.8-5Z"/>',
+  more:'<circle cx="5" cy="12" r="2"/><circle class="tf-ink-violet" cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/>',
+  home:'<path d="m2 11 10-8 10 8M5 10v11h14V10M10 21v-7h4v7"/><path class="tf-ink-violet" d="M18 6V3h2v5"/>',
+  routes:'<circle cx="5" cy="19" r="2"/><circle class="tf-ink-violet" cx="19" cy="5" r="2"/><path d="M7 19h6c8 0 2-8 5-12M6 10c5-2 7-1 7-1"/>',
+  history:'<path d="M4 8a9 9 0 1 1-1 8M4 3v5h5"/><path class="tf-ink-violet" d="M12 7v5l3 2"/>',
+  help:'<circle cx="12" cy="12" r="10"/><path d="M9.3 9a3 3 0 0 1 5.4-1.5c1.8 2.5-2.7 3.2-2.7 5.4"/><circle class="tf-ink-violet" cx="12" cy="17.6" r=".9"/>'
+};
+const tinyNeonIcon=name=>{
+  const svg=document.createElementNS("http://www.w3.org/2000/svg","svg");
+  svg.setAttribute("viewBox","0 0 24 24");
+  svg.setAttribute("class","tf-icon");
+  svg.setAttribute("aria-hidden","true");
+  svg.innerHTML=TF_ICON_ART[name]||TF_ICON_ART.help;
+  return svg;
+};
 class TinyFamilyPanel extends HTMLElement {
   constructor() { super(); this.active = "live"; this.booted = false; this.settings = null; }
   set hass(value) {
@@ -36,7 +59,12 @@ class TinyFamilyPanel extends HTMLElement {
       tiny-family-panel{display:block;background:var(--primary-background-color);min-height:100%;color:var(--primary-text-color)}
       .tf-wrap{max-width:1280px;padding:clamp(12px,2.6vw,24px);margin:auto;font-family:inherit;box-sizing:border-box;min-width:0}
       .tf-wrap *{box-sizing:border-box;min-width:0}
+      .tf-wrap [hidden]{display:none!important}
       .tf-wrap button,.tf-wrap select,.tf-wrap input,.tf-wrap textarea{font:inherit}
+      .tf-wrap .tf-icon{display:block;flex:none;width:24px;height:24px;fill:none;stroke:#118fad;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+      .tf-wrap .tf-icon .tf-ink-violet{stroke:#7660c3}
+      .tf-brand-icon .tf-icon{width:32px;height:32px}
+      .tf-tabs button[aria-current=page] .tf-icon{stroke:#0d9fbc}
       .tf-wrap button{touch-action:manipulation}
       .tf-wrap button:focus-visible,.tf-wrap a:focus-visible,.tf-wrap input:focus-visible,.tf-wrap select:focus-visible,.tf-wrap textarea:focus-visible{outline:3px solid var(--primary-color);outline-offset:2px}
       .tf-wrap button:disabled{opacity:.55;cursor:wait}
@@ -47,7 +75,8 @@ class TinyFamilyPanel extends HTMLElement {
       .tf-card-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}
       .tf-chip{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--divider-color);padding:4px 9px;border-radius:999px;font-size:.78rem;color:var(--secondary-text-color);max-width:100%;overflow-wrap:anywhere}
       .tf-card-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-      .tf-card-actions>*{flex:0 1 auto}
+      .tf-card-actions>*{flex:1 1 145px}
+      .tf-card-actions>.tf-danger{flex-basis:100%}
       .tf-map{height:clamp(295px,48vh,520px);min-height:295px;max-width:100%;border:1px solid var(--divider-color);border-radius:14px;overflow:hidden}
       .tf-empty{padding:18px;border:1px dashed var(--divider-color);border-radius:12px;color:var(--secondary-text-color)}
       .tf-wrap a{color:var(--primary-color)}
@@ -57,6 +86,14 @@ class TinyFamilyPanel extends HTMLElement {
       .tf-member-settings:not([open])>*:not(summary){display:none}
       .tf-member-settings[open]{border-color:#36bbc9}
       .tf-member-summary .tf-chip{font-size:11px;flex:none}
+      .tf-member-state{display:inline-flex;align-items:center;gap:7px;padding:6px 10px;border:1px solid var(--divider-color);border-radius:999px;font-size:12px;font-weight:800;white-space:nowrap}
+      .tf-member-state::before{content:"";width:11px;height:11px;border-radius:50%;background:#bc3f43;box-shadow:0 0 0 2px rgba(188,63,67,.17)}
+      .tf-member-state[data-active=true]{color:#167a42;border-color:#6dbf90;background:rgba(36,164,88,.1)}
+      .tf-member-state[data-active=true]::before{background:#1eaa57;box-shadow:0 0 0 2px rgba(30,170,87,.2)}
+      .tf-member-state[data-active=false]{color:#bd3939;border-color:#e8a0a0;background:rgba(205,61,61,.08)}
+      .tf-sensor-option{display:flex!important;align-items:center;gap:9px;padding:6px 2px;flex-wrap:wrap}
+      .tf-sensor-option input[type=checkbox]{width:19px!important;height:19px;flex:none;margin:0}
+      .tf-sensor-option span{font-size:12px;color:var(--secondary-text-color)}
       .tf-wrap .tf-save.tf-danger{background:#a33842;color:#fff}
       /* Map detail is a true in-panel dialog, above the fixed mobile tabs. */
       .tf-location-overlay{position:fixed;inset:0;z-index:2400;display:grid;place-items:center;padding:12px;background:rgba(8,16,28,.74);backdrop-filter:blur(3px)}
@@ -76,11 +113,12 @@ class TinyFamilyPanel extends HTMLElement {
       .tf-daily-stats .tf-stat{padding:9px;gap:3px}
       .tf-daily-stats .tf-stat span{font-weight:750;font-variant-numeric:tabular-nums}
       .tf-daily-scroll{min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;padding:2px 3px 10px;flex:1}
-      .tf-daily-row{display:grid;grid-template-columns:90px minmax(0,1fr);gap:9px;padding:10px 7px;border-bottom:1px solid var(--divider-color)}
-      .tf-daily-row time{font-size:12px;font-variant-numeric:tabular-nums;color:var(--secondary-text-color)}
+      .tf-daily-row{display:grid;grid-template-columns:76px minmax(0,1fr);gap:9px;padding:11px 9px;margin-bottom:6px;border:1px solid var(--divider-color);border-left:3px solid #20b9ce;border-radius:11px;background:var(--card-background-color)}
+      .tf-daily-row time{font-size:11px;font-variant-numeric:tabular-nums;color:var(--secondary-text-color);line-height:1.55}
       .tf-daily-row strong{display:block;font-size:13px;overflow-wrap:anywhere}
-      .tf-daily-row span{font-size:12px;color:var(--secondary-text-color);overflow-wrap:anywhere}
-      .tf-activity-archive{flex:none;max-height:38vh;overflow:auto}
+      .tf-daily-facts{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px}
+      .tf-daily-facts span{display:inline-block;font-size:11px;color:var(--secondary-text-color);overflow-wrap:anywhere;padding:3px 6px;border:1px solid var(--divider-color);border-radius:7px;background:color-mix(in srgb,var(--card-background-color) 88%,#7ed4e0)}
+      .tf-activity-archive{min-height:0;overflow:visible}
       .tf-activity-archive:not([open])>*:not(summary){display:none}
       .tf-activity-archive summary{cursor:pointer;min-height:34px}
       .tf-person-diary>summary{cursor:pointer;min-height:43px;font-weight:750}
@@ -140,6 +178,26 @@ class TinyFamilyPanel extends HTMLElement {
       .tf-zone-polygon-editor{padding-top:12px;border-top:1px solid var(--divider-color)}
       .tf-zone-editor select{width:100%;padding:10px;border:1px solid var(--divider-color);border-radius:9px;background:var(--primary-background-color);color:var(--primary-text-color)}
       .tf-zone-editor .tf-card-actions>*{flex:1 1 130px}
+      .tf-zone-editor .tf-screen-nav{margin:5px 0 12px}
+      .tf-place-item>summary{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:3px 9px;cursor:pointer;list-style:none;min-height:42px}
+      .tf-place-item:not([open])>*:not(summary){display:none!important}
+      .tf-place-item>summary::-webkit-details-marker{display:none}
+      .tf-place-item>summary strong{font-size:14px;overflow-wrap:anywhere}
+      .tf-place-item>summary .tf-place-description{grid-column:1;color:var(--secondary-text-color);font-size:12px;line-height:1.35}
+      .tf-place-item>summary .tf-expand-label{grid-column:2;grid-row:1 / span 2;justify-self:end;font-size:12px;font-weight:700;color:var(--primary-color);border:1px solid var(--divider-color);border-radius:9px;padding:7px 9px}
+      .tf-place-item[open]>summary{margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--divider-color)}
+      .tf-place-item>summary:focus-visible{outline:2px solid var(--primary-color);outline-offset:3px}
+      .tf-managed-subitem{display:grid;gap:7px;padding:9px 0;border-top:1px solid var(--divider-color)}
+      .tf-managed-subitem:first-of-type{border-top:0;padding-top:0}
+      .tf-managed-subitem>span{font-size:12px;color:var(--secondary-text-color)}
+      .tf-delivery-steps{display:grid;gap:9px;padding:0;list-style:none;counter-reset:delivery}
+      .tf-delivery-steps li{counter-increment:delivery;display:grid;grid-template-columns:28px minmax(0,1fr);gap:2px 8px;align-items:start;font-size:13px}
+      .tf-delivery-steps li::before{content:counter(delivery);grid-row:1 / span 2;display:grid;place-items:center;width:26px;height:26px;border:1px solid #57c9d3;border-radius:50%;color:#198ea3;font-weight:800}
+      .tf-delivery-steps strong{font-size:13px}
+      .tf-delivery-steps span{color:var(--secondary-text-color);line-height:1.45}
+      .tf-draft-notice{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:5px}
+      .tf-draft-notice .tf-chip{flex:1;min-width:150px}
+      .tf-draft-notice button.tf-save{width:auto!important;min-height:36px;padding:6px 10px;font-size:12px}
       /* Tiny Neon timeline: frosted bottom dock, real daily samples, no page scroll. */
       .tf-timeline-dock{position:relative;z-index:700;max-width:850px;padding:10px 12px;border:1px solid rgba(66,220,230,.55);border-radius:17px;background:rgba(20,28,44,.94);color:#effbff;box-shadow:0 8px 22px rgba(0,0,0,.23),0 0 16px rgba(50,188,217,.17);font-size:13px}
       .tf-dock-main{display:flex;gap:7px;align-items:center}
@@ -176,6 +234,7 @@ class TinyFamilyPanel extends HTMLElement {
       .tf-screen-nav button[aria-pressed=true]{background:linear-gradient(120deg,#117e96,#664db4);color:#fff;box-shadow:0 0 9px rgba(48,196,218,.25)}
       .tf-screen-panel{min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#2ebfc3 transparent;padding:4px 3px}
       .tf-screen-panel[hidden]{display:none!important}
+      .tf-activity-view>.tf-screen-panel{display:flex;flex-direction:column;min-height:0}
       .tf-mobile-title{font-size:19px;margin:2px 0 5px}
       .tf-activity-list{overflow-y:auto;min-height:0;overscroll-behavior:contain;scrollbar-width:thin}
       .tf-admin-form{min-height:0;display:flex;flex-direction:column;overflow:hidden;flex:1}
@@ -188,11 +247,11 @@ class TinyFamilyPanel extends HTMLElement {
       .tf-head h1{margin:0;font-size:24px}
       .tf-tabs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;max-width:100%}
       .tf-tabs button{display:flex;align-items:center;justify-content:center;gap:7px;padding:12px 16px;min-height:44px;border-radius:14px;border:1px solid var(--divider-color);color:var(--primary-text-color);background:var(--card-background-color);cursor:pointer}
-      .tf-tabs button ha-icon{--mdc-icon-size:20px}
+      .tf-tabs button .tf-icon{width:21px;height:21px}
       .tf-tabs button[data-view=editor]{border-color:var(--primary-color);font-weight:700}
       .tf-admin-panel{border:2px solid var(--primary-color);border-radius:16px;padding:clamp(12px,2vw,20px);background:var(--card-background-color)}
       .tf-admin-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-      .tf-admin-head ha-icon{color:var(--primary-color)}
+      .tf-admin-head .tf-icon{width:27px;height:27px}
       .tf-advanced{padding:10px;border:1px solid var(--divider-color);border-radius:12px}
       .tf-advanced summary{cursor:pointer;font-weight:600;padding:5px}
       .tf-advanced .tf-fields{margin-top:10px}
@@ -201,7 +260,9 @@ class TinyFamilyPanel extends HTMLElement {
       .tf-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,170px),1fr));gap:10px;max-width:100%}
       .tf-fields label{display:grid;gap:4px;font-size:13px}
       .tf-fields select,.tf-fields input{padding:7px;max-width:100%;background:var(--primary-background-color);color:var(--primary-text-color);border:1px solid var(--divider-color);border-radius:8px}
-      .tf-save{background:var(--primary-color);color:var(--text-primary-color,#fff);border:0;border-radius:10px;padding:12px 18px;min-height:44px;cursor:pointer;overflow-wrap:anywhere}
+      .tf-wrap button.tf-save{background:linear-gradient(125deg,#079db8,#238dc1 68%,#5262b9);color:#fff;border:1px solid rgba(87,216,229,.56);border-radius:12px;padding:10px 13px;min-height:44px;cursor:pointer;overflow-wrap:anywhere;font-weight:650;box-shadow:0 2px 8px rgba(13,155,186,.13);transition:filter .15s ease,box-shadow .15s ease}
+      .tf-wrap button.tf-save:active{filter:brightness(1.11);box-shadow:0 0 0 2px rgba(45,203,218,.28)}
+      .tf-wrap button.tf-save.tf-danger{background:linear-gradient(125deg,#b33347,#d04a4a);border-color:#df7880}
       .tf-message{margin:14px 0;color:var(--secondary-text-color)}
       @media(max-width:600px){
         .tf-wrap{padding:10px 10px calc(100px + env(safe-area-inset-bottom))}.tf-head h1{font-size:21px}
@@ -214,6 +275,7 @@ class TinyFamilyPanel extends HTMLElement {
         #tf-main.tf-one-screen.tf-activity-view{display:flex;flex-direction:column;overflow:hidden;gap:7px}
         #tf-main.tf-one-screen.tf-places-view>.tf-screen-panel,
         #tf-main.tf-one-screen.tf-messages-view>.tf-screen-panel,
+        #tf-main.tf-one-screen.tf-activity-view>.tf-screen-panel,
         #tf-main.tf-one-screen.tf-activity-view>.tf-activity-list{flex:1;min-height:0}
         #tf-main.tf-places-view>h2,#tf-main.tf-messages-view>h2,
         #tf-main.tf-activity-view>h2{font-size:19px;margin:2px 0 1px;flex:none}
@@ -233,7 +295,7 @@ class TinyFamilyPanel extends HTMLElement {
         #tf-main.tf-admin-mobile>.tf-person{display:none}
         .tf-screen-panel .tf-person{margin-bottom:7px}
         .tf-screen-panel .tf-map{height:210px!important;min-height:210px!important}
-        .tf-screen-panel .tf-card-actions>*{flex:1 1 auto}
+        .tf-screen-panel .tf-card-actions>*{flex:1 1 calc(50% - 6px)}
         .tf-admin-save{position:sticky;bottom:0;z-index:5}
         .tf-head h1{font-size:19px}
         .tf-head{margin-bottom:8px}
@@ -252,13 +314,14 @@ class TinyFamilyPanel extends HTMLElement {
         .tf-timeline-dock button,.tf-timeline-dock select{min-height:38px;padding:5px 6px}
         .tf-tabs{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;overflow:visible}
         .tf-tabs button{display:flex;flex-direction:column;gap:3px;font-size:11px;line-height:1.2;padding:7px 2px;min-height:58px;white-space:normal;text-align:center;border-radius:10px}
-        .tf-tabs button ha-icon{--mdc-icon-size:21px}
+        .tf-tabs button .tf-icon{width:23px;height:23px}
         .tf-fields{grid-template-columns:1fr}
         .tf-metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
         .tf-stat{padding:10px}
         .tf-person{padding:11px}.tf-map{height:min(57vh,440px);min-height:330px}
         #tf-main.tf-family-view>.tf-map{height:100%;min-height:0;max-height:none}
-        .tf-card-actions>*{flex:1 1 100%}
+        .tf-card-actions>*{flex:1 1 calc(50% - 6px)}
+        .tf-card-actions>.tf-danger{flex-basis:100%}
         .tf-wrap .tf-save{width:100%}
         .tf-admin-panel{padding:12px}
       }
@@ -267,19 +330,31 @@ class TinyFamilyPanel extends HTMLElement {
       }
       @media(prefers-reduced-motion:reduce){.tf-tabs{scroll-behavior:auto}}
       </style>
-      <section class="tf-wrap"><header class="tf-head"><ha-icon icon="mdi:account-group"></ha-icon><h1>Tiny Family</h1><div class="tf-admin-access"></div><details class="tf-more"><summary class="tf-header-action" aria-label="Flere funktioner"><ha-icon icon="mdi:dots-horizontal"></ha-icon></summary><div class="tf-more-menu"></div></details></header>
+      <section class="tf-wrap"><header class="tf-head"><span class="tf-brand-icon" aria-hidden="true"></span><h1>Tiny Family</h1><div class="tf-admin-access"></div><details class="tf-more"><summary class="tf-header-action" aria-label="Flere funktioner"><span class="tf-more-icon"></span></summary><div class="tf-more-menu"></div></details></header>
       <nav class="tf-tabs" aria-label="Tiny Family"></nav>
       <p id="tf-message" class="tf-message" aria-live="polite"></p>
       <main id="tf-main"></main></section>`;
     const tabs = this.querySelector(".tf-tabs");
+    this.querySelector(".tf-brand-icon").appendChild(tinyNeonIcon("family"));
+    this.querySelector(".tf-more-icon").appendChild(tinyNeonIcon("more"));
+    // An accordion is local to its logical section, including nested member
+    // settings and place cards. Keep other sections and unfinished form data.
+    this.querySelector("#tf-main").addEventListener("toggle",event=>{
+      const opened=event.target;
+      if(opened?.tagName!=="DETAILS"||!opened.open)return;
+      const group=opened.dataset.tfAccordionGroup;
+      if(!group)return;
+      for(const other of this.querySelectorAll("#tf-main details[data-tf-accordion-group]")){
+        if(other!==opened&&other.dataset.tfAccordionGroup===group&&other.open)
+          other.open=false;
+      }
+    },true);
     try {
       // Only an authenticated administrator gets the Administration tab.
       await this.refreshSettings();
       for (const [key, title, icon] of TF_VIEWS) {
         const button = document.createElement("button");
-        const pictogram=document.createElement("ha-icon");
-        pictogram.setAttribute("icon",icon);
-        pictogram.setAttribute("aria-hidden","true");
+        const pictogram=tinyNeonIcon(icon);
         const caption=document.createElement("span");caption.textContent=title;
         button.append(pictogram,caption);
         button.dataset.view = key;
@@ -291,8 +366,7 @@ class TinyFamilyPanel extends HTMLElement {
       for(const [key,title,icon] of TF_MORE_VIEWS){
         const button=document.createElement("button");
         button.type="button";
-        const pictogram=document.createElement("ha-icon");
-        pictogram.setAttribute("icon",icon);
+        const pictogram=tinyNeonIcon(icon);
         button.append(pictogram,document.createTextNode(title));
         button.addEventListener("click",()=>{
           this.querySelector(".tf-more").open=false;
@@ -306,8 +380,7 @@ class TinyFamilyPanel extends HTMLElement {
         adminButton.className="tf-header-action";
         adminButton.title="Administration";
         adminButton.setAttribute("aria-label","Åbn administration");
-        const shield=document.createElement("ha-icon");
-        shield.setAttribute("icon","mdi:shield-crown-outline");
+        const shield=tinyNeonIcon("admin");
         adminButton.append(shield);
         adminButton.addEventListener("click",()=>this.show("editor"));
         this.querySelector(".tf-admin-access").appendChild(adminButton);
@@ -820,12 +893,29 @@ class TinyFamilyPanel extends HTMLElement {
     const sharedTitle=document.createElement("h3");sharedTitle.textContent="Fælles steder";
     root.appendChild(sharedTitle);
     const sharedList=document.createElement("div");root.appendChild(sharedList);
+    const placeCard=(title,description,group)=>{
+      const card=document.createElement("details");
+      card.className="tf-person tf-place-item";
+      card.dataset.tfAccordionGroup=group;
+      const summary=document.createElement("summary");
+      const heading=document.createElement("strong");heading.textContent=title;
+      const meta=document.createElement("span");meta.className="tf-place-description";
+      meta.textContent=description;
+      const expand=document.createElement("span");expand.className="tf-expand-label";
+      expand.textContent="Udvid ▾";
+      summary.append(heading,meta,expand);card.appendChild(summary);
+      card.addEventListener("toggle",()=>{
+        expand.textContent=card.open?"Luk ▴":"Udvid ▾";
+      });
+      return card;
+    };
     const ownDetails=document.createElement("details");ownDetails.className="tf-place-group";
     const ownTitle=document.createElement("summary");ownTitle.textContent="Mine registrerede ophold";
     ownDetails.appendChild(ownTitle);
     const ownList=document.createElement("div");ownDetails.appendChild(ownList);
     root.appendChild(ownDetails);
     const adminDetails=document.createElement("details");adminDetails.className="tf-place-group";
+    adminDetails.dataset.tfAccordionGroup="places-proposals-panels";
     const adminTitle=document.createElement("summary");
     adminTitle.textContent="Stedforslag fra familiens registrerede ophold";
     adminDetails.appendChild(adminTitle);
@@ -841,6 +931,7 @@ class TinyFamilyPanel extends HTMLElement {
     const adminList=document.createElement("div");adminDetails.appendChild(adminList);
     const managedDetails=document.createElement("details");
     managedDetails.className="tf-place-group";
+    managedDetails.dataset.tfAccordionGroup="places-proposals-panels";
     const managedTitle=document.createElement("summary");
     managedTitle.textContent="Registrerede opholdssteder · administrator";
     managedDetails.appendChild(managedTitle);
@@ -1039,6 +1130,15 @@ class TinyFamilyPanel extends HTMLElement {
     zoneToolsTitle.textContent="+ Tegn eller rediger zone · administrator";
     zoneTools.appendChild(zoneToolsTitle);
     zonePane.appendChild(zoneTools);
+    const shapeNav=document.createElement("nav");
+    shapeNav.className="tf-screen-nav";
+    shapeNav.setAttribute("aria-label","Vælg zonens form");
+    const circleShape=document.createElement("button");circleShape.type="button";
+    circleShape.textContent="◯ Cirkelzone";
+    const polygonShape=document.createElement("button");polygonShape.type="button";
+    polygonShape.textContent="⬡ Polygonzone";
+    shapeNav.append(circleShape,polygonShape);
+    zoneTools.appendChild(shapeNav);
     const circular=document.createElement("form");circular.className="tf-shared-place-form";
     const circleLabel=document.createElement("strong");circleLabel.textContent="Home Assistant-zone (cirkel)";
     const makeTextField=(label,type="text")=>{
@@ -1098,6 +1198,7 @@ class TinyFamilyPanel extends HTMLElement {
     zonePane.appendChild(zoneList);
     let zoneRows=[],polygonRows=[],editableZoneRows=[];
     let editingMode=null,circleCenter=null,polygonVertices=[];
+    let selectedZoneShape="circle";
     const zoneDraft=this.readDraft("places-zone");
     if(zoneDraft){
       circleName.input.value=zoneDraft.circleName||"";
@@ -1110,6 +1211,8 @@ class TinyFamilyPanel extends HTMLElement {
         zoneDraft.polygonVertices.filter(p=>Array.isArray(p)&&p.length===2&&
           p.every(Number.isFinite)).slice(0,32):[];
       editingMode=["circle","polygon"].includes(zoneDraft.mode)?zoneDraft.mode:null;
+      selectedZoneShape=zoneDraft.shape==="polygon"||editingMode==="polygon"
+        ?"polygon":"circle";
       if(editingMode==="polygon")startPolygon.textContent="Afslut tegning";
       if(editingMode==="circle")startCircle.textContent="Tryk på kortet…";
       if(circleCenter)circleLocation.textContent="Centrum: "+
@@ -1119,6 +1222,7 @@ class TinyFamilyPanel extends HTMLElement {
       zoneTools.open=Boolean(zoneDraft.open);
     }
     const saveZoneDraft=()=>this.writeDraft("places-zone",{
+      shape:selectedZoneShape,
       circleId:circleExisting.value,circleName:circleName.input.value,
       circleRadius:circleRadius.input.value,alsoDestination:alsoDestination.checked,
       circleCenter,polygonId:polygonExisting.value,
@@ -1128,6 +1232,23 @@ class TinyFamilyPanel extends HTMLElement {
     zoneTools.addEventListener("input",saveZoneDraft);
     zoneTools.addEventListener("change",saveZoneDraft);
     zoneTools.addEventListener("toggle",saveZoneDraft);
+    const selectZoneShape=shape=>{
+      selectedZoneShape=shape==="polygon"?"polygon":"circle";
+      circular.hidden=selectedZoneShape!=="circle";
+      polygonEditor.hidden=selectedZoneShape!=="polygon";
+      circleShape.setAttribute("aria-pressed",String(selectedZoneShape==="circle"));
+      polygonShape.setAttribute("aria-pressed",String(selectedZoneShape==="polygon"));
+      editingMode=null;
+      startCircle.textContent="Vælg centrum på kortet";
+      startPolygon.textContent="Start polygontegning";
+      zonePreview();saveZoneDraft();
+    };
+    circleShape.addEventListener("click",()=>selectZoneShape("circle"));
+    polygonShape.addEventListener("click",()=>selectZoneShape("polygon"));
+    circular.hidden=selectedZoneShape!=="circle";
+    polygonEditor.hidden=selectedZoneShape!=="polygon";
+    circleShape.setAttribute("aria-pressed",String(selectedZoneShape==="circle"));
+    polygonShape.setAttribute("aria-pressed",String(selectedZoneShape==="polygon"));
     const metersBetween=(a,b)=>{
       const x=(a[1]-b[1])*111320*Math.cos((a[0]+b[0])*Math.PI/360);
       const y=(a[0]-b[0])*111320;return Math.hypot(x,y);
@@ -1159,13 +1280,13 @@ class TinyFamilyPanel extends HTMLElement {
     const zonePreview=()=>{
       if(!zoneMap)return;
       if(zoneDraftLayer){zoneDraftLayer.remove();zoneDraftLayer=null;}
-      if(circleCenter){
+      if(selectedZoneShape==="circle"&&circleCenter){
         const radius=Number(circleRadius.input.value);
         if(Number.isFinite(radius)&&radius>=25&&radius<=5000){
           zoneDraftLayer=window.L.circle(circleCenter,{radius,color:"#f2b76a",
             weight:3,dashArray:"6 5",fillOpacity:.12}).addTo(zoneMap);
         }
-      }else if(polygonVertices.length){
+      }else if(selectedZoneShape==="polygon"&&polygonVertices.length){
         zoneDraftLayer=(polygonVertices.length>=3
           ?window.L.polygon(polygonVertices,{color:"#f2b76a",weight:3,
             dashArray:"6 5",fillOpacity:.15})
@@ -1206,8 +1327,9 @@ class TinyFamilyPanel extends HTMLElement {
           .bindTooltip(tooltip);
       }
       zonePreview();
-      if(circleCenter&&zoneTools.open)zoneMap.setView(circleCenter,16);
-      else if(polygonVertices.length&&zoneTools.open)
+      if(selectedZoneShape==="circle"&&circleCenter&&zoneTools.open)
+        zoneMap.setView(circleCenter,16);
+      else if(selectedZoneShape==="polygon"&&polygonVertices.length&&zoneTools.open)
         zoneMap.fitBounds(polygonVertices,{padding:[24,24],maxZoom:16});
       else if(bounds.length)zoneMap.fitBounds(bounds,{padding:[24,24],maxZoom:15});
       else zoneMap.setView([this.hassInstance.config.latitude||0,
@@ -1220,12 +1342,14 @@ class TinyFamilyPanel extends HTMLElement {
       zonePreview();
     };
     startCircle.addEventListener("click",()=>{
+      if(selectedZoneShape!=="circle")selectZoneShape("circle");
       editingMode="circle";polygonVertices=[];circleCenter=null;
       startCircle.textContent="Tryk på kortet…";
       zonePreview();saveZoneDraft();
     });
     circleRadius.input.addEventListener("input",zonePreview);
     startPolygon.addEventListener("click",()=>{
+      if(selectedZoneShape!=="polygon")selectZoneShape("polygon");
       editingMode=editingMode==="polygon"?null:"polygon";
       circleCenter=null;
       if(editingMode==="polygon")polygonVertices=[];
@@ -1263,12 +1387,9 @@ class TinyFamilyPanel extends HTMLElement {
       }catch(error){zoneInfo.textContent="Zonekortet kunne ikke indlæses: "+this.errorText(error);}
       finally{zoneMapLoading=false;}
     };
-    const zoneCard=(label,description,location,focus,related)=>{
-      const card=document.createElement("section");card.className="tf-person";
-      const heading=document.createElement("strong");heading.textContent=label;
-      const details=document.createElement("p");details.className="tf-message";
-      details.textContent=description+(related.length?
-        " · Destinationer inde i zonen: "+related.map(p=>p.name).join(", "):"");
+    const zoneCard=(label,description,location,focus,related,shape,id)=>{
+      const card=placeCard(label,description+(related.length?
+        " · Destinationer inde i zonen: "+related.map(p=>p.name).join(", "):""),"places-zones");
       const actions=document.createElement("div");actions.className="tf-card-actions";
       const view=document.createElement("button");view.type="button";
       view.className="tf-save";view.textContent="Vis på kort";
@@ -1282,7 +1403,20 @@ class TinyFamilyPanel extends HTMLElement {
       if(!alreadyExists)destination.addEventListener("click",()=>fill({
         latitude:location[0],longitude:location[1],name:label
       },label));
-      actions.append(view,destination);card.append(heading,details,actions);
+      actions.append(view,destination);
+      if(id&&!zoneTools.hidden){
+        const edit=document.createElement("button");edit.type="button";
+        edit.className="tf-save";edit.textContent="Rediger zone";
+        edit.addEventListener("click",()=>{
+          zoneTools.open=true;selectZoneShape(shape);
+          const selected=shape==="polygon"?polygonExisting:circleExisting;
+          selected.value=id;
+          selected.dispatchEvent(new Event("change",{bubbles:true}));
+          zoneTools.scrollIntoView({behavior:"smooth",block:"start"});
+        });
+        actions.appendChild(edit);
+      }
+      card.appendChild(actions);
       return card;
     };
     const reloadZones=async()=>{
@@ -1334,8 +1468,10 @@ class TinyFamilyPanel extends HTMLElement {
         const centre=[zone.latitude,zone.longitude];
         const related=sharedDestinations.filter(p=>
           metersBetween(centre,[p.latitude,p.longitude])<=zone.radius_m);
+        const editable=editableZoneRows.find(item=>item.id===zone.id||
+          (item.name===zone.name&&metersBetween([item.latitude,item.longitude],centre)<10));
         zoneList.appendChild(zoneCard(zone.name,"HA-cirkel · radius "+
-          Math.round(zone.radius_m)+" m",centre,centre,related));
+          Math.round(zone.radius_m)+" m",centre,centre,related,"circle",editable?.id));
       }
       for(const polygon of polygonRows){
         if(!Array.isArray(polygon.points)||polygon.points.length<3)continue;
@@ -1343,7 +1479,7 @@ class TinyFamilyPanel extends HTMLElement {
         const related=sharedDestinations.filter(p=>
           inPolygon([p.latitude,p.longitude],polygon.points));
         zoneList.appendChild(zoneCard(polygon.name,"Tiny Family-polygon · "+
-          polygon.points.length+" hjørner",position,position,related));
+          polygon.points.length+" hjørner",position,position,related,"polygon",polygon.id));
       }
       if(!zoneList.children.length){
         const note=document.createElement("p");note.className="tf-empty";
@@ -1353,6 +1489,7 @@ class TinyFamilyPanel extends HTMLElement {
       drawZoneMap();
     };
     circleExisting.addEventListener("change",()=>{
+      if(selectedZoneShape!=="circle")selectZoneShape("circle");
       resetZoneDrawing();
       const item=editableZoneRows.find(zone=>zone.id===circleExisting.value);
       circleName.input.value=item?.name||"";
@@ -1363,6 +1500,7 @@ class TinyFamilyPanel extends HTMLElement {
       saveZoneDraft();
     });
     polygonExisting.addEventListener("change",()=>{
+      if(selectedZoneShape!=="polygon")selectZoneShape("polygon");
       resetZoneDrawing();
       const item=polygonRows.find(zone=>zone.id===polygonExisting.value);
       polygonName.input.value=item?.name||"";
@@ -1466,14 +1604,17 @@ class TinyFamilyPanel extends HTMLElement {
       if(this.active!=="places")return;
       sharedDestinations=data.shared_places||[];
       zoneTools.hidden=!data.can_manage_all_places;
+      const openShared=sharedList.querySelector("details.tf-place-item[open]")?.dataset.placeKey;
+      const openOwn=ownList.querySelector("details.tf-place-item[open]")?.dataset.placeKey;
+      const openManaged=managedList.querySelector("details.tf-place-item[open]")?.dataset.placeKey;
+      const openProposal=adminList.querySelector("details.tf-place-item[open]")?.dataset.placeKey;
       sharedList.replaceChildren();ownList.replaceChildren();adminList.replaceChildren();
       for(const place of data.shared_places||[]){
-        const card=document.createElement("section");card.className="tf-person";
-        const heading=document.createElement("strong");heading.textContent=place.name;
-        const meta=document.createElement("p");
-        meta.className="tf-message";
-        meta.textContent="Oprettet af "+(place.created_by_name||"Familiemedlem");
-        card.append(heading,meta,openMaps(place));
+        const card=placeCard(place.name,
+          "Oprettet af "+(place.created_by_name||"Familiemedlem"),"places-shared");
+        card.dataset.placeKey=String(place.id);
+        card.open=openShared===String(place.id)||Boolean(sharedEditDrafts[place.id]);
+        card.appendChild(openMaps(place));
         if(place.can_edit){
           const edit=document.createElement("details");
           const editTitle=document.createElement("summary");editTitle.textContent="Rediger sted";
@@ -1538,11 +1679,12 @@ class TinyFamilyPanel extends HTMLElement {
       }
       for(const place of data.places||[]){
         if(place.status==="zone")continue; // HA zones have their own Zoner view.
-        const card=document.createElement("section");card.className="tf-person";
-        const heading=document.createElement("strong");
-        heading.textContent=place.name+" · "+(place.status==="suggested"?"Forslag":"Ophold");
-        const info=document.createElement("p");
-        info.textContent=place.visits+" besøg · "+place.minutes+" minutter";
+        const key=place.person+":"+place.latitude+":"+place.longitude;
+        const card=placeCard(place.name+" · "+
+          (place.status==="suggested"?"Forslag":"Ophold"),
+          place.visits+" besøg · "+place.minutes+" minutter","places-own");
+        card.dataset.placeKey=key;
+        card.open=openOwn===key;
         const actions=document.createElement("div");actions.className="tf-card-actions";
         const publish=document.createElement("button");publish.type="button";
         publish.className="tf-save";publish.textContent="Del med familien";
@@ -1554,7 +1696,7 @@ class TinyFamilyPanel extends HTMLElement {
           privacyLabel.className="tf-chip";privacyLabel.textContent="Privat efter administratorvalg";
           actions.appendChild(privacyLabel);
         }
-        card.append(heading,info,actions);
+        card.appendChild(actions);
         if(place.status!=="zone" && data.can_manage_all_places){
           const edit=document.createElement("details");
           const editTitle=document.createElement("summary");editTitle.textContent="Ret navn på ophold";
@@ -1597,13 +1739,41 @@ class TinyFamilyPanel extends HTMLElement {
         managedDetails.hidden=!data.can_manage_all_places;
         managedList.replaceChildren();
         if(data.can_manage_all_places){
+          // Nearby GPS clusters with the same name are one visual place,
+          // while every underlying observation remains separately editable.
+          const managedGroups=[];
           for(const place of data.managed_places||[]){
-            const card=document.createElement("section");card.className="tf-person";
-            const heading=document.createElement("strong");
-            heading.textContent=place.person_name+" · "+place.name;
-            const info=document.createElement("p");
-            info.textContent=place.visits+" besøg · "+place.minutes+" min"+
-              (place.private?" · Privat":"");
+            let group=managedGroups.find(item=>item.person===place.person&&
+              item.name.trim().toLocaleLowerCase("da-DK")===
+                place.name.trim().toLocaleLowerCase("da-DK")&&
+              metersBetween([item.latitude,item.longitude],
+                [place.latitude,place.longitude])<=80);
+            if(!group){
+              group={...place,sources:[],totalVisits:0,totalMinutes:0};
+              managedGroups.push(group);
+            }
+            group.sources.push(place);
+            group.totalVisits+=place.visits;
+            group.totalMinutes+=place.minutes;
+          }
+          for(const group of managedGroups){
+            const key=group.person+":"+group.latitude+":"+group.longitude;
+            const card=placeCard(group.person_name+" · "+group.name,
+              group.totalVisits+" besøg · "+group.totalMinutes+" min"+
+              (group.sources.length>1?" · "+group.sources.length+" nærliggende registreringer":"")+
+              (group.sources.some(place=>place.private)?" · Privat registrering":""),
+              "places-managed");
+            card.dataset.placeKey=key;
+            card.open=openManaged===key;
+            for(const [index,place] of group.sources.entries()){
+            const row=document.createElement("section");
+            row.className="tf-managed-subitem";
+            if(group.sources.length>1){
+              const line=document.createElement("span");
+              line.textContent="Registrering "+(index+1)+" · "+place.visits+
+                " besøg · "+place.minutes+" min"+(place.private?" · Privat":"");
+              row.appendChild(line);
+            }
             const actions=document.createElement("div");actions.className="tf-card-actions";
             actions.appendChild(openMaps(place));
             const rename=document.createElement("button");rename.type="button";
@@ -1627,7 +1797,7 @@ class TinyFamilyPanel extends HTMLElement {
               privacy.disabled=false;
             });
             const remove=document.createElement("button");remove.type="button";
-            remove.className="tf-save";remove.textContent="Slet sted";
+            remove.className="tf-save tf-danger";remove.textContent="Slet sted";
             remove.style.background="var(--error-color,#b3261e)";
             remove.addEventListener("click",async()=>{
               if(!window.confirm("Slet dette registrerede sted?"))return;
@@ -1637,7 +1807,9 @@ class TinyFamilyPanel extends HTMLElement {
               remove.disabled=false;
             });
             actions.append(rename,privacy,remove);
-            card.append(heading,info,actions);managedList.appendChild(card);
+            row.appendChild(actions);card.appendChild(row);
+            }
+            managedList.appendChild(card);
           }
           if(!managedList.children.length)managedList.textContent="Ingen navngivne opholdssteder.";
         }
@@ -1647,16 +1819,18 @@ class TinyFamilyPanel extends HTMLElement {
           row.longitude===proposalFocus.longitude))proposalFocus=null;
         drawProposalPins();
         for(const place of proposalRows){
-          const card=document.createElement("section");card.className="tf-person";
-          const heading=document.createElement("strong");
-          heading.textContent=(place.sources_count>1
+          const key=(place.person||place.people?.join("|"))+":"+
+            place.latitude+":"+place.longitude;
+          const title=(place.sources_count>1
             ?"Samlet forslag · "+place.people.join(", ")
             :place.person_name+" · "+place.name);
-          const info=document.createElement("p");
-          info.textContent=place.visits+" besøg · "+place.minutes+" minutter"+
+          const description=place.visits+" besøg · "+place.minutes+" minutter"+
             (place.sources_count>1?" · "+place.sources_count+" nærliggende registreringer":"")+
             (place.last?" · sidst "+place.last:"")+
             (place.private?" · PRIVAT":"");
+          const card=placeCard(title,description,"places-proposals");
+          card.dataset.placeKey=key;
+          card.open=openProposal===key;
           const actions=document.createElement("div");actions.className="tf-card-actions";
           let groupedDetails=null;
           const showOnMap=document.createElement("button");
@@ -1673,6 +1847,7 @@ class TinyFamilyPanel extends HTMLElement {
           zone.className="tf-save";zone.textContent="Opret HA-zone";
           zone.addEventListener("click",()=>{
             selectPlaceView("zones");zoneTools.open=true;
+            selectZoneShape("circle");
             circleExisting.value="";
             circleName.input.value=place.name==="Ukendt sted"?"":place.name;
             circleRadius.input.value="100";
@@ -1760,11 +1935,11 @@ class TinyFamilyPanel extends HTMLElement {
             groupedDetails=distinct;
           }
           }
-          card.append(heading,info,actions);
+          card.appendChild(actions);
           if(groupedDetails)card.appendChild(groupedDetails);
           adminList.appendChild(card);
         }
-        if(!adminList.children.length)adminList.textContent="Ingen registrerede destinationer endnu.";
+        if(!adminList.children.length)adminList.textContent="Ingen nye stedforslag endnu.";
       }
     };
     position.addEventListener("click",async()=>{
@@ -3335,6 +3510,7 @@ class TinyFamilyPanel extends HTMLElement {
     }catch(error){recentBody.textContent="Arkivet er ikke tilgængeligt endnu.";}
     const ownDiary=document.createElement("details");
     ownDiary.className="tf-person tf-person-diary";
+    ownDiary.dataset.tfAccordionGroup="today-details";
     const diaryHeading=document.createElement("summary");
     diaryHeading.textContent="Min teksttidslinje · "+
       (this.settings?.timeline_retention_days??365)+" dages historik";
@@ -3353,6 +3529,7 @@ class TinyFamilyPanel extends HTMLElement {
     root.insertBefore(values,sharing.parentNode===root?sharing:null);
     const extraDetails=document.createElement("details");
     extraDetails.className="tf-person tf-advanced";
+    extraDetails.dataset.tfAccordionGroup="today-details";
     const extraTitle=document.createElement("summary");
     extraTitle.textContent="Flere aktivitets- og turdetaljer";
     const extraMetrics=document.createElement("div");
@@ -3555,15 +3732,23 @@ class TinyFamilyPanel extends HTMLElement {
               item.mode==="walking"?"Gang (anslået)":
               item.mode==="driving"?"Kørsel (anslået)":"Tur / bevægelse";
           name.textContent=kind+" · "+(item.label||"Ukendt sted");
-          const details=document.createElement("span");
+          const details=document.createElement("div");
+          details.className="tf-daily-facts";
           const info=[item.duration_min?count(item.duration_min,"min"):"Tidspunkt registreret"];
           if(Number.isFinite(item.distance_km))info.push(count(item.distance_km,"km"));
+          if(item.kind==="trip"&&Number.isFinite(item.avg_speed_kmh))
+            info.push("Gns. "+count(item.avg_speed_kmh,"km/t"));
           if(Number.isFinite(item.max_speed_kmh))
-            info.push("op til "+count(item.max_speed_kmh,"km/t"));
+            info.push("Topfart "+count(item.max_speed_kmh,"km/t"));
+          if(item.kind==="trip"&&!Number.isFinite(item.avg_speed_kmh)&&
+             !Number.isFinite(item.max_speed_kmh))info.push("Fart ikke målt");
           info.push(item.kind==="gap"?"manglende GPS-data":
             item.source==="archive"?"gemt begivenhed":"GPS-baseret skøn");
           if(item.gps_gap)info.push("afbrudt rute");
-          details.textContent=info.join(" · ");
+          for(const fact of info){
+            const chip=document.createElement("span");chip.textContent=fact;
+            details.appendChild(chip);
+          }
           content.append(name,details);row.append(clock,content);scroll.appendChild(row);
         }
       }catch(error){
@@ -3628,13 +3813,40 @@ class TinyFamilyPanel extends HTMLElement {
     const note=document.createElement("p");note.className="tf-message tf-screen-intro";
     note.textContent="Vælg person og dato. Registrerede besøg, ture og GPS-baserede fartskøn vises som tekst. Historik gemmes i "+(this.settings.timeline_retention_days??365)+" dage, som administrator kan ændre.";
     root.appendChild(note);
-    void this.dailyReport(root);
+    const activityViewNav=document.createElement("nav");
+    activityViewNav.className="tf-screen-nav";
+    activityViewNav.setAttribute("aria-label","Vælg aktivitetsvisning");
+    root.appendChild(activityViewNav);
+    const reportPane=document.createElement("section");
+    reportPane.className="tf-screen-panel";
+    const archivePane=document.createElement("section");
+    archivePane.className="tf-screen-panel";archivePane.hidden=true;
+    root.append(reportPane,archivePane);
+    const activityViews=[
+      ["report","Dagsrapport",reportPane],
+      ["archive","Seneste ture og ophold",archivePane]
+    ];
+    const selectActivityView=key=>{
+      for(const [name,,pane] of activityViews){
+        pane.hidden=name!==key;
+        pane._viewButton?.setAttribute("aria-pressed",String(name===key));
+      }
+    };
+    for(const [key,label,pane] of activityViews){
+      const button=document.createElement("button");
+      button.type="button";button.textContent=label;
+      button.addEventListener("click",()=>selectActivityView(key));
+      pane._viewButton=button;activityViewNav.appendChild(button);
+    }
+    selectActivityView("report");
+    void this.dailyReport(reportPane);
     const archive=document.createElement("details");
     archive.className="tf-person tf-activity-archive";
     const archiveHeading=document.createElement("summary");
     archiveHeading.textContent="Seneste afsluttede ture og ophold (min konto)";
     archive.appendChild(archiveHeading);
-    root.appendChild(archive);
+    archive.open=true;
+    archivePane.appendChild(archive);
     const routeButton=document.createElement("button");
     routeButton.className="tf-save";routeButton.type="button";
     routeButton.textContent="Se egne og delte GPS-spor på rutekortet";
@@ -3676,16 +3888,28 @@ class TinyFamilyPanel extends HTMLElement {
         const card=document.createElement("section");card.className="tf-person";
         card.dataset.activityKind=item.kind;
         const title=document.createElement("strong");
-        const fmt=t=>new Date(t*1000).toLocaleString("da-DK");
+        const fmt=t=>new Date(t*1000).toLocaleString("da-DK",{
+          day:"2-digit",month:"2-digit",year:"numeric",
+          hour:"2-digit",minute:"2-digit"
+        });
         title.textContent=(item.kind==="trip"?"Tur":"Ophold")+" · "+
           fmt(item.started_at)+" – "+fmt(item.ended_at);
-        const body=document.createElement("p");
-        const metrics=item.kind==="trip"
-          ?item.distance_km+" km · maks. "+item.max_speed_kmh+" km/t"
-          :(item.label||"Ukendt sted");
-        body.textContent=item.duration_min+" min · "+metrics+
-          (item.gps_gap?" · GPS-afbrydelse":"")+
-          (item.private?" · historisk privatmarkeret":"");
+        const body=document.createElement("div");body.className="tf-daily-facts";
+        const facts=[item.duration_min+" min"];
+        if(item.kind==="trip"){
+          facts.push(item.distance_km+" km");
+          const avg=item.distance_km*60/Math.max(1,item.duration_min);
+          if(!item.gps_gap&&Number.isFinite(avg)&&avg>0&&avg<=200)
+            facts.push("Gns. "+avg.toFixed(1).replace(".",",")+" km/t");
+          if(Number.isFinite(Number(item.max_speed_kmh))&&Number(item.max_speed_kmh)>0)
+            facts.push("Topfart "+item.max_speed_kmh+" km/t");
+        }else facts.push(item.label||"Ukendt sted");
+        if(item.gps_gap)facts.push("GPS-afbrydelse");
+        if(item.private)facts.push("Historisk privatmarkeret");
+        for(const fact of facts){
+          const chip=document.createElement("span");chip.textContent=fact;
+          body.appendChild(chip);
+        }
         card.append(title,body);list.appendChild(card);
       }
       if(!list.children.length){
@@ -3974,13 +4198,23 @@ class TinyFamilyPanel extends HTMLElement {
     const buttons = [];
     const deliveryDetails=document.createElement("details");
     deliveryDetails.className="tf-person tf-map-tools";
+    deliveryDetails.dataset.tfAccordionGroup="message-details";
     deliveryDetails.setAttribute("aria-label","Information om levering");
     const deliverySummary=document.createElement("summary");
     deliverySummary.textContent="Om levering og læsekvitteringer";
     deliveryDetails.appendChild(deliverySummary);
-    const deliveryLegend=document.createElement("p");
-    deliveryLegend.className="tf-message";
-    deliveryLegend.textContent="1. Accepteret: Home Assistant-notifikationstjenesten har modtaget anmodningen. 2. Leveret: telefonens faktiske modtagelse kan ikke bekræftes. 3. Læst: kun når modtageren aktivt markerer beskeden som læst i Tiny Family.";
+    const deliveryLegend=document.createElement("ol");
+    deliveryLegend.className="tf-delivery-steps";
+    for(const [name,explanation] of [
+      ["Accepteret","Home Assistant har modtaget anmodningen om at sende beskeden."],
+      ["Leveret","Vi kan ikke bekræfte, om telefonen faktisk har modtaget beskeden."],
+      ["Læst","Modtageren har selv markeret beskeden som læst i Tiny Family."]
+    ]){
+      const row=document.createElement("li");
+      const heading=document.createElement("strong");heading.textContent=name;
+      const description=document.createElement("span");description.textContent=explanation;
+      row.append(heading,description);deliveryLegend.appendChild(row);
+    }
     deliveryDetails.appendChild(deliveryLegend);
     const retry=document.createElement("button");
     retry.type="button";retry.className="tf-save";
@@ -4069,6 +4303,7 @@ class TinyFamilyPanel extends HTMLElement {
     }
     const shortcutsPanel=document.createElement("details");
     shortcutsPanel.className="tf-advanced";
+    shortcutsPanel.dataset.tfAccordionGroup="message-details";
     const shortcutsHeading=document.createElement("summary");
     shortcutsHeading.textContent="Hurtige beskeder";
     shortcutsPanel.append(shortcutsHeading,shortcuts);
@@ -4252,7 +4487,7 @@ class TinyFamilyPanel extends HTMLElement {
   editor(root) {
     if (!this.settings.editable) { root.textContent = "Kun administratorer kan ændre indstillinger."; return; }
     const adminHeading=document.createElement("div");adminHeading.className="tf-admin-head";
-    const adminIcon=document.createElement("ha-icon");adminIcon.setAttribute("icon","mdi:shield-crown");
+    const adminIcon=tinyNeonIcon("admin");
     const heading=document.createElement("h2");heading.textContent="Administration – Tiny Family";
     adminHeading.append(adminIcon,heading);root.appendChild(adminHeading);
     const info=document.createElement("p");info.className="tf-message";
@@ -4386,18 +4621,25 @@ class TinyFamilyPanel extends HTMLElement {
     for (const person of this.settings.available_persons || []) {
       const section = document.createElement("details");
       section.className = "tf-person tf-member-settings";
+      section.dataset.tfAccordionGroup="admin-members";
       section.dataset.personId=person.id;
       const personSummary=document.createElement("summary");
       personSummary.className="tf-member-summary";
       const memberStatus=document.createElement("span");
-      memberStatus.className="tf-chip";
+      memberStatus.className="tf-member-state";
+      memberStatus.setAttribute("role","status");
       personSummary.append(document.createTextNode(person.name),memberStatus);
       section.appendChild(personSummary);
       const label = document.createElement("label");
       const checkbox = document.createElement("input");
       checkbox.type = "checkbox";
       checkbox.checked = (this.settings.persons || []).includes(person.id);
-      const statusMember=()=>memberStatus.textContent=checkbox.checked?"● Aktiv":"○ Ikke tilføjet";
+      const statusMember=()=>{
+        memberStatus.dataset.active=String(checkbox.checked);
+        memberStatus.textContent=checkbox.checked?"Aktiv":"Inaktiv";
+        memberStatus.setAttribute("aria-label",checkbox.checked?
+          person.name+" er aktiv i Tiny Family":person.name+" er inaktiv i Tiny Family");
+      };
       checkbox.addEventListener("change",statusMember);statusMember();
       label.append(checkbox, document.createTextNode(" Medtag i Tiny Family"));
       section.appendChild(label);
@@ -4433,6 +4675,7 @@ class TinyFamilyPanel extends HTMLElement {
       const enabledSensors=new Set(this.settings.phone_sensor_selection?.[person.id]??Object.keys(sensorKeys));
       for(const [key,title] of Object.entries(sensorKeys)){
         const label=document.createElement("label");
+        label.className="tf-sensor-option";
         const checked=document.createElement("input");
         checked.type="checkbox";checked.checked=enabledSensors.has(key);
         sensors[key]=checked;
@@ -4541,7 +4784,7 @@ class TinyFamilyPanel extends HTMLElement {
           checkbox.disabled=useGlobalEvents.checked;
       });
       fields.appendChild(personEventsBox);
-      rows.push({person:person.id,checkbox,tracker,battery,charging,activity,powerSave,sensors,personRoutine,color,
+      rows.push({person:person.id,checkbox,statusMember,tracker,battery,charging,activity,powerSave,sensors,personRoutine,color,
                  owner,target,speaker,ttsEngine,personSpeed,useGlobalEvents,individualEvents,refreshPhone});
     }
     const migrateLabel=document.createElement("label");
@@ -4609,6 +4852,7 @@ class TinyFamilyPanel extends HTMLElement {
         const missing=[...selected].filter(p=>!known.has(p));
         for(const row of rows){
           row.checkbox.checked=selected.has(row.person);
+          row.statusMember();
           for(const [element,key] of [
             [row.tracker,"trackers"]
           ]){
@@ -4753,6 +4997,7 @@ class TinyFamilyPanel extends HTMLElement {
     const makeGroup=(label,elements,open=false)=>{
       const panel=document.createElement("details");
       panel.className="tf-admin-group";
+      panel.dataset.tfAccordionGroup="admin-sections";
       panel.open=open;
       const summary=document.createElement("summary");
       summary.textContent=label;
@@ -4827,22 +5072,16 @@ class TinyFamilyPanel extends HTMLElement {
     const eraseGroup=makeGroup("Administrator: slet data",[erasePanel]);
     const roadGroup=makeGroup("Vejtilpasning og OSRM",[mapMatchPanel]);
     mapMatchPanel.open=true;
-    const migrationGroup=makeGroup("Migrering af gammel opsætning",[
-      migrateLabel,migrationReview
-    ]);
+    // Existing installations retain the one-time importer, but it is not a
+    // daily administration setting and should not occupy a primary accordion.
+    const migrationGroup=document.createElement("details");
+    migrationGroup.className="tf-person tf-advanced";
+    const migrationSummary=document.createElement("summary");
+    migrationSummary.textContent="Overfør fra ældre installation (valgfrit)";
+    migrationGroup.append(migrationSummary,migrateLabel,migrationReview);
     const advancedGroup=makeGroup("Kortværktøjer og andre valg",[
-      zoneTools,placeTools
+      migrationGroup,zoneTools,placeTools
     ]);
-     for(const group of [peopleGroup,alertsGroup,routineGroup,retentionGroup,eraseGroup,roadGroup,
-                        migrationGroup,advancedGroup]){
-      group.addEventListener("toggle",()=>{
-        if(group.open){
-          for(const other of adminGroups.children){
-            if(other!==group)other.open=false;
-          }
-        }
-      });
-    }
     form.replaceChildren(adminGroups,save);
     root.appendChild(form);
     // Preserve unfinished admin inputs through a panel reload/navigation.
@@ -4863,6 +5102,14 @@ class TinyFamilyPanel extends HTMLElement {
       }else keys.set(el,"global:"+globalIndex++);
     }
     const fieldKey=el=>keys.get(el);
+    const fieldState=el=>({type:el.type,value:el.value,
+      checked:el.type==="checkbox"?el.checked:undefined});
+    const initialFields=new Map(draftFields.map(el=>[el,fieldState(el)]));
+    const hasUnsavedChanges=()=>draftFields.some(el=>{
+      const saved=initialFields.get(el);
+      return el.value!==saved.value||
+        (el.type==="checkbox"&&el.checked!==saved.checked);
+    });
     const draft=this.readDraft("editor");
     if(draft?.fields){
       for(const el of draftFields){
@@ -4874,6 +5121,7 @@ class TinyFamilyPanel extends HTMLElement {
         }else if(typeof saved.value==="string")el.value=saved.value;
       }
       for(const row of rows){
+        row.statusMember();
         row.refreshPhone();
         row.useGlobalEvents.dispatchEvent(new Event("change"));
       }
@@ -4886,23 +5134,26 @@ class TinyFamilyPanel extends HTMLElement {
             "group:"+[...adminGroups.children].indexOf(item)]);
         }
       }
-      const notice=document.createElement("div");notice.className="tf-card-actions";
-      const note=document.createElement("span");note.className="tf-chip";
-      note.textContent="Ikke-gemte indstillinger gendannet fra denne browserfane";
-      const discard=document.createElement("button");
-      discard.type="button";discard.className="tf-save";
-      discard.textContent="Forkast kladde";
-      discard.addEventListener("click",()=>{
-        this.clearDraft("editor");root.replaceChildren();this.editor(root);
-        this.message("Kladde fjernet. De senest gemte indstillinger vises.");
-      });
-      notice.append(note,discard);root.prepend(notice);
+      if(hasUnsavedChanges()){
+        const notice=document.createElement("div");notice.className="tf-draft-notice";
+        const note=document.createElement("span");note.className="tf-chip";
+        note.textContent="Ændringer, der endnu ikke er gemt, er gendannet";
+        const discard=document.createElement("button");
+        discard.type="button";discard.className="tf-save";
+        discard.textContent="Forkast ændringer";
+        discard.addEventListener("click",()=>{
+          this.clearDraft("editor");root.replaceChildren();this.editor(root);
+          this.message("Kladde fjernet. De senest gemte indstillinger vises.");
+        });
+        notice.append(note,discard);root.prepend(notice);
+      }else this.clearDraft("editor");
     }
     const saveEditorDraft=()=>{
+      if(!hasUnsavedChanges()){
+        this.clearDraft("editor");return;
+      }
       const fields={};
-      for(const el of draftFields)fields[fieldKey(el)]={
-        type:el.type,value:el.value,checked:el.type==="checkbox"?el.checked:undefined
-      };
+      for(const el of draftFields)fields[fieldKey(el)]=fieldState(el);
       const open={};
       for(const [index,item] of [...adminGroups.children].entries())
         open["group:"+index]=item.open;

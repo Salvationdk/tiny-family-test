@@ -220,6 +220,12 @@ class TimelineTests(unittest.TestCase):
                             for r in report["items"]))
         self.assertTrue(any(r["mode"]=="driving" and r["source"]=="gps"
                             for r in report["items"]))
+        trips=[row for row in report["items"] if row["kind"]=="trip"]
+        self.assertTrue(trips)
+        self.assertTrue(all(row["avg_speed_kmh"] is not None and
+                            row["max_speed_kmh"] is not None for row in trips))
+        self.assertTrue(all(row["max_speed_kmh"] >= row["avg_speed_kmh"]
+                            for row in trips))
 
     def test_daily_text_report_uses_shared_place_and_stays_within_gps_gaps(self):
         start=self.now-1800
@@ -249,6 +255,18 @@ class TimelineTests(unittest.TestCase):
         report=T.build_daily_report(day,start-60,start+900,shared_places=places)
         self.assertEqual(report["items"][0]["label"],"Hjem → Arbejde")
         self.assertEqual(report["summary"]["archived_trip_distance_km"],2.2)
+        self.assertEqual(report["items"][0]["avg_speed_kmh"],13.2)
+        self.assertEqual(report["items"][0]["max_speed_kmh"],38)
+
+    def test_clipped_or_gapped_archived_trip_never_gets_false_average(self):
+        start=self.now-1200
+        trip={"kind":"trip","started_at":start,"ended_at":start+600,
+              "distance_km":2.2,"max_speed_kmh":38,"gap":True}
+        report=T.build_daily_report(T.build_day([],[trip]),start-60,start+900)
+        self.assertIsNone(report["items"][0]["avg_speed_kmh"])
+        trip["gap"]=False
+        report=T.build_daily_report(T.build_day([],[trip]),start+200,start+900)
+        self.assertIsNone(report["items"][0]["avg_speed_kmh"])
 
     def test_daily_text_report_respects_historical_private_fix_filter(self):
         start=self.now-1000

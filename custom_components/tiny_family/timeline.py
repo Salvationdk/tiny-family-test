@@ -479,8 +479,9 @@ def build_daily_report(data, start, end, *, shared_places=()):
     intervals = []
 
     def place_label(lat, lon, fallback=""):
-        if fallback and fallback.strip():
-            return fallback.strip()[:80]
+        named=str(fallback or "").strip()
+        if named and named.casefold() not in ("ukendt sted","ukendt","unknown"):
+            return named[:80]
         if type(lat) not in (int,float) or type(lon) not in (int,float):
             return "Ukendt sted"
         best = None
@@ -561,11 +562,23 @@ def build_daily_report(data, start, end, *, shared_places=()):
         recorded_speed = event.get("max_speed_kmh")
         if type(recorded_speed) not in (int,float) or recorded_speed <= 0:
             recorded_speed = None
+        trip_distance = event.get("distance_km") if kind == "trip" else None
+        avg_trip_speed = None
+        # Derive an event-specific average only for an uncut, contiguous trip.
+        # A whole-trip distance divided by a clipped day or GPS gap is false.
+        if (kind == "trip" and begun == event["started_at"] and
+                ended == event["ended_at"] and not event.get("gap") and
+                type(trip_distance) in (int,float) and
+                isfinite(trip_distance) and trip_distance > 0):
+            speed = trip_distance * 3600 / (ended-begun)
+            if 0 < speed <= 200:
+                avg_trip_speed = round(speed,1)
         rows.append({"kind":kind,"started_at":begun,"ended_at":ended,
                      "duration_min":round((ended-begun)/60),
                      "label":place_label(lat,lon,event.get("label") or "") if
                        kind == "stay" else trip_label,
-                     "distance_km":event.get("distance_km") if kind == "trip" else None,
+                     "distance_km":trip_distance,
+                     "avg_speed_kmh":avg_trip_speed,
                      "max_speed_kmh":recorded_speed if kind == "trip" else None,
                      "mode":("driving" if recorded_speed and recorded_speed >= 20 else
                              "walking" if recorded_speed and recorded_speed <= 8.5 else
@@ -591,6 +604,8 @@ def build_daily_report(data, start, end, *, shared_places=()):
             "label":place_label(interval["lat"],interval["lon"]) if stayed
               else "Bevægelse registreret via GPS",
             "distance_km":None if stayed else round(interval["distance_m"]/1000,2),
+            "avg_speed_kmh":None if stayed else round(
+                interval["distance_m"] / span * 3.6,1),
             "max_speed_kmh":None if stayed else round(interval["max_speed_kmh"],1),
             "mode":interval["kind"],"source":"gps","gps_gap":False,
         })

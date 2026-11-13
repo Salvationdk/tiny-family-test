@@ -48,6 +48,42 @@ class MobileExperienceTests(unittest.TestCase):
         self.assertIn('"tiny_family/geofences"',self.js)
         self.assertIn('zoneTools.hidden=!data.can_manage_all_places',self.js)
         self.assertIn('Destinationer inde i zonen:',self.js)
+        self.assertIn('shapeNav.setAttribute("aria-label","Vælg zonens form")',self.js)
+        self.assertIn('circleShape.textContent="◯ Cirkelzone"',self.js)
+        self.assertIn('polygonShape.textContent="⬡ Polygonzone"',self.js)
+        self.assertIn('polygonEditor.hidden=selectedZoneShape!=="polygon"',self.js)
+        self.assertIn('shape:selectedZoneShape',self.js)
+
+    def test_single_open_accordion_and_compact_place_proposals(self):
+        self.assertIn('addEventListener("toggle",event=>{',self.js)
+        self.assertIn('other.dataset.tfAccordionGroup===group&&other.open',self.js)
+        for scope in ('admin-sections','admin-members','places-proposals',
+                      'places-managed','places-shared','places-own',
+                      'places-zones','message-details','today-details'):
+            self.assertIn(scope,self.js)
+        self.assertIn('expand.textContent="Udvid ▾"',self.js)
+        self.assertIn('expand.textContent=card.open?"Luk ▴":"Udvid ▾"',self.js)
+        self.assertIn('const managedGroups=[];',self.js)
+        self.assertIn('nærliggende registreringer',self.js)
+
+    def test_neon_buttons_custom_icons_and_unobtrusive_draft_notice(self):
+        for marker in ('TF_ICON_ART','tinyNeonIcon("family")',
+                       'tinyNeonIcon("admin")','.tf-wrap button.tf-save',
+                       '.tf-member-state[data-active=true]',
+                       '.tf-member-state[data-active=false]',
+                       'const hasUnsavedChanges=()=>',
+                       'if(!hasUnsavedChanges()){',
+                       'Overfør fra ældre installation (valgfrit)',
+                       '.tf-wrap [hidden]{display:none!important}'):
+            self.assertIn(marker,self.js)
+
+    def test_text_diary_has_per_trip_speed_and_messages_use_step_rows(self):
+        for marker in ('item.avg_speed_kmh','Gns. ', 'Topfart ',
+                       'tf-daily-facts','tf-delivery-steps',
+                       '["Accepteret",','["Leveret",','["Læst",'):
+            self.assertIn(marker,self.js)
+        self.assertIn('["report","Dagsrapport",reportPane]',self.js)
+        self.assertIn('["archive","Seneste ture og ophold",archivePane]',self.js)
 
     def test_place_coordinates_open_inside_panel_not_external_maps(self):
         self.assertIn('async openLocationDialog(place,opener=null)',self.js)
