@@ -81,7 +81,7 @@ class MobileExperienceTests(unittest.TestCase):
 
     def test_person_stays_centered_during_timeline_replay(self):
         self.assertIn("timelineMarker.setLatLng(loc)",self.js)
-        self.assertIn("activeMap.panTo(loc,{animate:false})",self.js)
+        self.assertIn("activeMap.setView(center,zoom,{animate:false})",self.js)
         self.assertIn('previousCenteredFix=loc.join(",")',self.js)
         self.assertIn("!timelineMode)draw()",self.js)
         self.assertIn('"&map_match=0"',self.js)
@@ -92,7 +92,8 @@ class MobileExperienceTests(unittest.TestCase):
         self.assertIn('Anslået position',self.js)
         self.assertIn('const focusEventObservation=(event,segments)=>',self.js)
         self.assertIn('eventFocus=focus?{...focus,kind:event.kind}:null;',self.js)
-        self.assertIn('activeMap.panBy([0,Math.round(offset)]',self.js)
+        self.assertIn('activeMap.unproject([pixel.x,pixel.y+offset],zoom)',self.js)
+        self.assertIn('if(!activeMap||!validMapPoint(loc))return;',self.js)
 
     def test_replay_uses_real_elapsed_time_and_resets_date_when_person_changes(self):
         self.assertIn('data-role="timeline-speed"',self.js)

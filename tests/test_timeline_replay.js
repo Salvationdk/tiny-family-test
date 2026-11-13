@@ -49,4 +49,74 @@ assert.deepEqual(focusEvent(event,[]).point,[55.0,12.0]);
 assert.equal(focusEvent({started_at:1000,ended_at:1500},[]),null,
   "Never invent a location for a time-only old event");
 
-console.log("Timeline road-follow and GPS-gap replay tests passed");
+// Map the timeline camera in a *single* bounded setView. The pin stays at
+// the real measurement while the camera offsets it above the mobile dock.
+const validStart=panel.indexOf("const validMapPoint=");
+const validEnd=panel.indexOf("const chooseMode=",validStart);
+const moveStart=panel.indexOf("const moveTimelineMarker=");
+const moveEnd=panel.indexOf("const focusEventObservation=",moveStart);
+assert(validStart>0&&validEnd>validStart&&moveStart>0&&moveEnd>moveStart);
+const mobileCamera=new Function("window","document","dockPerson","mapElement","dock","map",
+  panel.slice(validStart,validEnd)+
+  "let activeMap=map,timelineMarker=null,previousCenteredFix=null;"+
+  panel.slice(moveStart,moveEnd)+
+  "return {move:moveTimelineMarker,getMarker:()=>timelineMarker};");
+const views=[];
+let pin=null;
+const fakeMap={
+  getZoom:()=>undefined,
+  project:loc=>({x:loc[1]*100,y:loc[0]*100}),
+  unproject:coords=>({lat:coords[1]/100,lng:coords[0]/100}),
+  setView:(loc,zoom)=>views.push({loc,zoom}),
+  panTo:()=>assert.fail("Camera must not pan separately"),
+  panBy:()=>assert.fail("Camera must not accumulate pixel offsets")
+};
+const fakeWindow={
+  matchMedia:()=>({matches:true}),
+  L:{
+    divIcon:()=>({}),
+    marker:(loc)=>{
+      pin={loc,setLatLng(next){this.loc=next;},addTo(){return this;}};
+      return pin;
+    }
+  }
+};
+const camera=mobileCamera(fakeWindow,{createElement:()=>({style:{},outerHTML:"pin"})},
+  {options:[{value:"a",textContent:"Nicolaj Rusbjerg"}],value:"a"},
+  {getBoundingClientRect:()=>({top:0,bottom:900,height:900})},
+  {getBoundingClientRect:()=>({top:500})},fakeMap);
+camera.move([55.1,12.2]);
+assert.deepEqual(camera.getMarker().loc,[55.1,12.2]);
+assert.equal(views[0].zoom,15,"Uninitialized zoom must never become NaN");
+assert(views[0].loc[0]>55.1,"Mobile map centre must sit below the badge");
+camera.move([55.1001,12.2001]);
+assert.equal(views.length,2);
+camera.move([NaN,12.4]);
+camera.move([95,12.4]);
+assert.equal(views.length,2,"Invalid or off-world fixes must not shift tiles");
+
+// Guard the vendored Leaflet grid layer: an invalid or unbounded tile range
+// must not bubble the red Home Assistant "infinite number of tiles" error.
+const tileStart=panel.indexOf("const updateTiles=layer._update;");
+const tileEnd=panel.indexOf("let retryCount=0;",tileStart);
+assert(tileStart>0&&tileEnd>tileStart);
+const guardTileLayer=new Function("layer",panel.slice(tileStart,tileEnd));
+let tileCalls=0;
+const tileLayer={
+  _map:{getZoom:()=>15,getCenter:()=>({lat:55,lng:12})},
+  _tileZoom:15,
+  _update(){tileCalls++;},
+  _getTiledPixelBounds:()=>({}),
+  _pxBoundsToTileRange:()=>({min:{x:1,y:2},max:{x:6,y:8}})
+};
+guardTileLayer(tileLayer);
+tileLayer._update();
+assert.equal(tileCalls,1);
+tileLayer._pxBoundsToTileRange=()=>({min:{x:-Infinity,y:2},max:{x:6,y:8}});
+tileLayer._update();
+assert.equal(tileCalls,1,"Infinite tile bounds must be discarded");
+tileLayer._pxBoundsToTileRange=()=>({min:{x:1,y:2},max:{x:200,y:8}});
+tileLayer._update();
+assert.equal(tileCalls,1,"Unbounded tile counts must be discarded");
+
+console.log("Timeline geometry, centred playback and tile safety tests passed");

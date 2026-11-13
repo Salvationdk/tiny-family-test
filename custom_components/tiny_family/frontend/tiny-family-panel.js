@@ -644,6 +644,31 @@ class TinyFamilyPanel extends HTMLElement {
         referrerPolicy:"origin",
         crossOrigin:false,
       });
+      // Leaflet's tile-range calculation throws an uncaught exception when a
+      // transient mobile resize or malformed map centre produces NaN/Infinity.
+      // Check the range before Leaflet attempts to enumerate its tiles. A
+      // later valid map movement will retry naturally without losing GPS data.
+      const updateTiles=layer._update;
+      layer._update=function(center){
+        if(!this._map)return;
+        const zoom=this._map.getZoom();
+        if(!Number.isFinite(zoom)||zoom<0||zoom>22)return;
+        if(this._tileZoom!==undefined){
+          try{
+            const focus=center||this._map.getCenter();
+            if(!Number.isFinite(focus.lat)||!Number.isFinite(focus.lng))return;
+            const range=this._pxBoundsToTileRange(this._getTiledPixelBounds(focus));
+            const values=[range.min.x,range.min.y,range.max.x,range.max.y];
+            if(!values.every(Number.isFinite)||
+               range.max.x-range.min.x>128||range.max.y-range.min.y>128)return;
+          }catch(error){return;}
+        }
+        try{return updateTiles.call(this,center);}
+        catch(error){
+          if(error?.message==="Attempted to load an infinite number of tiles")return;
+          throw error;
+        }
+      };
       let retryCount=0;
       let retryTimer=null;
       map.once("unload",()=>{if(retryTimer)clearTimeout(retryTimer);});
@@ -2199,6 +2224,9 @@ class TinyFamilyPanel extends HTMLElement {
     let previousCenteredFix=null;
     let drawing=false,pendingRedraw=false;
     let previousSignature="";
+    const validMapPoint=loc=>Array.isArray(loc)&&loc.length===2&&
+      Number.isFinite(loc[0])&&Number.isFinite(loc[1])&&
+      Math.abs(loc[0])<=85.05&&Math.abs(loc[1])<=180;
     const chooseMode=mode=>{
       timelineMode=mode==="history";
       liveTab.setAttribute("aria-pressed",String(!timelineMode));
@@ -2267,7 +2295,33 @@ class TinyFamilyPanel extends HTMLElement {
       return [fix.lat,fix.lon];
     };
     const moveTimelineMarker=loc=>{
-      if(!activeMap)return;
+      if(!activeMap||!validMapPoint(loc))return;
+      // Resolve the camera in one operation. Repeated panTo() + panBy()
+      // during 200 ms playback ticks can leave a transient invalid tile
+      // viewport when Home Assistant resizes the map beneath the timeline.
+      const currentZoom=activeMap.getZoom();
+      const zoom=Number.isFinite(currentZoom)?
+        Math.max(2,Math.min(19,previousCenteredFix===null?
+          Math.max(15,currentZoom):currentZoom)):15;
+      let center=loc;
+      if(window.matchMedia?.("(max-width: 600px)").matches){
+        const mapRect=mapElement.getBoundingClientRect();
+        const dockRect=dock.getBoundingClientRect();
+        if([mapRect.top,mapRect.bottom,mapRect.height,dockRect.top]
+          .every(Number.isFinite)&&mapRect.height>0&&mapRect.height<10000){
+          const hiddenHeight=Math.max(0,mapRect.bottom-
+            Math.max(mapRect.top,Math.min(mapRect.bottom,dockRect.top-8)));
+          const offset=Math.min(mapRect.height*.4,hiddenHeight/2);
+          if(offset>1){
+            const pixel=activeMap.project(loc,zoom);
+            if(Number.isFinite(pixel.x)&&Number.isFinite(pixel.y)){
+              const shifted=activeMap.unproject([pixel.x,pixel.y+offset],zoom);
+              const candidate=[shifted.lat,shifted.lng];
+              if(validMapPoint(candidate))center=candidate;
+            }
+          }
+        }
+      }
       if(!timelineMarker){
         const selected=[...dockPerson.options]
           .find(option=>option.value===dockPerson.value);
@@ -2288,24 +2342,10 @@ class TinyFamilyPanel extends HTMLElement {
       }else{
         timelineMarker.setLatLng(loc);
       }
-      // Follow the selected person, including explicitly labeled inferred
-      // positions. The first location is centered at street-level.
-      if(previousCenteredFix===null){
-        activeMap.setView(loc,Math.max(15,activeMap.getZoom()),{animate:false});
-      }else if(previousCenteredFix!==loc.join(",")){
-        activeMap.panTo(loc,{animate:false});
-      }
-      if(previousCenteredFix!==loc.join(",") &&
-         window.matchMedia?.("(max-width: 600px)").matches){
-        // The timeline dock covers the lower part of the phone map. Place
-        // the badge at the centre of the *visible* map above the dock.
-        const mapRect=mapElement.getBoundingClientRect();
-        const dockRect=dock.getBoundingClientRect();
-        const hiddenHeight=Math.max(0,mapRect.bottom-
-          Math.max(mapRect.top,Math.min(mapRect.bottom,dockRect.top-8)));
-        const offset=Math.min(mapRect.height*.4,hiddenHeight/2);
-        if(offset>1)activeMap.panBy([0,Math.round(offset)],{animate:false});
-      }
+      // The map's centre is shifted south by the covered half-height so the
+      // actual person marker stays in the visible portion above the controls.
+      if(previousCenteredFix!==loc.join(","))
+        activeMap.setView(center,zoom,{animate:false});
       previousCenteredFix=loc.join(",");
     };
     const focusEventObservation=(event,segments)=>{
