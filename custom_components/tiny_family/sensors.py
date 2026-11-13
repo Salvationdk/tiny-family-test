@@ -17,6 +17,7 @@ def generated_payloads(hass, person):
     # Avoid publishing GPS place coordinates to HA-wide state attributes
     # while this person has enabled Ghost Mode inside Tiny Family.
     ghost = person in hass.data.get("tiny_family_runtime", {}).get("ghost_people", set())
+    private_destination = ghost or st.get("destination_private") is True
     companion = companion_readings(
         hass, charging_entity=st.get("charging_entity"),
         activity_entity=st.get("activity_entity"),
@@ -39,21 +40,21 @@ def generated_payloads(hass, person):
         _sensor(f"sensor.tiny_family_{slug}_last_trip", st.get("last_trip", "Ingen ture endnu"),
                 {"friendly_name": f"{name} sidste tur"}),
         _sensor(f"sensor.tiny_family_{slug}_destination",
-                "Privat" if ghost else (st.get("destination") or "Ingen"),
+                "Privat" if private_destination else (st.get("destination") or "Ingen"),
                 {"icon": "mdi:map-marker-question",
                  "friendly_name": f"{name} mulig destination",
-                 "confidence": 0.0 if ghost else st.get("destination_confidence", 0.0)}),
+                 "confidence": 0.0 if private_destination else st.get("destination_confidence", 0.0)}),
         _sensor(f"sensor.tiny_family_{slug}_destination_confidence",
-                0 if ghost else round(st.get("destination_confidence", 0.0) * 100),
+                0 if private_destination else round(st.get("destination_confidence", 0.0) * 100),
                 {"unit_of_measurement": "%",
                  "friendly_name": f"{name} destinationssikkerhed",
                  "icon": "mdi:chart-bell-curve-cumulative"}),
         _sensor(f"sensor.tiny_family_{slug}_destination_eta",
-                0 if ghost else int(st.get("dest_eta_min") or 0),
+                0 if private_destination else int(st.get("dest_eta_min") or 0),
                 {"unit_of_measurement": "min", "icon": "mdi:timer-sand",
                  "friendly_name": f"{name} ETA til destination"}),
         _sensor(f"sensor.tiny_family_{slug}_destination_afstand",
-                0 if ghost else round((st.get("dest_dist_m") or 0) / 1000, 1),
+                0 if private_destination else round((st.get("dest_dist_m") or 0) / 1000, 1),
                 {"unit_of_measurement": "km", "device_class": "distance",
                  "friendly_name": f"{name} afstand til destination"}),
         _sensor(f"sensor.tiny_family_{slug}_home_eta",
@@ -93,7 +94,8 @@ def generated_payloads(hass, person):
                 {"friendly_name": f"{name} kendte steder",
                  "zone_forslag": [],
                  "zone_forslag_antal": (0 if ghost else len(
-                     _zone_candidates(hass, st.get("places"))))}),
+                     _zone_candidates(hass, [place for place in st.get("places") or []
+                                             if not place.get("private")])))}),
     ]
     moving = st.get("movement_state", "unknown")
     binary_sensors = [

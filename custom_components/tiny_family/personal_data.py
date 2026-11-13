@@ -1,7 +1,8 @@
-"""Self-service erasure of Tiny Family's locally learned personal data.
+"""Administrator-controlled erasure of routes, activities and places.
 
 Does not alter Home Assistant Person/device_tracker or Recorder history.
 Other users' chat copies and shared Home Assistant geographic zones remain.
+Members may still remove their own consensual routine observations.
 """
 from __future__ import annotations
 
@@ -38,19 +39,25 @@ class TinyFamilyPersonalDataView(HomeAssistantView):
         runtime, entry, person = self._context(request)
         if entry is None:
             return web.json_response({"message": "Not configured"}, status=503)
-        if person is None:
+        admin = bool(request["hass_user"].is_admin)
+        cfg = {**entry.data, **entry.options}
+        target = request.query.get("person", person)
+        if not admin and (person is None or target != person):
             return web.json_response({"message": "Account not linked"}, status=403)
-        state = self.hass.data.get(DOMAIN, {}).get(person) or {}
+        if target not in (cfg.get("persons") or []):
+            return web.json_response({"message": "Person not configured"}, status=404)
+        state = self.hass.data.get(DOMAIN, {}).get(target) or {}
         timeline = (await self.hass.async_add_executor_job(
-            archive_stats, runtime["timeline_path"], person
+            archive_stats, runtime["timeline_path"], target
         )) if runtime.get("timeline_path") else {"fixes":0,"events":0}
         return web.json_response({
-            "person": person,
+            "person": target,
             "routes": timeline["fixes"],
             "activities": timeline["events"],
-            "timeline_retention_days": RETENTION_DAYS,
+            "timeline_retention_days": cfg.get("timeline_retention_days", RETENTION_DAYS),
             "places": len(state.get("places") or []),
-            "routine_observations": len((runtime.get("routines") or {}).get(person, [])),
+            "routine_observations": len((runtime.get("routines") or {}).get(target, [])),
+            "can_delete_history": admin,
             "notice": "Home Assistant Recorder history must be handled separately.",
         }, headers={"Cache-Control": "no-store"})
 
@@ -58,7 +65,8 @@ class TinyFamilyPersonalDataView(HomeAssistantView):
         runtime, entry, person = self._context(request)
         if entry is None:
             return web.json_response({"message": "Not configured"}, status=503)
-        if person is None:
+        admin = bool(request["hass_user"].is_admin)
+        if person is None and not admin:
             return web.json_response({"message": "Account not linked"}, status=403)
         try:
             payload = await request.json()
@@ -71,6 +79,15 @@ class TinyFamilyPersonalDataView(HomeAssistantView):
                 raise ValueError("Confirm one or more valid categories")
         except (ValueError, TypeError, AttributeError):
             return web.json_response({"message": "Confirmation and categories required"}, status=400)
+        cfg = {**entry.data, **entry.options}
+        target = payload.get("person", person)
+        if not admin and target != person:
+            return web.json_response({"message": "Administrator required"}, status=403)
+        if target not in (cfg.get("persons") or []):
+            return web.json_response({"message": "Person not configured"}, status=404)
+        if not admin and any(key in categories for key in ("routes", "places", "activities")):
+            return web.json_response({"message": "Administrator required"}, status=403)
+        person = target
         deleted = {}
         # Respect the same erasure categories as before, including the new
         # persistent SQLite history. The lock prevents a concurrent flush
@@ -134,12 +151,8 @@ class TinyFamilyPersonalDataView(HomeAssistantView):
                 state["usual_departure"] = None
                 state["routine_confidence"] = 0
                 _publish(self.hass, person)
-            active = set(entry.options.get("routine_learning_people") or [])
-            if person in active:
-                active.discard(person)
-                self.hass.config_entries.async_update_entry(entry, options={
-                    **entry.options, "routine_learning_people": sorted(active),
-                })
+            # Self-service deletion does not override the admin-only setting.
+            # The same person may accumulate fresh observations on later trips.
         return web.json_response({
             "deleted": deleted,
             "notice": "Does not erase data stored by Home Assistant Recorder.",

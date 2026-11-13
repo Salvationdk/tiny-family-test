@@ -86,6 +86,11 @@ def public_profile(hass, person: str, config: dict, now: datetime,
                    "gps_health": gps_health or ("fresh" if location else "unknown"),
                    "updated_at":last_fix.isoformat(),
                    "gps_age_minutes": max(0, round((now - last_fix).total_seconds() / 60))})
+    result["power_save"] = runtime_state.get("power_save")
+    result["gps_glitches"] = max(0, int(runtime_state.get("gps_glitches") or 0))
+    glitch_at = runtime_state.get("gps_glitch_at")
+    result["gps_glitch_recent"] = (type(glitch_at) in (int, float)
+                                   and 0 <= now.timestamp() - glitch_at <= 1800)
     if location is not None:
         result.update({"latitude":location[0],"longitude":location[1]})
     elif 0 <= (now - last_fix).total_seconds() <= 24 * 3600:
@@ -125,8 +130,10 @@ def public_profile(hass, person: str, config: dict, now: datetime,
         if (movement == "stationary" and type(stay_start) in (int, float)
                 and math.isfinite(stay_start) and 0 < stay_start <= now.timestamp()):
             result["stay_minutes"] = int((now.timestamp() - stay_start) // 60)
-    result["destination_confidence"] = round(
-        runtime_state.get("destination_confidence", 0.0) * 100
+    private_destination = bool(runtime_state.get("destination_private"))
+    result["destination_confidence"] = (
+        0 if private_destination and person != viewer_person else
+        round(runtime_state.get("destination_confidence", 0.0) * 100)
     )
     if runtime_state.get("home_eta_min") is not None:
         result["home_eta_minutes"] = runtime_state["home_eta_min"]
@@ -136,7 +143,12 @@ def public_profile(hass, person: str, config: dict, now: datetime,
                          ("distance_today_km","distance_today")):
         metric=hass.states.get(f"sensor.tiny_family_{slug}_{suffix}")
         if metric is not None and metric.state not in ("unknown","unavailable"):
+            if field in ("destination", "eta_minutes") and person != viewer_person and runtime_state.get("destination_private"):
+                continue
             result[field]=metric.state
+    if private_destination and person == viewer_person:
+        result["destination"] = runtime_state.get("destination") or "Ingen"
+        result["eta_minutes"] = int(runtime_state.get("dest_eta_min") or 0)
     if (person == viewer_person and config.get("learn_routines_enabled") and
             person in (config.get("routine_learning_people") or [])):
         result["usual_departure"] = runtime_state.get("usual_departure")
@@ -212,7 +224,9 @@ class TinyFamilyPrivacyView(HomeAssistantView):
             return web.json_response({"message": "Account not linked"}, status=403)
         try:
             data = await request.json()
-            allowed = {"ghost", "share_position_in_messages", "learn_my_routines"}
+            if isinstance(data, dict) and "learn_my_routines" in data:
+                return web.json_response({"message": "Only administrator controls routine learning"}, status=403)
+            allowed = {"ghost", "share_position_in_messages"}
             if (not isinstance(data, dict) or not (set(data) & allowed) or
                     set(data) - allowed or
                     any(type(value) is not bool for value in data.values())):
@@ -229,10 +243,6 @@ class TinyFamilyPrivacyView(HomeAssistantView):
         config = {**entry.data, **entry.options}
         ghost = set(config.get("ghost_people") or [])
         no_location = set(config.get("message_location_opt_out") or [])
-        routines = set(config.get("routine_learning_people") or [])
-        if data.get("learn_my_routines") and not config.get("learn_routines_enabled"):
-            return web.json_response({"message": "Routine learning is disabled by administrator"},
-                                     status=403)
         if data.get("ghost") and not may_use_ghost(config, person):
             return web.json_response({
                 "message": "Ghost Mode requires administrator permission"
@@ -243,17 +253,12 @@ class TinyFamilyPrivacyView(HomeAssistantView):
             (no_location.discard if data["share_position_in_messages"]
              else no_location.add)(person)
 
-        if "learn_my_routines" in data:
-            (routines.add if data["learn_my_routines"]
-             else routines.discard)(person)
         new_options = {**entry.options,
                        "ghost_people": sorted(ghost),
-                       "message_location_opt_out": sorted(no_location),
-                       "routine_learning_people": sorted(routines)}
+                       "message_location_opt_out": sorted(no_location)}
         runtime = self.hass.data.get(RUNTIME_KEY, {})
         for key, values in (("ghost_people", ghost),
-                            ("message_location_opt_out", no_location),
-                            ("routine_learning_people", routines)):
+                            ("message_location_opt_out", no_location)):
             live = runtime.get(key)
             if live is not None:
                 live.clear()
@@ -262,20 +267,6 @@ class TinyFamilyPrivacyView(HomeAssistantView):
             if live_cfg is not None:
                 live_cfg[key] = sorted(values)
         from .sensors import _publish
-        if "learn_my_routines" in data and not data["learn_my_routines"]:
-            from .routines import clear_person
-            from .storage import _save_places
-            cache = runtime.get("routines")
-            if isinstance(cache, dict):
-                clear_person(cache, person)
-                await self.hass.async_add_executor_job(
-                    _save_places, self.hass.config.path("tiny_family_routines.json"),
-                    cache,
-                )
-            person_state = self.hass.data.get(DOMAIN, {}).get(person)
-            if person_state is not None:
-                person_state.pop("usual_departure", None)
-                person_state.pop("routine_confidence", None)
         if person in self.hass.data.get(DOMAIN, {}):
             _publish(self.hass, person)
         runtime["privacy_options_in_flight"] = {**entry.data, **new_options}
@@ -287,5 +278,5 @@ class TinyFamilyPrivacyView(HomeAssistantView):
             "share_position_in_messages": person not in no_location,
             "routine_learning_available": bool(config.get("learn_routines_enabled")),
             "learn_my_routines": bool(config.get("learn_routines_enabled") and
-                                      person in routines),
+                                      person in (config.get("routine_learning_people") or [])),
         }, headers={"Cache-Control": "no-store"})

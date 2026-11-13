@@ -161,6 +161,33 @@ class TimelineTests(unittest.TestCase):
         T.initialize_archive(self.path,now=self.now)
         self.assertEqual(T.archive_stats(self.path,"person.one")["fixes"],0)
 
+    def test_admin_can_choose_a_shorter_retention(self):
+        old=self.now-80*86400
+        T.persist_archive(self.path,[self.sample(old)])
+        T.initialize_archive(self.path,now=self.now,retention_days=60)
+        self.assertEqual(T.archive_stats(self.path,"person.one")["fixes"],0)
+        with self.assertRaises(ValueError):
+            T.day_window("2026-08-01","Europe/Copenhagen",
+                         now=datetime.fromtimestamp(self.now,timezone.utc),
+                         retention_days=60)
+        with self.assertRaises(ValueError):
+            T.validate_retention_days(10000)
+
+    def test_road_overlay_is_cached_per_viewer_and_erased_with_route(self):
+        source=T.match_fingerprint([[{"t":self.now-100,"lat":55,"lon":11}]],"builtin")
+        line=[{"start_t":self.now-100,"end_t":self.now-90,"points":[[55,11],[55.1,11.1]]}]
+        T.save_matched_day(self.path,"person.one","2026-11-09","person.one",
+                           source,line,"matched")
+        self.assertEqual(T.read_matched_day(self.path,"person.one","2026-11-09",
+                                            "person.one",source),(line,"matched"))
+        self.assertIsNone(T.read_matched_day(self.path,"person.one","2026-11-09",
+                                             "person.two",source))
+        self.assertIsNone(T.read_matched_day(self.path,"person.one","2026-11-09",
+                                             "person.one","different-hash"))
+        T.delete_archive(self.path,"person.one",routes=True)
+        self.assertIsNone(T.read_matched_day(self.path,"person.one","2026-11-09",
+                                             "person.one",source))
+
 
 if __name__=="__main__":
     unittest.main()
