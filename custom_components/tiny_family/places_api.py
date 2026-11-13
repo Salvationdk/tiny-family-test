@@ -76,8 +76,8 @@ class TinyFamilyPlacesView(HomeAssistantView):
     """Personal learned places and explicitly published family places.
 
     Private raw GPS points are not published automatically. Anyone linked to
-    the family may create a shared place; only its creator and HA admins may
-    edit it. Only admins may delete. Learned suggestions with enough visits
+    the family may create a shared place; only admins may edit or delete it.
+    Learned suggestions with enough visits
     are visible to the family unless an administrator marks them private.
     """
     url = "/api/tiny_family/places"
@@ -154,11 +154,27 @@ class TinyFamilyPlacesView(HomeAssistantView):
             "id": place["id"], "name": place["name"],
             "latitude": place["latitude"], "longitude": place["longitude"],
             "created_by_name": place.get("created_by_name", "Familiemedlem"),
-            "can_edit": admin or place.get("created_by") == request["hass_user"].id,
+            "can_edit": admin,
             "can_delete": admin,
         } for place in shared if isinstance(place, dict) and
             all(k in place for k in ("id", "name", "latitude", "longitude"))]
+        def published_at(place):
+            return next((saved for saved in common
+                if all(type(saved.get(key)) in (float, int) and
+                       math.isfinite(saved[key])
+                       for key in ("latitude", "longitude"))
+                and _hav(place["latitude"], place["longitude"],
+                         saved["latitude"], saved["longitude"]) <= 75), None)
+
+        own_places = describe_places(self.hass, state.get("places")) if state else []
+        for place in own_places:
+            if place["status"] == "suggested":
+                published = published_at(place)
+                if published:
+                    place["status"] = "published"
+                    place["name"] = str(published["name"])
         proposals = []
+        managed = []
         cfg = {**entry.data, **entry.options}
         for member in cfg.get("persons") or []:
             if not admin and member != person and member in (cfg.get("ghost_people") or []):
@@ -171,17 +187,28 @@ class TinyFamilyPlacesView(HomeAssistantView):
             for place in describe_places(self.hass, member_state.get("places")):
                 if place["status"] == "zone":
                     continue
-                if not admin and place["status"] not in ("suggested", "named"):
-                    continue
                 if place["private"] and not admin and member != person:
                     continue
-                proposals.append({**place, "person": member, "person_name": display})
+                record = {**place, "person": member, "person_name": display}
+                if place["status"] == "named":
+                    if admin:
+                        managed.append(record)
+                    continue
+                if place["status"] != "suggested":
+                    continue
+                # A published suggestion remains in personal history, but
+                # it is no longer a suggestion once a shared place exists.
+                if published_at(place):
+                    continue
+                proposals.append(record)
         proposals.sort(key=lambda item: (-item["visits"], -item["minutes"]))
+        managed.sort(key=lambda item: (item["person_name"], item["name"]))
         return web.json_response({
-            "person": person, "places": describe_places(self.hass, state.get("places")) if state else [],
+            "person": person, "places": own_places,
             "shared_places": common,
             "family_suggestions": proposals,
             "admin_suggestions": proposals if admin else [],
+            "managed_places": managed if admin else [],
             "can_create_zone": admin,
             "can_manage_all_places": admin,
             "gps_health": state.get("gps_health", "unknown") if state else "unknown",
@@ -258,8 +285,8 @@ class TinyFamilyPlacesView(HomeAssistantView):
                 place = next((p for p in shared if p.get("id") == identifier), None)
                 if place is None:
                     return web.json_response({"message": "Place not found"}, status=404)
-                if not admin and place.get("created_by") != user_id:
-                    return web.json_response({"message": "Creator or administrator required"}, status=403)
+                if not admin:
+                    return web.json_response({"message": "Administrator required"}, status=403)
                 if action == "delete":
                     shared.remove(place)
                 else:
@@ -273,7 +300,7 @@ class TinyFamilyPlacesView(HomeAssistantView):
 
     async def _write_personal(self, request, payload, action, person, state):
         admin = bool(request["hass_user"].is_admin)
-        if action in ("delete", "privacy") and not admin:
+        if action in ("delete", "privacy", "rename") and not admin:
             return web.json_response({"message": "Administrator required"}, status=403)
         if action == "zone" and not admin:
             return web.json_response({"message": "Administrator required"}, status=403)

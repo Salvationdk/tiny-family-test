@@ -110,8 +110,9 @@ class TinyFamilyPanel extends HTMLElement {
       .tf-day-nav input{width:100%;min-width:0;box-sizing:border-box;color-scheme:dark}
       .tf-day-nav button{font-size:18px}
       .tf-timeline-dock input[type=range]{width:100%;margin:2px 0 0;accent-color:#39d9e4;touch-action:pan-y;min-height:23px}
-      .tf-scrub-row{display:grid;grid-template-columns:48px minmax(0,1fr);gap:8px;align-items:center}
+      .tf-scrub-row{display:grid;grid-template-columns:42px minmax(0,1fr) 76px;gap:6px;align-items:center}
       .tf-scrub-row button{padding:5px 3px}
+      .tf-scrub-row select{width:100%;padding:5px 3px;font-size:12px}
       .tf-event-strip{display:flex;overflow-x:auto;gap:6px;padding:3px 0;scrollbar-width:thin}
       .tf-event-strip[hidden]{display:none}
       .tf-event-strip button{white-space:nowrap;flex:none;min-height:31px;font-size:11px;padding:4px 8px;border-color:rgba(188,146,244,.54);background:rgba(55,35,75,.77)}
@@ -624,6 +625,12 @@ class TinyFamilyPanel extends HTMLElement {
     const proposalMapTitle=document.createElement("p");proposalMapTitle.className="tf-message";
     adminDetails.appendChild(proposalMapTitle);
     const adminList=document.createElement("div");adminDetails.appendChild(adminList);
+    const managedDetails=document.createElement("details");
+    managedDetails.className="tf-place-group";
+    const managedTitle=document.createElement("summary");
+    managedTitle.textContent="Registrerede opholdssteder · administrator";
+    managedDetails.appendChild(managedTitle);
+    const managedList=document.createElement("div");managedDetails.appendChild(managedList);
 
     root.classList.add("tf-places-view");
     const placeNav=document.createElement("nav");placeNav.className="tf-screen-nav";
@@ -639,6 +646,7 @@ class TinyFamilyPanel extends HTMLElement {
     ownPane.appendChild(ownDetails);
     ownDetails.open=true;
     adminPane.appendChild(adminDetails);
+    adminPane.appendChild(managedDetails);
     adminDetails.open=true;
     const placeViews=[
       {key:"shared",title:"Fælles",pane:sharedPane},
@@ -877,7 +885,7 @@ class TinyFamilyPanel extends HTMLElement {
           actions.appendChild(privacyLabel);
         }
         card.append(heading,info,actions);
-        if(place.status!=="zone"){
+        if(place.status!=="zone" && data.can_manage_all_places){
           const edit=document.createElement("details");
           const editTitle=document.createElement("summary");editTitle.textContent="Ret navn på ophold";
           edit.appendChild(editTitle);
@@ -903,7 +911,7 @@ class TinyFamilyPanel extends HTMLElement {
             remove.disabled=false;
           });
           editActions.appendChild(rename);
-          if(data.can_manage_all_places)editActions.appendChild(remove);
+          editActions.appendChild(remove);
           edit.appendChild(editActions);
           card.appendChild(edit);
         }
@@ -915,7 +923,54 @@ class TinyFamilyPanel extends HTMLElement {
         ownList.appendChild(empty);
       }
       {
-        if(!adminDetails.isConnected)adminPane.appendChild(adminDetails);
+        if(!adminDetails.isConnected)adminPane.prepend(adminDetails);
+        managedDetails.hidden=!data.can_manage_all_places;
+        managedList.replaceChildren();
+        if(data.can_manage_all_places){
+          for(const place of data.managed_places||[]){
+            const card=document.createElement("section");card.className="tf-person";
+            const heading=document.createElement("strong");
+            heading.textContent=place.person_name+" · "+place.name;
+            const info=document.createElement("p");
+            info.textContent=place.visits+" besøg · "+place.minutes+" min"+
+              (place.private?" · Privat":"");
+            const actions=document.createElement("div");actions.className="tf-card-actions";
+            actions.appendChild(openMaps(place));
+            const rename=document.createElement("button");rename.type="button";
+            rename.className="tf-save";rename.textContent="Ret navn";
+            rename.addEventListener("click",async()=>{
+              const value=window.prompt("Nyt stednavn",place.name);
+              if(value===null||!value.trim())return;
+              rename.disabled=true;
+              await call("PUT",{person:place.person,name:value.trim(),
+                latitude:place.latitude,longitude:place.longitude},"Stedet er opdateret.");
+              rename.disabled=false;
+            });
+            const privacy=document.createElement("button");privacy.type="button";
+            privacy.className="tf-save";
+            privacy.textContent=place.private?"Gør fælles":"Gør privat";
+            privacy.addEventListener("click",async()=>{
+              privacy.disabled=true;
+              await call("PUT",{kind:"privacy",person:place.person,
+                latitude:place.latitude,longitude:place.longitude,
+                private:!place.private},"Synlighed opdateret.");
+              privacy.disabled=false;
+            });
+            const remove=document.createElement("button");remove.type="button";
+            remove.className="tf-save";remove.textContent="Slet sted";
+            remove.style.background="var(--error-color,#b3261e)";
+            remove.addEventListener("click",async()=>{
+              if(!window.confirm("Slet dette registrerede sted?"))return;
+              remove.disabled=true;
+              await call("DELETE",{person:place.person,
+                latitude:place.latitude,longitude:place.longitude},"Stedet er slettet.");
+              remove.disabled=false;
+            });
+            actions.append(rename,privacy,remove);
+            card.append(heading,info,actions);managedList.appendChild(card);
+          }
+          if(!managedList.children.length)managedList.textContent="Ingen navngivne opholdssteder.";
+        }
         proposalRows=data.family_suggestions||[];
         if(proposalFocus && !proposalRows.some(row=>
           row.person===proposalFocus.person && row.latitude===proposalFocus.latitude &&
@@ -1394,6 +1449,13 @@ class TinyFamilyPanel extends HTMLElement {
           <button type="button" data-role="timeline-play" aria-label="Afspil dagsruten">▶</button>
           <input type="range" data-role="timeline-minute" min="0" max="1439"
             step="1" value="1439" aria-label="Gå gennem dagens GPS-tidslinje">
+          <select data-role="timeline-speed" aria-label="Afspilningshastighed">
+            <option value="1">1× realtid</option>
+            <option value="5">5×</option>
+            <option value="20">20×</option>
+            <option value="60">60×</option>
+            <option value="300">300×</option>
+          </select>
         </div>
         <div class="tf-history-info"><strong data-role="timeline-time">—</strong>
           <span data-role="timeline-stats">Vælg dato og person</span></div>
@@ -1413,11 +1475,15 @@ class TinyFamilyPanel extends HTMLElement {
     const dockDate=dock.querySelector('[data-role="timeline-date"]');
     const minuteSlider=dock.querySelector('[data-role="timeline-minute"]');
     const playButton=dock.querySelector('[data-role="timeline-play"]');
-    const stopPlayback=()=>{
+    const playbackSpeed=dock.querySelector('[data-role="timeline-speed"]');
+    let playbackTime=null,playbackTickAt=null;
+    const stopPlayback=(resetPosition=true)=>{
       if(this._timelinePlaybackTimer){
         clearInterval(this._timelinePlaybackTimer);
         this._timelinePlaybackTimer=null;
       }
+      if(resetPosition)playbackTime=null;
+      playbackTickAt=null;
       playButton.textContent="▶";
       playButton.setAttribute("aria-label","Afspil dagsruten");
     };
@@ -1438,11 +1504,15 @@ class TinyFamilyPanel extends HTMLElement {
       timeZone:this.hassInstance.config.time_zone||undefined,
       year:"numeric",month:"2-digit",day:"2-digit"
     }).format(d);
-    dockDate.value=localDate(new Date());
-    dockDate.max=dockDate.value;
+    const resetToToday=()=>{
+      dockDate.value=localDate(new Date());
+      dockDate.max=dockDate.value;
+    };
+    resetToToday();
     dockDate.min=localDate(new Date(Date.now()-
       ((this.settings?.timeline_retention_days??365)-1)*86400000));
     let timelineMode=false,timelineData=null,timelineMarker=null,activeMap=null;
+    let cursorManuallyMoved=false;
     let timelineRequest=0,timelineRevision=0;
     let previousCenteredFix=null;
     let drawing=false,pendingRedraw=false;
@@ -1453,21 +1523,87 @@ class TinyFamilyPanel extends HTMLElement {
       historyTab.setAttribute("aria-pressed",String(timelineMode));
       historyControls.hidden=!timelineMode;
     };
-    const updateCursor=()=>{
+    // Locate a real fix on its matched road. Interpolate *along the road*
+    // between two observed fixes, never across a GPS/privacy gap.
+    const projectedRoadPoint=(coordinates,fix)=>{
+      if(!Array.isArray(coordinates)||coordinates.length<2)return null;
+      const scaleX=111320*Math.max(.05,Math.cos(fix.lat*Math.PI/180));
+      let traveled=0,best=null;
+      for(let i=1;i<coordinates.length;i++){
+        const first=coordinates[i-1],last=coordinates[i];
+        if(!Array.isArray(first)||!Array.isArray(last))continue;
+        const dx=(last[1]-first[1])*scaleX;
+        const dy=(last[0]-first[0])*111320;
+        const length=Math.hypot(dx,dy);
+        if(length<.001)continue;
+        const px=(fix.lon-first[1])*scaleX,py=(fix.lat-first[0])*111320;
+        const fraction=Math.max(0,Math.min(1,(px*dx+py*dy)/(length*length)));
+        const miss=Math.hypot(px-fraction*dx,py-fraction*dy);
+        if(!best||miss<best.miss){
+          best={miss,along:traveled+fraction*length};
+        }
+        traveled+=length;
+      }
+      return best;
+    };
+    const positionOnRoad=(coordinates,distance)=>{
+      let traveled=0;
+      for(let i=1;i<coordinates.length;i++){
+        const a=coordinates[i-1],b=coordinates[i];
+        const size=Math.hypot((b[0]-a[0])*111320,
+          (b[1]-a[1])*111320*Math.max(.05,Math.cos(a[0]*Math.PI/180)));
+        if(size<.001)continue;
+        if(traveled+size>=distance){
+          const fraction=Math.max(0,Math.min(1,(distance-traveled)/size));
+          return [a[0]+(b[0]-a[0])*fraction,a[1]+(b[1]-a[1])*fraction];
+        }
+        traveled+=size;
+      }
+      return coordinates[coordinates.length-1];
+    };
+    const playbackLocation=(fix,next,t)=>{
+      const matched=roadMatchToggle.checked?
+        (timelineData?.matched_segments||[]):[];
+      for(const road of matched){
+        if(!Array.isArray(road.coordinates)||road.coordinates.length<2 ||
+           road.start_t>fix.t||road.end_t<fix.t||
+           (next && road.end_t<next.t))continue;
+        const start=projectedRoadPoint(road.coordinates,fix);
+        const end=next?projectedRoadPoint(road.coordinates,next):start;
+        if(!start||!end||start.miss>100||end.miss>100||
+           end.along+5<start.along)continue;
+        const progress=next?Math.max(0,Math.min(1,
+          (t-fix.t)/(next.t-fix.t))):0;
+        return positionOnRoad(road.coordinates,
+          start.along+progress*Math.max(0,end.along-start.along));
+      }
+      if(next && next.t>fix.t && next.t-fix.t<=90){
+        const progress=Math.max(0,Math.min(1,(t-fix.t)/(next.t-fix.t)));
+        return [fix.lat+(next.lat-fix.lat)*progress,
+          fix.lon+(next.lon-fix.lon)*progress];
+      }
+      return [fix.lat,fix.lon];
+    };
+    const updateCursor=(selectedTime=null)=>{
       if(!timelineMode||!timelineData)return;
       // Select the end of each displayed minute so real fixes with seconds
       // (e.g. 12:23:50) remain visible at 12:23 on the slider.
-      const desired=Math.min(timelineData.end-1,
-        timelineData.start+(Number(minuteSlider.value)+1)*60-1);
+      const desired=Number.isFinite(selectedTime)?
+        Math.max(timelineData.start,Math.min(timelineData.end-1,selectedTime)):
+        Math.min(timelineData.end-1,
+          timelineData.start+(Number(minuteSlider.value)+1)*60-1);
       const prettyTime=ts=>new Date(ts*1000).toLocaleTimeString("da-DK",{
-        hour:"2-digit",minute:"2-digit",
+        hour:"2-digit",minute:"2-digit",second:"2-digit",
         timeZone:timelineData.timezone||undefined
       });
       timeLabel.textContent=prettyTime(desired);
-      let closest=null;
+      let closest=null,next=null;
       for(const segment of timelineData.segments||[]){
-        for(const fix of segment){
-          if(fix.t<=desired && (!closest || fix.t>closest.t))closest=fix;
+        for(let i=0;i<segment.length;i++){
+          const fix=segment[i];
+          if(fix.t<=desired && (!closest || fix.t>closest.t)){
+            closest=fix;next=segment[i+1]||null;
+          }
         }
       }
       if(!closest || desired-closest.t>300){
@@ -1482,13 +1618,20 @@ class TinyFamilyPanel extends HTMLElement {
         return;
       }
       const metrics=[];
-      if(Number.isFinite(closest.speed))metrics.push(Math.round(closest.speed)+" km/t");
+      let speed=closest.speed;
+      if(next && Number.isFinite(next.speed)&&Number.isFinite(speed) &&
+         next.t>closest.t && desired<next.t){
+        const ratio=(desired-closest.t)/(next.t-closest.t);
+        speed=speed+(next.speed-speed)*ratio;
+      }
+      metrics.push(Number.isFinite(speed)?"Fart "+Math.round(speed)+" km/t":"Fart ukendt");
       if(Number.isFinite(closest.battery))metrics.push(Math.round(closest.battery)+" % batteri");
       if(closest.movement==="stationary" && Number.isFinite(closest.stay_min) &&
           closest.stay_min>=0)metrics.push("Ophold "+closest.stay_min+" min");
       statsLabel.textContent=prettyTime(closest.t)+" · "+(metrics.join(" · ")||"Position målt");
       if(activeMap){
-        const loc=[closest.lat,closest.lon];
+        const loc=playbackLocation(closest,
+          next && next.t>closest.t && next.t-closest.t<=300?next:null,desired);
         if(!timelineMarker){
           const selected=[...dockPerson.options]
             .find(option=>option.value===dockPerson.value);
@@ -1514,10 +1657,10 @@ class TinyFamilyPanel extends HTMLElement {
         // The very first point is zoomed to street-level for a Zenly-like view.
         if(previousCenteredFix===null){
           activeMap.setView(loc,Math.max(15,activeMap.getZoom()),{animate:false});
-        }else if(previousCenteredFix!==closest.t){
+        }else if(previousCenteredFix!==loc.join(",")){
           activeMap.panTo(loc,{animate:false});
         }
-        previousCenteredFix=closest.t;
+        previousCenteredFix=loc.join(",");
       }
     };
     const loadTimeline=async()=>{
@@ -1526,6 +1669,12 @@ class TinyFamilyPanel extends HTMLElement {
       const person=dockPerson.value||this._viewerPerson;
       if(!person){summaryLabel.textContent="Ingen tilknyttet person.";return;}
       const requestId=++timelineRequest;
+      // Never leave the previously selected person's route visible while a
+      // different person's day is being fetched. Recenter on the new live
+      // location immediately, then recenter on the requested historical fix.
+      timelineData=null;timelineRevision++;
+      previousCenteredFix=null;previousSignature="";
+      void draw();
       timeLabel.textContent="Henter tidslinje…";
       try{
         const url="tiny_family/timeline?person="+encodeURIComponent(person)+
@@ -1541,8 +1690,8 @@ class TinyFamilyPanel extends HTMLElement {
            (result.matching_status==="partial"?" · Delvist match":""):
            result.matching_status==="disabled"?"Vejtilpasning er deaktiveret af administrator.":
            result.matching_status==="not_enough_points"?"For få GPS-punkter til vejtilpasning.":
-           "Vejtilpasning kunne ikke beregnes. Oprindelige GPS-spor vises.")
-          :"";
+           "Vejtilpasning kunne ikke beregnes. GPS-sporet vises uden gættede veje.")
+          :"Vejtilpasning er slået fra. Administrator kan aktivere den indbyggede vejmotor i Administration.";
         eventStrip.replaceChildren();
         for(const event of (result.events||[]).slice(0,40)){
           const eventButton=document.createElement("button");
@@ -1560,6 +1709,7 @@ class TinyFamilyPanel extends HTMLElement {
               Math.floor((event.started_at-result.start)/60)
             )));
             stopPlayback();
+            cursorManuallyMoved=true;
             updateCursor();
           });
           eventStrip.appendChild(eventButton);
@@ -1569,6 +1719,7 @@ class TinyFamilyPanel extends HTMLElement {
         const segments=result.segments||[];
         const lastSegment=segments[segments.length-1]||[];
         const lastFix=lastSegment[lastSegment.length-1];
+        cursorManuallyMoved=false;
         minuteSlider.value=String(lastFix?
           Math.min(Number(minuteSlider.max),Math.max(0,
             Math.floor((lastFix.t-result.start)/60))):
@@ -1600,6 +1751,9 @@ class TinyFamilyPanel extends HTMLElement {
     });
     historyTab.addEventListener("click",loadTimeline);
     dockPerson.addEventListener("change",()=>{
+      stopPlayback();
+      previousCenteredFix=null;
+      resetToToday();
       if(timelineMode)loadTimeline();
       else {previousSignature="";draw();}
     });
@@ -1615,21 +1769,45 @@ class TinyFamilyPanel extends HTMLElement {
     });
     minuteSlider.addEventListener("input",()=>{
       stopPlayback();
+      cursorManuallyMoved=true;
       updateCursor();
     });
     playButton.addEventListener("click",()=>{
-      if(this._timelinePlaybackTimer){stopPlayback();return;}
+      if(this._timelinePlaybackTimer){stopPlayback(false);return;}
       if(!timelineData || !timelineMode)return;
-      if(Number(minuteSlider.value)>=Number(minuteSlider.max))minuteSlider.value="0";
+      if(playbackTime===null){
+        if(!cursorManuallyMoved){
+          const first=(timelineData.segments||[]).find(segment=>segment.length)?.[0];
+          if(first)minuteSlider.value=String(Math.max(0,Math.floor(
+            (first.t-timelineData.start)/60)));
+          else minuteSlider.value="0";
+        }else if(Number(minuteSlider.value)>=Number(minuteSlider.max)){
+          minuteSlider.value="0";
+        }
+        playbackTime=Math.min(timelineData.end-1,timelineData.start+
+          Number(minuteSlider.value)*60);
+      }
+      cursorManuallyMoved=true;
+      // One second of real elapsed time advances one second at 1×. The
+      // previous fixed 5 min / 180 ms interval ran at about 1,667×.
+      playbackTickAt=performance.now();
       playButton.textContent="Ⅱ";
       playButton.setAttribute("aria-label","Sæt dagsruten på pause");
       this._timelinePlaybackTimer=setInterval(()=>{
         if(this.active!=="live"||!timelineMode){stopPlayback();return;}
-        const next=Number(minuteSlider.value)+5;
-        if(next>Number(minuteSlider.max)){stopPlayback();return;}
-        minuteSlider.value=String(next);
-        updateCursor();
-      },180);
+        const now=performance.now();
+        const elapsed=Math.max(0,(now-playbackTickAt)/1000);
+        playbackTickAt=now;
+        playbackTime+=elapsed*Number(playbackSpeed.value);
+        if(playbackTime>=timelineData.end-1){
+          minuteSlider.value=minuteSlider.max;
+          updateCursor(timelineData.end-1);
+          stopPlayback();return;
+        }
+        minuteSlider.value=String(Math.min(Number(minuteSlider.max),
+          Math.floor((playbackTime-timelineData.start)/60)));
+        updateCursor(playbackTime);
+      },200);
     });
     const moveDay=direction=>{
       const parts=dockDate.value.split("-").map(Number);
@@ -1864,10 +2042,14 @@ class TinyFamilyPanel extends HTMLElement {
                  " · sikkerhed ca. "+person.destination_confidence+" %" : "");
             box.appendChild(eta);
           }
+          if(Number.isFinite(person.latitude) &&
+             Number.isFinite(person.longitude) && !person.ghost &&
+             person.person===dockPerson.value){
+            focusedLivePoint=[person.latitude,person.longitude];
+          }
           if(!timelineMode && Number.isFinite(person.latitude) &&
              Number.isFinite(person.longitude) && !person.ghost){
             const point=[person.latitude,person.longitude];
-            if(person.person===dockPerson.value)focusedLivePoint=point;
             const battery=person.battery_percent;
             const color=person.stale?"#888888":battery!=null&&battery<20?"#d64646":
               battery!=null&&battery<=50?"#d79b3f":"#1fb77e";
@@ -1954,6 +2136,8 @@ class TinyFamilyPanel extends HTMLElement {
             timelineAction.textContent="Vis 24-timers tidslinje";
             timelineAction.addEventListener("click",()=>{
               dockPerson.value=person.person;
+              resetToToday();
+              previousCenteredFix=null;
               loadTimeline();
             });
             popup.appendChild(timelineAction);
@@ -1999,33 +2183,41 @@ class TinyFamilyPanel extends HTMLElement {
           const color=this.settings.colors?.[timelineData.person]||"#24d5d9";
           const matched=roadMatchToggle.checked?
             (timelineData.matched_segments||[]):[];
-          for(const segment of timelineData.segments||[]){
-            const valid=(segment||[]).filter(p=>Number.isFinite(p.lat) &&
-              Number.isFinite(p.lon));
-            const pts=valid.map(p=>[p.lat,p.lon]);
-            if(!pts.length)continue;
-            const matchedHere=matched.some(road=>
-              valid.length && road.start_t<=valid[valid.length-1].t &&
-              road.end_t>=valid[0].t
-            );
+          const drawUnmatched=fixes=>{
+            const pts=fixes.map(fix=>[fix.lat,fix.lon]);
             if(pts.length>1){
-              window.L.polyline(pts,{
-                color:matchedHere?"#a9c9d6":"#ffffff",
-                weight:matchedHere?2:6,
-                opacity:matchedHere?.50:.42,
-                dashArray:matchedHere?"5 6":undefined
-              }).addTo(map);
-              if(!matchedHere){
-                window.L.polyline(pts,{
-                  color,weight:3.5,opacity:.96
-                }).addTo(map);
-              }
-            }else{
+              window.L.polyline(pts,{color:"#ffffff",weight:5,opacity:.3}).addTo(map);
+              window.L.polyline(pts,{color,weight:3,opacity:.9}).addTo(map);
+            }else if(pts.length){
               window.L.circleMarker(pts[0],{
                 radius:4,color:"#fff",weight:1,fillColor:color,fillOpacity:1
               }).addTo(map);
             }
-            trackBounds.push(...pts);
+          };
+          for(const segment of timelineData.segments||[]){
+            const valid=(segment||[]).filter(p=>Number.isFinite(p.lat) &&
+              Number.isFinite(p.lon));
+            if(!valid.length)continue;
+            trackBounds.push(...valid.map(p=>[p.lat,p.lon]));
+            if(!matched.length || valid.length===1){
+              drawUnmatched(valid);
+            }else{
+              // Draw actual OSM road geometry for matched portions, and raw
+              // GPS only where a trustworthy road match is unavailable.
+              let unmatched=[];
+              for(let i=1;i<valid.length;i++){
+                const covered=matched.some(road=>road.start_t<=valid[i-1].t &&
+                  road.end_t>=valid[i].t);
+                if(covered){
+                  if(unmatched.length)drawUnmatched(unmatched);
+                  unmatched=[];
+                }else{
+                  if(!unmatched.length)unmatched.push(valid[i-1]);
+                  unmatched.push(valid[i]);
+                }
+              }
+              if(unmatched.length)drawUnmatched(unmatched);
+            }
           }
           for(const road of matched){
             if(!Array.isArray(road.coordinates)||road.coordinates.length<2)continue;
@@ -2050,11 +2242,13 @@ class TinyFamilyPanel extends HTMLElement {
             stop.bindTooltip(stopLabel);
           }
           if(trackBounds.length){
-            map.fitBounds(trackBounds,{padding:[40,40],maxZoom:15});
+            map.setView(trackBounds[trackBounds.length-1],15,{animate:false});
+          }else if(focusedLivePoint){
+            map.setView(focusedLivePoint,15,{animate:false});
           }else map.setView([this.hassInstance.config.latitude||0,
                             this.hassInstance.config.longitude||0],11);
           updateCursor();
-        }else if(!timelineMode && focusedLivePoint){
+        }else if(focusedLivePoint){
           map.setView(focusedLivePoint,14);
         }else if(!timelineMode && bounds.length){
           map.fitBounds(bounds,{padding:[35,35],maxZoom:15});

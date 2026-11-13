@@ -34,6 +34,7 @@ jobs:
         run: |
           node --check custom_components/tiny_family/frontend/tiny-family-panel.js
           node --check custom_components/tiny_family/frontend/tiny-family-card.js
+          node tests/test_timeline_replay.js
       - name: Check shared place and phone integration contracts
         run: |
           python - <<'PY'

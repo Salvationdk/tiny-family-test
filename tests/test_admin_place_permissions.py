@@ -121,10 +121,12 @@ class PlacesPermissionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status, 200)
         data = json.loads(response.text)
         locations = {item["latitude"] for item in data["family_suggestions"]}
-        self.assertEqual(locations, {55.0, 57.0})
+        # Alice's 55.0 proposal has already been published as a shared place.
+        self.assertEqual(locations, {57.0})
+        self.assertEqual(data["places"][0]["status"], "published")
         self.assertEqual(data["admin_suggestions"], [])
         admin = json.loads((await self.view.get(Request(self.admin))).text)
-        self.assertEqual(len(admin["family_suggestions"]), 3)
+        self.assertEqual(len(admin["family_suggestions"]), 2)
 
     async def test_non_admin_cannot_delete_or_set_privacy_even_as_owner(self):
         deny = await self.view.delete(Request(self.alice, {"shared_id": "a"*32}))
@@ -134,7 +136,38 @@ class PlacesPermissionTests(unittest.IsolatedAsyncioTestCase):
             "private": True,
         }))
         self.assertEqual(deny.status, 403)
+        deny = await self.view.put(Request(self.alice, {
+            "shared_id": "a"*32, "name": "New name",
+        }))
+        self.assertEqual(deny.status, 403)
+        deny = await self.view.put(Request(self.alice, {
+            "latitude": 55.0, "longitude": 11.0, "name": "My place",
+        }))
+        self.assertEqual(deny.status, 403)
         self.assertEqual(len(self.hass.data["tiny_family_runtime"]["shared_places"]), 1)
+
+    async def test_named_places_go_to_admin_managed_list_not_proposals(self):
+        place = self.hass.data["tiny_family"]["person.bob"]["places"][1]
+        place.update(label="Arbejdsplads", source="named")
+        admin = json.loads((await self.view.get(Request(self.admin))).text)
+        self.assertEqual(len(admin["managed_places"]), 1)
+        self.assertEqual(admin["managed_places"][0]["name"], "Arbejdsplads")
+        self.assertFalse(any(item["latitude"] == 57.0
+                             for item in admin["family_suggestions"]))
+        member = json.loads((await self.view.get(Request(self.alice))).text)
+        self.assertNotIn("Arbejdsplads", [p["name"] for p in member["family_suggestions"]])
+
+    async def test_publishing_a_proposal_removes_it_from_proposals(self):
+        before = json.loads((await self.view.get(Request(self.alice))).text)
+        self.assertEqual({p["latitude"] for p in before["family_suggestions"]}, {57.0})
+        saved = await self.view.post(Request(self.alice, {
+            "kind": "shared", "latitude": 57.0, "longitude": 11.0,
+            "name": "Fælles mødested",
+        }))
+        self.assertEqual(saved.status, 200)
+        after = json.loads((await self.view.get(Request(self.alice))).text)
+        self.assertEqual(after["family_suggestions"], [])
+        self.assertIn("Fælles mødested", [p["name"] for p in after["shared_places"]])
 
     async def test_admin_can_make_place_private_and_delete_shared_place(self):
         privacy = await self.view.put(Request(self.admin, {

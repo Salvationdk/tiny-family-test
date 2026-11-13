@@ -1,4 +1,4 @@
-# Tiny Family — offentlig testversion 0.8.2
+# Tiny Family — offentlig testversion 0.8.3
 
 <!-- BEGIN: Salvationdk repository metrics -->
 [![Release downloads](https://img.shields.io/github/downloads/Salvationdk/tiny-family-test/total?label=Release%20downloads&style=flat-square)](https://github.com/Salvationdk/tiny-family-test/releases)
@@ -23,10 +23,16 @@ Tiny Family er en Home Assistant-integration til familiekort, GPS-ruter, opdagel
 
 **Testversion:** Integrationen er stadig under praktisk afprøvning. SOS er ikke en certificeret nødtjeneste, og Home Assistant-notifikationer garanterer ikke levering på en telefon.
 
+## Nyt i 0.8.3 – tidslinje, vejtilpasning og registrerede steder
+- **Tidslinjeafspilning:** Starter ved første GPS-måling, når man trykker Afspil. **1× er reel tid**, mens 5×, 20×, 60× og 300× kan vælges på kortet. Klokken viser sekunder; den målte fart vises undervejs. Ved pause og manuel spoling kan personen fortsat følges på kortet.
+- **Personen i centrum:** Valgt person følges under afspilning og spoling. Ved personskift nulstilles datoen til **i dag**, og den tidligere persons rute fjernes straks. Hvis der endnu ikke er dagens historik, bruges den valgte persons sidste kendte position som kortcentrum.
+- **Tættere vejtilpasning:** Den indbyggede motor accepterer nu sikre, sammenhængende Companion GPS-fix med op til fem minutter imellem. På matchede dele tegnes den faktiske OSM-vejgeometri frem for en ekstra rå GPS-streg; afspilningsmarkøren følger vejkurverne. Huller over fem minutter forbindes ikke kunstigt. Vejtilpasning kræver fortsat, at administrator har aktiveret **Indbygget OpenStreetMap** under Administration → Vejtilpasning. Hvis OSM-data ikke er tilgængelige, er råmålingerne fallback.
+- **Stedforslag afsluttes:** Når et forslag bliver oprettet som fælles sted eller får et navn, forsvinder det fra listen over forslag. Det findes under fælles steder eller registrerede ophold i stedet. **Kun administrator kan senere rette eller slette** fælles og navngivne opholdssteder; administrator kan også markere dem private.
+
 ## Nyt i 0.8.2 – administratorstyring, stedforslag og GPS-drift
 - **Telefonens sensorer:** Administrator vælger pr. tilknyttet telefon batteri, opladning, aktivitet og batterisparestatus. Alle fire er valgt som standard; GPS er altid påkrævet. Status viser aktiv, utilgængelig, deaktiveret i HA eller mangler fra Companion. Kun sensorer på **samme HA-enhed** bruges. App-tilladelser aktiverer ikke automatisk sensorens kontakt; hvis den mangler, skal telefonens ejer slå den til under **Companion-app → Administrer sensorer**. Tiny Family kan ikke fjernaktivere appens kontakter.
 - **GPS-glitches:** Positionsspring mistænkt for drift, især under batterisparing, holdes tilbage, indtil næste GPS-fix bekræfter bevægelsen. Ubekræftede hop bruges ikke til zoner, fart, ture, ophold eller tidslinjer. Reelle store flytninger kan starte et nyt rutestykke uden en opfundet forbindelse. Status viser nylige frasorterede hop; beskyttelsen er heuristisk, ikke perfekt.
-- **Kun administrator kan slette steder, GPS-tidslinjer og turarkiv.** Gælder også API og servicen `delete_place_suggestion`. Brugerne kan fortsat rette egne stednavne og rydde egne indlærte afgangsobservationer uden at ændre administratorens indlæringsvalg.
+- **Kun administrator kan slette steder, GPS-tidslinjer og turarkiv.** Gælder også API og servicen `delete_place_suggestion`. Fra 0.8.3 kan kun administrator også rette etablerede stednavne. Brugere kan fortsat rydde egne indlærte afgangsobservationer uden at ændre administratorens indlæringsvalg.
 - **Stedforslag vises på et indbygget kort** under Steder → Forslag hos alle tilknyttede medlemmer. Gentagne ophold er som standard fælles; administrator kan gøre hvert forslag privat (så vises det kun for administrator og personen selv). Historiske Ghost-markeringer respekteres. Et sted er et registreret ophold; en **HA-zone** er et administratoroprettet område med radius, der anvendes til ankomst, afgang og alarmer.
 - **Lagring:** GPS-tidslinjer gemmes i 365 dage som standard. Administrator kan vælge 30–3650 dage; en kortere periode sletter ældre arkivdata efter genindlæsning. Den indbyggede vejtilpasning fungerer også for tidligere datoer, når de åbnes, og det beregnede resultat caches i lokal SQLite **pr. visning og person**. Originale GPS-fix ændres aldrig. Massebehandling af alle datoer på én gang udføres ikke, da det kan overbelaste OpenStreetMap Overpass.
 - **Historisk destinationsforudsigelse:** Administrator vælger global rutineindlæring og hvilke familiemedlemmer den gælder. Når den er aktiveret, analyserer Tiny Family op til 30.000 reelle, lokale GPS-målinger pr. person fra arkivet, og genkender gentagne ankomsttidspunkter og konkrete rute-tilgange til kendte steder. Gentagen historik vægter tungt i destinationsgættet. Uden tilstrækkelig historik virker den eksisterende fallback med bevægelsesretning, afstand, besøgshyppighed og fart fortsat. Analyser opdateres højst én gang i timen pr. person. Ingen historik sendes til en ekstern AI-tjeneste, og beregningen kan ikke love korrekt destination eller ETA.
@@ -98,7 +104,7 @@ Tiny Family er en Home Assistant-integration til familiekort, GPS-ruter, opdagel
 - Fire faner: **Kort**, **Steder**, **Aktivitet** og **Beskeder**. Kortet åbner først, og administration findes via skjoldikonet.
 - Vælg én Companion-telefon pr. person. Sensorer tilknyttes fra **samme** Home Assistant-enhed; fra 0.8.2 kan administrator godkende eller fravælge hver sensorkategori.
 - Et familiemedlem kan oprette fælles steder fra et kortpunkt, koordinater eller frisk telefon-GPS. Stederne bliver synlige for alle tilknyttede familiemedlemmer på kortet.
-- Opretteren kan rette egne fælles steder. Fra 0.8.2 kan kun administrator slette steder. Gentagne opholdsforslag er synlige for familien, medmindre administrator gør dem private.
+- Fælles steder kan oprettes af familiemedlemmer. Fra 0.8.3 kan kun administrator rette og slette dem. Gentagne opholdsforslag er synlige for familien, medmindre administrator gør dem private; oprettede forslag vises ikke igen i forslaglisten.
 - Administrator kan bruge registrerede ophold til at oprette et fælles sted eller en Home Assistant-zone.
 - Privat historik deles ikke automatisk, når et nyt fælles sted oprettes. Ingen Ghost Mode- eller sporingspauseknap i Tiny Family.
 
@@ -145,6 +151,6 @@ Ghost Mode fra tidligere installationer ændrer ikke Home Assistants `person`, `
 
 ## Teknisk
 
-Home Assistant-domæne: `tiny_family`. Version: `0.8.2`. Integrationens filer ligger i `custom_components/tiny_family/`.
+Home Assistant-domæne: `tiny_family`. Version: `0.8.3`. Integrationens filer ligger i `custom_components/tiny_family/`.
 
 Dette offentlige testrepository indeholder kun installationskode og dokumentation, ikke den private udviklingshistorik, personlige GPS-ruter, telefonnumre eller Home Assistant-konfigurationsdata.
