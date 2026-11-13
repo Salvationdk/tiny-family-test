@@ -1,4 +1,4 @@
-# Tiny Family — offentlig testversion 0.8.9
+# Tiny Family — offentlig testversion 0.8.10
 
 <!-- BEGIN: Salvationdk repository metrics -->
 [![Release downloads](https://img.shields.io/github/downloads/Salvationdk/tiny-family-test/total?label=Release%20downloads&style=flat-square)](https://github.com/Salvationdk/tiny-family-test/releases)
@@ -22,6 +22,14 @@
 Tiny Family er en Home Assistant-integration til familiekort, GPS-ruter, opdagelse af steder, datobaserede tidslinjer, beskeder, SOS og familieadvarsler.
 
 **Testversion:** Integrationen er stadig under praktisk afprøvning. SOS er ikke en certificeret nødtjeneste, og Home Assistant-notifikationer garanterer ikke levering på en telefon.
+
+## Nyt i 0.8.10 – sammenhængende mobilflade
+- **Forslag og steder:** Stedkort er kompakte med **Udvid/Luk**, og ét åbent kort lukker automatisk, når et andet åbnes. Samme harmonikaprincip gælder familiepersoner, administration, zoner og hjælpedele. Administratorens ens navngivne GPS-ophold inden for 80 meter samles visuelt, men de oprindelige registreringer forbliver individuelt redigerbare og slettes ikke automatisk.
+- **Zoner:** **Cirkel** og **polygon** vælges i samme korteditor under *Steder → Zoner*. Tegn hjørner direkte på kortet, og rediger eksisterende zoner fra deres kort. Destinationer kan stadig ligge inde i zoner.
+- **Egen Tiny Neon-stil:** Kort, Steder, Aktivitet og Beskeder har nytegnede, lokalt indbyggede SVG-ikoner. Knapper har afdæmpet cyan/lilla farveforløb; CSS gælder kun Tiny Family og ændrer ikke Home Assistant eller andre integrationer.
+- **Tydelig personstatus:** Familiemedlemmer viser nu *Aktiv* med grøn prik eller *Inaktiv* med rød prik. Sensorfelter er mere kompakte og læsbare på mobil.
+- **Ture med fart:** Teksttidslinjens enkelte ture viser gennemsnitsfart beregnet ud fra kendt distance og varighed samt topfart, når der findes brugbare data. Afbrudte eller afklippede ture får ikke en misvisende gennemsnitsfart. Beskedernes leveringsforklaring er opdelt i tre læsbare trin.
+- **Mindre støj:** Dagrapport og ældre aktivitetsliste har nu hver sin interne visning. Usynlige filtrerede elementer vises ikke længere. Kladdebesked i administrationen dukker kun op ved faktiske ændringer; funktionen til migration fra ældre installationer er flyttet under avancerede valg.
 
 ## Nyt i 0.8.9 – dagsstatistik og teksttidslinje pr. person
 - **Aktivitet → Familiens dagsoversigt:** Vælg et familiemedlem og en dato, og se GPS-distance, arkiverede turlængder, ophold, ture, GPS-punkter, afbrud samt gå- og køretid. Gennemsnitlig gå-/kørefart fra GPS angives tydeligt som *skøn*; faktisk registreret maksimum og gennemsnit vises kun, når sensoren har leveret brugbare data.
@@ -187,6 +195,6 @@ Ghost Mode fra tidligere installationer ændrer ikke Home Assistants `person`, `
 
 ## Teknisk
 
-Home Assistant-domæne: `tiny_family`. Version: `0.8.9`. Integrationens filer ligger i `custom_components/tiny_family/`.
+Home Assistant-domæne: `tiny_family`. Version: `0.8.10`. Integrationens filer ligger i `custom_components/tiny_family/`.
 
 Dette offentlige testrepository indeholder kun installationskode og dokumentation, ikke den private udviklingshistorik, personlige GPS-ruter, telefonnumre eller Home Assistant-konfigurationsdata.
