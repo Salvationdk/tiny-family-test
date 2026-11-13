@@ -49,7 +49,7 @@ class TinyFamilyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             "routine_learning_people": [],
             "owners": dict(self._setup_owners),
             "notification_targets": dict(self._setup_targets),
-            "map_matching_enabled": False,
+            "map_matching_enabled": True,
             "map_matching_backend": "builtin",
             "map_matching_url": "",
             "speed_limit_kmh": 130,

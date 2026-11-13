@@ -3217,7 +3217,7 @@ class TinyFamilyPanel extends HTMLElement {
     mapMatchEnabled.type="checkbox";
     mapMatchEnabled.checked=Boolean(this.settings.map_matching_enabled);
     mapMatchLabel.append(mapMatchEnabled,document.createTextNode(
-      " Tilpas nye og gamle tidslinjer til veje, når datoen vises (styres af administrator)"));
+      " Tilpas nye og gamle tidslinjer til veje, når datoen vises (slået til som standard; administrator kan ændre)"));
     const mapMatchBackendLabel=document.createElement("label");
     mapMatchBackendLabel.textContent="Vejmotor";
     const mapMatchBackend=document.createElement("select");
