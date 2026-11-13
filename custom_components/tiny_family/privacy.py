@@ -12,7 +12,7 @@ import math
 from aiohttp import web
 from homeassistant.components.http import HomeAssistantView
 
-from .communications import current_location, own_person
+from .communications import MAX_POSITION_AGE_SECONDS, current_location, own_person
 from .companion import companion_readings
 from .const import DOMAIN
 
@@ -59,6 +59,18 @@ def visible_person(person, *, viewer_person, configured, ghost):
             (person == viewer_person or person not in ghost))
 
 
+def _runtime_coordinates(state: dict) -> tuple[float, float] | None:
+    """Use the accepted phone fix, never unverified HA Person coordinates."""
+    try:
+        lat, lon = float(state["last_lat"]), float(state["last_lon"])
+    except (KeyError, TypeError, ValueError, OverflowError):
+        return None
+    if (math.isfinite(lat) and math.isfinite(lon) and
+            -90 <= lat <= 90 and -180 <= lon <= 180):
+        return lat, lon
+    return None
+
+
 def public_profile(hass, person: str, config: dict, now: datetime,
                    viewer_person: str) -> dict:
     """Expose only the data authorized for this viewer."""
@@ -69,9 +81,9 @@ def public_profile(hass, person: str, config: dict, now: datetime,
     if not visible_person(person, viewer_person=viewer_person,
                           configured=config.get("persons") or [], ghost=ghost):
         return result
-    if state is None:
-        return {**result,"status":"unknown","stale":True}
     runtime_state = getattr(hass, "data", {}).get(DOMAIN, {}).get(person, {})
+    tracker_id = runtime_state.get("tracker")
+    tracker_state = hass.states.get(tracker_id) if tracker_id else None
     gps_health = runtime_state.get("gps_health")
     gps_timestamp = runtime_state.get("gps_seen_at")
     if (not isinstance(gps_timestamp, (int, float))
@@ -79,13 +91,32 @@ def public_profile(hass, person: str, config: dict, now: datetime,
             or gps_timestamp < 0 or gps_timestamp > now.timestamp() + 60):
         gps_timestamp = None
     last_fix = (datetime.fromtimestamp(gps_timestamp, tz=timezone.utc)
-                if gps_timestamp is not None else state.last_updated)
-    location = (current_location(state, now)
-                if gps_health in (None, "fresh") else None)
-    result.update({"status":state.state, "stale":location is None,
+                if gps_timestamp is not None else None)
+    location = None
+    if tracker_id:
+        # The configured device_tracker is the source of truth. The HA Person
+        # may keep a previous zone/source for hours after the phone has moved.
+        if (gps_health == "fresh" and last_fix is not None and
+                0 <= (now - last_fix).total_seconds() <= MAX_POSITION_AGE_SECONDS):
+            location = _runtime_coordinates(runtime_state)
+    elif state is not None and gps_health in (None, "fresh"):
+        # Compatibility for installations using the legacy Person source.
+        location = current_location(state, now)
+        if last_fix is None and location is not None:
+            last_fix = state.last_updated
+    result.update({"status": (state.state if state is not None else
+                               tracker_state.state if tracker_state is not None else "unknown"),
+                   "stale": location is None,
                    "gps_health": gps_health or ("fresh" if location else "unknown"),
-                   "updated_at":last_fix.isoformat(),
-                   "gps_age_minutes": max(0, round((now - last_fix).total_seconds() / 60))})
+                   "updated_at": last_fix.isoformat() if last_fix else None,
+                   "gps_age_minutes": (max(0, round((now - last_fix).total_seconds() / 60))
+                                       if last_fix else None)})
+    result["speed_source"] = runtime_state.get("speed_source", "unavailable")
+    result["gps_accuracy_m"] = runtime_state.get("last_gps_accuracy")
+    last_event = runtime_state.get("gps_update_seen_at")
+    if type(last_event) in (int, float) and math.isfinite(last_event) and last_event <= now.timestamp():
+        result["tracker_update_age_minutes"] = max(0, round((now.timestamp()-last_event)/60))
+    result["gps_last_rejection"] = runtime_state.get("gps_last_rejection")
     result["power_save"] = runtime_state.get("power_save")
     result["gps_glitches"] = max(0, int(runtime_state.get("gps_glitches") or 0))
     glitch_at = runtime_state.get("gps_glitch_at")
@@ -93,17 +124,14 @@ def public_profile(hass, person: str, config: dict, now: datetime,
                                    and 0 <= now.timestamp() - glitch_at <= 1800)
     if location is not None:
         result.update({"latitude":location[0],"longitude":location[1]})
-    elif 0 <= (now - last_fix).total_seconds() <= 24 * 3600:
+    elif last_fix is not None and 0 <= (now - last_fix).total_seconds() <= 24 * 3600:
         # Last known fix may be shown grey for up to 24 h, never as live.
-        try:
-            lat=float(state.attributes["latitude"])
-            lon=float(state.attributes["longitude"])
-            if __import__("math").isfinite(lat) and __import__("math").isfinite(lon) and (
-                -90 <= lat <= 90 and -180 <= lon <= 180
-            ):
-                result.update({"latitude":lat,"longitude":lon})
-        except (KeyError, TypeError, ValueError):
-            pass
+        stale_location = (_runtime_coordinates({
+            "last_lat": runtime_state.get("last_known_lat"),
+            "last_lon": runtime_state.get("last_known_lon")}) if tracker_id else
+                          current_location(state, now) if state is not None else None)
+        if stale_location is not None:
+            result.update({"latitude":stale_location[0],"longitude":stale_location[1]})
     battery=(config.get("batteries") or {}).get(person)
     battery_state=hass.states.get(battery) if battery else None
     if battery_state and battery_state.state not in ("unknown","unavailable"):
@@ -123,7 +151,7 @@ def public_profile(hass, person: str, config: dict, now: datetime,
     if not result["stale"] and result["gps_health"] == "fresh":
         speed = runtime_state.get("speed_kmh")
         if type(speed) in (int, float) and math.isfinite(speed) and 0 <= speed <= 200:
-            result["speed_kmh"] = round(speed)
+            result["speed_kmh"] = round(speed, 1)
         movement = runtime_state.get("movement_state", "unknown")
         result["movement"] = movement
         stay_start = runtime_state.get("stay_start")

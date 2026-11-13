@@ -47,6 +47,7 @@ class TinyFamilyPanel extends HTMLElement {
   connectedCallback() { if (this.hassInstance && !this.booted) this.initialize(); }
   disconnectedCallback() {
     if(this._familyTimer){clearInterval(this._familyTimer);this._familyTimer=null;}
+    if(this._liveEventUnsubscribe){this._liveEventUnsubscribe();this._liveEventUnsubscribe=null;}
     if(this._timelinePlaybackTimer){clearInterval(this._timelinePlaybackTimer);this._timelinePlaybackTimer=null;}
     this.closeLocationDialog();
     if(this._familyMap){this._familyMap.remove();this._familyMap=null;}
@@ -555,6 +556,7 @@ class TinyFamilyPanel extends HTMLElement {
     this.closeLocationDialog();
     this.active = key; this.card = null; this._todayPerson = null; this.message("");
     if(this._familyTimer){clearInterval(this._familyTimer);this._familyTimer=null;}
+    if(this._liveEventUnsubscribe){this._liveEventUnsubscribe();this._liveEventUnsubscribe=null;}
     if(this._timelinePlaybackTimer){clearInterval(this._timelinePlaybackTimer);this._timelinePlaybackTimer=null;}
     if(this._familyMap){this._familyMap.remove();this._familyMap=null;}
     this.querySelectorAll("[data-view]").forEach(b => b.setAttribute("aria-current", b.dataset.view === key ? "page" : "false"));
@@ -2468,6 +2470,27 @@ class TinyFamilyPanel extends HTMLElement {
     let previousCenteredFix=null;
     let drawing=false,pendingRedraw=false;
     let previousSignature="";
+    let followLive=true;
+    const liveMarkers=new Map();
+    let refreshingLive=false;
+    let liveErrorShown=false;
+    const gpsDiagnostic=person=>{
+      if(person.ghost)return "";
+      const problem={
+        missing_coordinates:"Telefonens GPS-opdatering mangler koordinater.",
+        invalid:"GPS-måling afvist: for gammel, upræcis eller ugyldig.",
+        jump:"GPS-hop frasorteret for at beskytte turhistorikken.",
+        drift:"Usikkert GPS-hop afventer bekræftelse.",
+        awaiting_fix:"Venter på første gyldige GPS-position fra telefonen."
+      }[person.gps_last_rejection];
+      if(person.stale)return (problem||"Ingen frisk GPS-position fra telefonen.")+
+        (Number.isFinite(person.tracker_update_age_minutes)?
+          " Sidste telefonopdatering: "+person.tracker_update_age_minutes+" min siden.":"")+
+        " Tjek præcis position, baggrundstilladelse og batterisparer i Companion-appen.";
+      if(person.speed_source==="gps_estimate")
+        return "≈ Hastigheden er beregnet fra GPS, fordi telefonens fart ikke kunne bruges.";
+      return "";
+    };
     const validMapPoint=loc=>Array.isArray(loc)&&loc.length===2&&
       Number.isFinite(loc[0])&&Number.isFinite(loc[1])&&
       Math.abs(loc[0])<=85.05&&Math.abs(loc[1])<=180;
@@ -2837,6 +2860,7 @@ class TinyFamilyPanel extends HTMLElement {
       }
     };
     liveTab.addEventListener("click",()=>{
+      followLive=true;
       stopPlayback();
       eventFocus=null;
       previousCenteredFix=null;
@@ -2845,6 +2869,7 @@ class TinyFamilyPanel extends HTMLElement {
     });
     historyTab.addEventListener("click",loadTimeline);
     dockPerson.addEventListener("change",()=>{
+      followLive=true;
       stopPlayback();
       previousCenteredFix=null;
       resetToToday();
@@ -2992,9 +3017,11 @@ class TinyFamilyPanel extends HTMLElement {
         list.replaceChildren();
         await this.leaflet();
         if(this._familyMap) {this._familyMap.remove();this._familyMap=null;}
+        liveMarkers.clear();
         activeMap=null;timelineMarker=null;previousCenteredFix=null;
         const map=this.createLeafletMap(mapElement);
         activeMap=map;
+        map.on("dragstart",()=>{if(!timelineMode)followLive=false;});
         if(data.can_manage_zones){
           let draft=null, polygonDraft=null;
           map.on("click",event=>{
@@ -3114,9 +3141,15 @@ class TinyFamilyPanel extends HTMLElement {
           }
           if(!person.ghost && person.stale){
             const warning=document.createElement("p");
-            warning.className="tf-message";
-            warning.textContent="Ingen frisk GPS-position. Ruter og ankomsttider er historiske eller utilgængelige.";
+            warning.className="tf-message tf-gps-diagnostic";
+            warning.textContent=gpsDiagnostic(person);
             box.appendChild(warning);
+          }else if(!person.ghost){
+            const note=document.createElement("p");
+            note.className="tf-message tf-gps-diagnostic";
+            note.textContent=gpsDiagnostic(person);
+            note.hidden=!note.textContent;
+            box.appendChild(note);
           }
           if(person.updated_at && !person.ghost){
             const stamp=document.createElement("small");
@@ -3181,8 +3214,13 @@ class TinyFamilyPanel extends HTMLElement {
             const hasSpeed=!person.stale && person.speed_kmh!=null &&
               Number.isFinite(speed) && speed>=0;
             const batteryAvailable=Number.isFinite(battery);
-            addMetric("speed",hasSpeed?Math.round(speed)+" km/t":"— km/t",
-              hasSpeed?"Aktuel hastighed":"Ingen frisk hastighed");
+            const speedDisplay=hasSpeed?
+              (person.speed_source==="gps_estimate"?"≈ ":"")+Math.round(speed)+" km/t":
+              "— km/t";
+            addMetric("speed",speedDisplay,
+              hasSpeed?(person.speed_source==="gps_estimate"?
+                "GPS-beregnet hastighed (skøn)":"Aktuel telefonmålt hastighed"):
+                "Ingen frisk hastighed");
             addMetric("battery",batteryAvailable?Math.round(battery)+" %":"— %",
               batteryAvailable?"Batteriniveau":"Batteriniveau ikke tilgængeligt",
               batteryAvailable&&battery<=20?"battery-low":"");
@@ -3209,7 +3247,7 @@ class TinyFamilyPanel extends HTMLElement {
             popupName.textContent=person.name;
             popup.appendChild(popupName);
             const popupInfo=document.createElement("span");
-            popupInfo.textContent=(hasSpeed?Math.round(speed)+" km/t":"Hastighed ikke tilgængelig")+
+            popupInfo.textContent=(hasSpeed?speedDisplay:"Hastighed ikke tilgængelig")+
               " · "+(batteryAvailable?Math.round(battery)+" % batteri":"Batteri ukendt");
             popup.appendChild(popupInfo);
             if(staying){
@@ -3248,14 +3286,20 @@ class TinyFamilyPanel extends HTMLElement {
             });
             popup.appendChild(dayAction);
             mapMarker.bindPopup(popup);
+            liveMarkers.set(person.person,{
+              marker:mapMarker,popupInfo,liveLabel,status,box,
+              lastLat:person.latitude,lastLon:person.longitude
+            });
             bounds.push(point);
             if(!person.stale){
               const navigate=document.createElement("button");
               navigate.type="button";navigate.className="tf-save";
               navigate.textContent="Se personens position";
-              navigate.addEventListener("click",()=>this.openLocationDialog({
-                latitude:person.latitude,longitude:person.longitude,name:person.name
-              },navigate));
+              navigate.addEventListener("click",()=>{
+                const current=mapMarker.getLatLng();
+                this.openLocationDialog({latitude:current.lat,longitude:current.lng,
+                  name:person.name},navigate);
+              });
               box.appendChild(navigate);
             }
           }
@@ -3389,6 +3433,102 @@ class TinyFamilyPanel extends HTMLElement {
         if(pendingRedraw){pendingRedraw=false;draw();}
       }
     };
+    // Live location updates change existing Leaflet markers in place. Full
+    // draw() rebuilds the map, resets zoom and makes a moving phone look stuck.
+    const refreshLivePositions=async()=>{
+      const map=activeMap;
+      if(refreshingLive || timelineMode || this.active!=="live" ||
+         !this.isConnected || !map || map!==this._familyMap)return;
+      refreshingLive=true;
+      try{
+        const data=await this.hassInstance.callApi("GET","tiny_family/status");
+        if(timelineMode || this.active!=="live" || map!==this._familyMap)return;
+        let needsRedraw=false;
+        for(const person of data.people||[]){
+          const entry=liveMarkers.get(person.person);
+          const valid=Number.isFinite(person.latitude) &&
+            Number.isFinite(person.longitude) && Math.abs(person.latitude)<=85.05 &&
+            Math.abs(person.longitude)<=180 && !person.ghost;
+          if(!entry){if(valid)needsRedraw=true;continue;}
+          if(!valid){needsRedraw=true;continue;}
+          const {marker,popupInfo,liveLabel,status,box}=entry;
+          if(entry.lastLat!==person.latitude || entry.lastLon!==person.longitude){
+            marker.setLatLng([person.latitude,person.longitude]);
+            if(followLive && person.person===dockPerson.value && !person.stale){
+              // Follow the selected person without changing the user's zoom.
+              map.panTo([person.latitude,person.longitude],{animate:false});
+            }
+            entry.lastLat=person.latitude;entry.lastLon=person.longitude;
+          }
+          const battery=person.battery_percent;
+          const color=person.stale?"#888888":battery!=null&&battery<20?"#d64646":
+            battery!=null&&battery<=50?"#d79b3f":"#1fb77e";
+          const badge=marker.getElement()?.querySelector(".tf-map-person");
+          if(badge){
+            badge.classList.toggle("tf-neon-stale",Boolean(person.stale));
+            const pin=badge.querySelector(".tf-person-pin");
+            if(pin)pin.style.borderColor=color;
+            const metrics=badge.querySelectorAll(".tf-neon-metric");
+            const speed=person.speed_kmh;
+            const hasSpeed=!person.stale && Number.isFinite(speed) && speed>=0;
+            const speedText=hasSpeed?
+              (person.speed_source==="gps_estimate"?"≈ ":"")+Math.round(speed)+" km/t":
+              "— km/t";
+            if(metrics[0]){
+              metrics[0].lastElementChild.textContent=speedText;
+              metrics[0].title=hasSpeed?(person.speed_source==="gps_estimate"?
+                "Anslået fra GPS-positioner":"Hastighed fra telefonen"):
+                "Ingen frisk hastighed";
+            }
+            if(metrics[1]){
+              metrics[1].lastElementChild.textContent=Number.isFinite(battery)?
+                Math.round(battery)+" %":"— %";
+              metrics[1].classList.toggle("battery-low",Number.isFinite(battery)&&battery<=20);
+            }
+            const stay=Number(person.stay_minutes);
+            const staying=!person.stale && person.movement==="stationary" &&
+              person.stay_minutes!=null && Number.isFinite(stay)&&stay>=0;
+            let stayLabel=badge.querySelector(".tf-neon-stay");
+            if(staying){
+              if(!stayLabel){stayLabel=document.createElement("span");
+                stayLabel.className="tf-neon-stay";badge.appendChild(stayLabel);}
+              stayLabel.textContent="◷ Ophold "+(stay>=60?
+                Math.floor(stay/60)+" t "+Math.floor(stay%60)+" min":
+                Math.floor(stay)+" min");
+            }else if(stayLabel)stayLabel.remove();
+            popupInfo.textContent=(hasSpeed?speedText+
+              (person.speed_source==="gps_estimate"?" (GPS-skøn)":""):
+              "Hastighed ikke tilgængelig")+" · "+
+              (Number.isFinite(battery)?Math.round(battery)+" % batteri":"Batteri ukendt");
+          }
+          liveLabel.textContent=person.stale?"GPS forældet":
+            person.gps_health==="fresh"?"Frisk GPS":"GPS ukendt";
+          const diagnostic=box.querySelector(".tf-gps-diagnostic");
+          if(diagnostic){diagnostic.textContent=gpsDiagnostic(person);
+            diagnostic.hidden=!diagnostic.textContent;}
+          status.textContent=(person.status||"Ukendt")+" · "+
+            (person.stale?"sidste position":"opdateret")+
+            (person.battery_percent!=null?" · "+person.battery_percent+" % batteri":"")+
+            (person.power_save?" · Batterisparer aktiv":"");
+          const stamp=box.querySelector("small");
+          if(stamp && person.updated_at){
+            const date=new Date(person.updated_at);
+            if(!Number.isNaN(date.getTime()))stamp.textContent=
+              "Sidste registrerede GPS-fix: "+date.toLocaleString("da-DK")+
+              (Number.isFinite(person.gps_age_minutes)?
+                " ("+person.gps_age_minutes+" min siden)":"");
+          }
+        }
+        if(needsRedraw){previousSignature="";void draw();}
+        liveErrorShown=false;
+      }catch(error){
+        // Keep the last valid marker visible, but do not pretend it is live.
+        if(!liveErrorShown){
+          this.message("Live GPS kunne ikke opdateres: "+error.message,true);
+          liveErrorShown=true;
+        }
+      }finally{refreshingLive=false;}
+    };
     refresh.addEventListener("click",()=>{previousSignature="";draw();});
     zonesToggle.addEventListener("change",()=>{previousSignature="";draw();});
     polygonsToggle.addEventListener("change",()=>{previousSignature="";draw();});
@@ -3409,9 +3549,19 @@ class TinyFamilyPanel extends HTMLElement {
       await loadTimeline();
     }
     this._familyTimer=setInterval(()=>{
-      // Do not rebuild the map mid-playback or change the selected history zoom.
-      if(this.active==="live" && this.isConnected && !timelineMode)draw();
-    },30000);
+      // The phone supplies GPS fixes; 6 s is only the UI polling fallback.
+      void refreshLivePositions();
+    },6000);
+    const connection=this.hassInstance?.connection;
+    if(connection?.subscribeEvents){
+      connection.subscribeEvents(event=>{
+        if(event?.data?.person)void refreshLivePositions();
+      },"tiny_family_position_updated").then(unsubscribe=>{
+        if(this.active==="live" && this.isConnected && mapElement.isConnected)
+          this._liveEventUnsubscribe=unsubscribe;
+        else unsubscribe();
+      }).catch(()=>{});
+    }
   }
 
   async today(root) {

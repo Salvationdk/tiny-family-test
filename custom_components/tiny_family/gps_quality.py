@@ -14,6 +14,37 @@ MAX_KMH = 200.0
 FUTURE_TOLERANCE_SECONDS = 60
 
 
+def resolve_speed_mps(reported_mps: float | None, *, distance_m: float | None,
+                      elapsed_seconds: float | None, accuracy_m: float | None,
+                      previous_accuracy_m: float | None = None) -> tuple[float | None, str]:
+    """Prefer the phone's speed, but detect a stuck zero using actual GPS travel.
+
+    The estimate is only made for consecutive, sufficiently accurate fixes.
+    Uncertainty is handled by a deliberate minimum distance floor so
+    ordinary GPS jitter does not appear as movement. The return value is not
+    an authoritative vehicle speed; callers must keep the provenance label.
+    """
+    if reported_mps is not None and (
+            not isinstance(reported_mps, (int, float)) or
+            not math.isfinite(reported_mps) or not 0 <= reported_mps <= MAX_KMH / 3.6):
+        raise ValueError("Invalid reported speed")
+    if (distance_m is not None and elapsed_seconds is not None and
+            math.isfinite(distance_m) and distance_m >= 0 and
+            math.isfinite(elapsed_seconds) and 2 <= elapsed_seconds <= 300 and
+            accuracy_m is not None and 0 <= accuracy_m <= 50 and
+            previous_accuracy_m is not None and 0 <= previous_accuracy_m <= 50):
+        uncertainty = accuracy_m + previous_accuracy_m
+        minimum_displacement = max(25.0, 2 * uncertainty)
+        if distance_m >= minimum_displacement:
+            estimated = distance_m / elapsed_seconds
+            if 0.7 <= estimated <= MAX_KMH / 3.6 and (
+                    reported_mps is None or reported_mps < 0.3):
+                return round(estimated, 3), "gps_estimate"
+    if reported_mps is not None:
+        return float(reported_mps), "phone"
+    return None, "unavailable"
+
+
 def _distance_between(lat1, lon1, lat2, lon2):
     a1, a2 = math.radians(lat1), math.radians(lat2)
     dlat, dlon = a2 - a1, math.radians(lon2 - lon1)
@@ -54,16 +85,27 @@ def screen_gps_drift(state: dict, *, observed_at: float, latitude: float,
         if (observed_at > pending["ts"] and
                 distance_from_candidate <= max(180, elapsed * 35 + 3 * uncertainty)):
             state.pop("gps_suspect", None)
+            # Two consistent GPS positions corroborate genuine movement even
+            # when Companion keeps reporting speed=0. Accept the subsequent
+            # plausible fixes without repeatedly discarding every other one.
+            if (accuracy_m is not None and accuracy_m <= 35 and
+                    3.5 <= distance_from_candidate / elapsed <= 40):
+                state["gps_motion_confirmed_until"] = observed_at + 120
             return "rebase"
         # Continued wild GPS jumps are not a plausible track.
         state["gps_suspect"] = {"lat": latitude, "lon": longitude, "ts": observed_at}
         return "discard"
     implied_speed = distance_m / delta
+    motion_confirmed = (observed_at <= state.get("gps_motion_confirmed_until", 0)
+                        and accuracy_m is not None and accuracy_m <= 35
+                        and 3.5 <= implied_speed <= 40)
+    if motion_confirmed:
+        state["gps_motion_confirmed_until"] = observed_at + 120
     suspect = (
         delta <= 600 and distance_m >= max(160, 4 * uncertainty) and
         (power_save or (speed_mps < 2 and implied_speed >= 3.5)
          or implied_speed > 45)
-    )
+    ) and not motion_confirmed
     if suspect:
         state["gps_suspect"] = {"lat": latitude, "lon": longitude, "ts": observed_at}
         return "discard"
@@ -116,11 +158,13 @@ def reset_continuity(state: dict) -> None:
         "stay_start": None, "stay_n": 0, "current_stay_min": 0,
         "stay_lat_sum": 0.0, "stay_lon_sum": 0.0,
         "movement_state": "unknown", "movement_candidate": "",
-        "movement_candidate_samples": 0, "speed_kmh": 0.0,
+        "movement_candidate_samples": 0, "speed_kmh": None,
+        "speed_source": "unavailable", "last_gps_accuracy": None,
         "destination": "", "dest_eta_min": 0, "dest_dist_m": 0.0,
         "destination_confidence": 0.0, "destination_private": False, "home_eta_min": None,
         "zone_stable": None, "zone_candidate": None, "recent": [],
         "gps_suspect": None,
+        "gps_motion_confirmed_until": 0,
     })
 
 

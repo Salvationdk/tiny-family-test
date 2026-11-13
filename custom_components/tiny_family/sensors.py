@@ -70,10 +70,17 @@ def generated_payloads(hass, person):
                 {"friendly_name": f"{name} bevægelse",
                  "icon": "mdi:walk", "person": person}),
         _sensor(f"sensor.tiny_family_{slug}_current_speed",
-                st.get("speed_kmh", 0.0),
+                (st.get("speed_kmh") if st.get("gps_health") == "fresh" and
+                 st.get("gps_seen_at") is not None and
+                 datetime.now(tz=timezone.utc).timestamp()-st["gps_seen_at"] <= 900
+                 else None),
                 {"friendly_name": f"{name} aktuel hastighed",
                  "unit_of_measurement": "km/h", "device_class": "speed",
-                 "person": person}),
+                 "person": person, "speed_source": st.get("speed_source", "unavailable")}),
+        _sensor(f"sensor.tiny_family_{slug}_speed_source",
+                st.get("speed_source", "unavailable"),
+                {"friendly_name": f"{name} hastighedens datakilde",
+                 "icon": "mdi:speedometer", "person": person}),
         _sensor(f"sensor.tiny_family_{slug}_gps_health",
                 st.get("gps_health", "unknown"),
                 {"friendly_name": f"{name} GPS-datakvalitet",
@@ -175,7 +182,7 @@ GENERATED_SENSORS = (
     "distance_today", "stays_today", "current_stay", "max_speed",
     "distance_week", "last_trip", "destination", "destination_confidence",
     "destination_eta", "home_eta",
-    "destination_afstand", "activity", "movement", "current_speed",
+    "destination_afstand", "activity", "movement", "current_speed", "speed_source",
     "usual_departure", "kendte_steder", "gps_health", "gps_age_minutes",
 )
 GENERATED_BINARY_SENSORS = ("charging", "moving", "on_trip")

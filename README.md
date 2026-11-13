@@ -1,4 +1,4 @@
-# Tiny Family — offentlig testversion 0.8.11
+# Tiny Family — offentlig testversion 0.8.12
 
 <!-- BEGIN: Salvationdk repository metrics -->
 [![Release downloads](https://img.shields.io/github/downloads/Salvationdk/tiny-family-test/total?label=Release%20downloads&style=flat-square)](https://github.com/Salvationdk/tiny-family-test/releases)
@@ -22,6 +22,12 @@
 Tiny Family er en Home Assistant-integration til familiekort, GPS-ruter, opdagelse af steder, datobaserede tidslinjer, beskeder, SOS og familieadvarsler.
 
 **Testversion:** Integrationen er stadig under praktisk afprøvning. SOS er ikke en certificeret nødtjeneste, og Home Assistant-notifikationer garanterer ikke levering på en telefon.
+
+## Nyt i 0.8.12 – levende familiekort og flere åbne GPS-motorer
+- **Reel opdatering af familiekortet:** Positionen på kortet bruger nu Tiny Familys senest **accepterede GPS-måling fra den tilknyttede telefon**, i stedet for at læne sig op ad Home Assistants `person.*`-entitet, der kan være forældet. Nye målinger udløser en opdateringshændelse. Derudover opdateres kortet med lette statusopslag hver 6. sekund, **uden at rive Leaflet-kortet ned**, nulstille zoom eller afbryde den historiske tidslinje. Telefonen skal naturligvis selv levere nye GPS-målinger; panelet kan ikke fjernstyre Android/iOS' baggrunds-GPS.
+- **Fart under turen:** `sensor.tiny_family_<person>_current_speed` og kortets badge viser frisk telefonmålt hastighed. Hvis telefonen mangler fart eller fejlagtigt angiver 0, kan Tiny Family bruge to på hinanden følgende **nøjagtige** GPS-positioner til at beregne et forsigtigt fartskøn. Et skøn vises som `≈ 42 km/t` og får kilden `gps_estimate`; manglende målinger vises som `—`, ikke som et opdigtet nul. Ny `sensor.tiny_family_<person>_speed_source` fortæller, om kilden er `phone`, `gps_estimate` eller `unavailable`.
+- **Fejlfinding:** Personkortet viser nu en mere konkret forklaring, når GPS er forældet, afvist eller frasorteret, herunder hvor længe siden telefonen sendte en opdatering. Seneste gyldige GPS-tid og batterisparestatus er fortsat synlige.
+- **Værktøjskasse til andre integrationer og YAML:** `tiny_family.evaluate_location` tester nu både polygoner **og almindelige HA-cirkelzoner**. Nye skrivebeskyttede svarservices er `tiny_family.analyze_motion` (afstand, fartkilde og bevægelse mellem to valgte GPS-fix) og `tiny_family.analyze_route` (GPS-distance, afbrud og fartstatistik for 2–200 valgte fix). De læser **kun input, du selv sender**, gemmer ikke GPS-data og er ikke afhængige af Tiny Family-personer. Læs felter, svareksempler, begrænsninger og YAML i **[Automation API](docs/AUTOMATION_API.md)**.
 
 ## Nyt i 0.8.11 – polygoner som Home Assistant-sensorer
 - **Både cirkel og polygon:** Under *Steder → Zoner* kan administrator vælge en eksisterende HA-cirkel og trykke **Lav polygon ud fra cirkel**. Den nye polygon får 16 redigerbare hjørner og kan tilpasses på kortet. **Den oprindelige cirkel og dens `zone.*`-entitet bevares**, så eksisterende HA-automatiseringer ikke ødelægges. Ønsker du kun polygonen, kan den gamle cirkel slettes særskilt.
@@ -211,6 +217,6 @@ Ghost Mode fra tidligere installationer ændrer ikke Home Assistants `person`, `
 
 ## Teknisk
 
-Home Assistant-domæne: `tiny_family`. Version: `0.8.11`. Integrationens filer ligger i `custom_components/tiny_family/`.
+Home Assistant-domæne: `tiny_family`. Version: `0.8.12`. Integrationens filer ligger i `custom_components/tiny_family/`.
 
 Dette offentlige testrepository indeholder kun installationskode og dokumentation, ikke den private udviklingshistorik, personlige GPS-ruter, telefonnumre eller Home Assistant-konfigurationsdata.
