@@ -24,7 +24,20 @@ const TF_ICON_ART={
   home:'<path d="m2 11 10-8 10 8M5 10v11h14V10M10 21v-7h4v7"/><path class="tf-ink-violet" d="M18 6V3h2v5"/>',
   routes:'<circle cx="5" cy="19" r="2"/><circle class="tf-ink-violet" cx="19" cy="5" r="2"/><path d="M7 19h6c8 0 2-8 5-12M6 10c5-2 7-1 7-1"/>',
   history:'<path d="M4 8a9 9 0 1 1-1 8M4 3v5h5"/><path class="tf-ink-violet" d="M12 7v5l3 2"/>',
-  help:'<circle cx="12" cy="12" r="10"/><path d="M9.3 9a3 3 0 0 1 5.4-1.5c1.8 2.5-2.7 3.2-2.7 5.4"/><circle class="tf-ink-violet" cx="12" cy="17.6" r=".9"/>'
+  help:'<circle cx="12" cy="12" r="10"/><path d="M9.3 9a3 3 0 0 1 5.4-1.5c1.8 2.5-2.7 3.2-2.7 5.4"/><circle class="tf-ink-violet" cx="12" cy="17.6" r=".9"/>',
+  phone:'<rect x="6" y="2" width="12" height="20" rx="3"/><path class="tf-ink-violet" d="M10 5h4M10 18h4"/><circle cx="12" cy="15" r="1"/>',
+  gps:'<path d="M12 22s-7-7-7-12a7 7 0 1 1 14 0c0 5-7 12-7 12Z"/><circle class="tf-ink-violet" cx="12" cy="10" r="2.5"/><path d="M12 1v2M1 10h2M21 10h2"/>',
+  speed:'<path d="M4 18a9 9 0 1 1 16 0M8 18h8"/><path class="tf-ink-violet" d="m12 17 5-8"/><circle cx="12" cy="18" r="1.5"/>',
+  battery:'<rect x="2" y="6" width="18" height="12" rx="2"/><path d="M22 10v4M6 9v6M10 9v6"/><path class="tf-ink-violet" d="M14 9v6"/>',
+  refresh:'<path d="M20 10a8 8 0 0 0-14-4L3 9M3 3v6h6M4 14a8 8 0 0 0 14 4l3-3M21 21v-6h-6"/>',
+  check:'<circle cx="12" cy="12" r="9"/><path class="tf-ink-violet" d="m7.5 12 3 3 6-6"/>',
+  warning:'<path d="m12 3 10 18H2L12 3Z"/><path class="tf-ink-violet" d="M12 9v5M12 17h.01"/>',
+  trip:'<path d="M3 16 5 9h14l2 7v4h-3v-2H6v2H3v-4ZM5 13h14"/><circle class="tf-ink-violet" cx="7" cy="16" r="1"/><circle class="tf-ink-violet" cx="17" cy="16" r="1"/>',
+  stay:'<path d="M12 21s-7-7-7-12a7 7 0 0 1 14 0c0 5-7 12-7 12Z"/><path class="tf-ink-violet" d="M12 6v4l3 2"/>',
+  distance:'<path d="M3 20h18M5 19V5h14v14M5 9h4M11 9h4M5 13h3M12 13h5"/><path class="tf-ink-violet" d="m8 20 7-7"/>',
+  clock:'<circle cx="12" cy="12" r="9"/><path class="tf-ink-violet" d="M12 6v6l4 2"/>',
+  play:'<path class="tf-ink-violet" d="m8 5 11 7-11 7V5Z"/>',
+  pause:'<rect class="tf-ink-violet" x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>'
 };
 const tinyNeonIcon=name=>{
   const svg=document.createElementNS("http://www.w3.org/2000/svg","svg");
@@ -95,6 +108,25 @@ class TinyFamilyPanel extends HTMLElement {
       .tf-sensor-option{display:flex!important;align-items:center;gap:9px;padding:6px 2px;flex-wrap:wrap}
       .tf-sensor-option input[type=checkbox]{width:19px!important;height:19px;flex:none;margin:0}
       .tf-sensor-option span{font-size:12px;color:var(--secondary-text-color)}
+      .tf-sensor-option .tf-icon{width:17px;height:17px}
+      .tf-phone-diagnostic{display:grid;gap:8px;padding:11px;border:1px solid rgba(45,190,211,.55);border-radius:13px;background:color-mix(in srgb,var(--card-background-color) 90%,#22536d);grid-column:1/-1}
+      .tf-phone-heading{display:flex;align-items:center;gap:9px;font-weight:750;overflow-wrap:anywhere}
+      .tf-phone-heading .tf-icon{width:21px;height:21px}
+      .tf-phone-id{display:block;font-size:11px;font-family:ui-monospace,monospace;word-break:break-all;color:var(--secondary-text-color)}
+      .tf-phone-state{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:800;padding:5px 8px;border:1px solid rgba(83,193,211,.5);border-radius:999px;justify-self:start}
+      .tf-phone-state::before{content:"";width:9px;height:9px;flex:none;border-radius:50%;background:#c5a23a}
+      .tf-phone-state[data-state=fresh]{color:#148846;border-color:rgba(41,184,105,.55)}
+      .tf-phone-state[data-state=fresh]::before{background:#2bc17b;box-shadow:0 0 7px rgba(43,193,123,.4)}
+      .tf-phone-state[data-state=stale],.tf-phone-state[data-state=not_gps],.tf-phone-state[data-state=not_found],.tf-phone-state[data-state=unavailable]{color:#c13e4b;border-color:rgba(216,90,106,.5)}
+      .tf-phone-state[data-state=stale]::before,.tf-phone-state[data-state=not_gps]::before,.tf-phone-state[data-state=not_found]::before,.tf-phone-state[data-state=unavailable]::before{background:#dc5365}
+      .tf-phone-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+      .tf-phone-fact{display:flex;align-items:flex-start;gap:7px;min-width:0;padding:8px;border:1px solid var(--divider-color);border-radius:10px;background:var(--card-background-color)}
+      .tf-phone-fact .tf-icon{width:17px;height:17px;flex:none;margin-top:2px}
+      .tf-phone-fact span{display:grid;gap:2px;font-size:12px;overflow-wrap:anywhere}
+      .tf-phone-fact strong{font-size:11px;color:var(--secondary-text-color)}
+      .tf-phone-warning{font-size:12px;line-height:1.4;color:var(--secondary-text-color);overflow-wrap:anywhere}
+      .tf-wrap button.tf-phone-test{display:flex;align-items:center;justify-content:center;gap:8px;min-height:40px;width:100%;font-size:13px}
+      .tf-phone-test .tf-icon{stroke:#effcff;width:18px;height:18px}
       .tf-wrap .tf-save.tf-danger{background:#a33842;color:#fff}
       /* Map detail is a true in-panel dialog, above the fixed mobile tabs. */
       .tf-location-overlay{position:fixed;inset:0;z-index:2400;display:grid;place-items:center;padding:12px;background:rgba(8,16,28,.74);backdrop-filter:blur(3px)}
@@ -113,18 +145,27 @@ class TinyFamilyPanel extends HTMLElement {
       .tf-daily-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
       .tf-daily-stats .tf-stat{padding:9px;gap:3px}
       .tf-daily-stats .tf-stat span{font-weight:750;font-variant-numeric:tabular-nums}
+      .tf-daily-stats .tf-stat-heading{display:flex;align-items:center;gap:6px;min-width:0}
+      .tf-daily-stats .tf-stat-heading .tf-icon{width:17px;height:17px;flex:none}
+      .tf-daily-extra{border:1px solid var(--divider-color);border-radius:11px;padding:7px 9px;background:var(--card-background-color)}
+      .tf-daily-extra>summary{cursor:pointer;font-size:12px;font-weight:750;min-height:30px;display:flex;align-items:center}
+      .tf-daily-extra[open] .tf-daily-stats{margin-top:7px}
       .tf-daily-scroll{min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;padding:2px 3px 10px;flex:1}
       .tf-daily-row{display:grid;grid-template-columns:76px minmax(0,1fr);gap:9px;padding:11px 9px;margin-bottom:6px;border:1px solid var(--divider-color);border-left:3px solid #20b9ce;border-radius:11px;background:var(--card-background-color)}
       .tf-daily-row time{font-size:11px;font-variant-numeric:tabular-nums;color:var(--secondary-text-color);line-height:1.55}
-      .tf-daily-row strong{display:block;font-size:13px;overflow-wrap:anywhere}
+      .tf-daily-row strong{display:flex;align-items:center;gap:6px;font-size:13px;overflow-wrap:anywhere}
+      .tf-daily-row strong .tf-icon{width:17px;height:17px;flex:none}
       .tf-daily-facts{display:flex;gap:5px;flex-wrap:wrap;margin-top:6px}
       .tf-daily-facts span{display:inline-block;font-size:11px;color:var(--secondary-text-color);overflow-wrap:anywhere;padding:3px 6px;border:1px solid var(--divider-color);border-radius:7px;background:color-mix(in srgb,var(--card-background-color) 88%,#7ed4e0)}
       .tf-activity-archive{min-height:0;overflow:visible}
       .tf-activity-archive:not([open])>*:not(summary){display:none}
       .tf-activity-archive summary{cursor:pointer;min-height:34px}
-      .tf-person-diary>summary{cursor:pointer;min-height:43px;font-weight:750}
+      .tf-person-diary>summary{cursor:pointer;min-height:43px;font-weight:750;display:flex;align-items:center;gap:7px}
+      .tf-person-diary>summary .tf-icon{width:19px;height:19px}
       .tf-person-diary:not([open])>*:not(summary){display:none}
-      .tf-person-diary[open] .tf-daily-report{height:min(60dvh,580px);min-height:350px}
+      /* One full-height parent scroller: no tiny nested report viewport. */
+      .tf-person-diary[open] .tf-daily-report{height:auto;min-height:0;overflow:visible;flex:none}
+      .tf-person-diary .tf-daily-scroll{overflow:visible;max-height:none;flex:none}
       .tf-head{display:flex;align-items:center;gap:10px;margin-bottom:12px}
       .tf-head h1{flex:1;min-width:0}
       .tf-header-action{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:44px;min-width:44px;padding:8px;border:1px solid var(--divider-color);border-radius:12px;background:var(--card-background-color);color:var(--primary-text-color);cursor:pointer}
@@ -206,6 +247,8 @@ class TinyFamilyPanel extends HTMLElement {
       .tf-dock-main{display:flex;gap:7px;align-items:center}
       .tf-timeline-dock button,.tf-timeline-dock select,.tf-timeline-dock input[type=date]{border:1px solid rgba(101,209,224,.5);border-radius:10px;background:rgba(12,23,37,.93);color:#fff;min-height:40px;padding:6px 9px;font-size:13px}
       .tf-timeline-dock button[aria-pressed=true]{background:linear-gradient(125deg,#079eac,#6556b0);border-color:#72e9e7}
+      .tf-dock-main button,.tf-scrub-row button{display:inline-flex;align-items:center;justify-content:center;gap:5px}
+      .tf-timeline-dock button .tf-icon{width:16px;height:16px;stroke:#8aebf2}
       .tf-timeline-dock select{min-width:0;flex:1;max-width:100%;text-overflow:ellipsis}
       .tf-history-controls{display:grid;gap:7px;margin-top:9px}
       .tf-history-controls[hidden]{display:none}
@@ -222,7 +265,10 @@ class TinyFamilyPanel extends HTMLElement {
       .tf-history-info{display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px;line-height:1.25}
       .tf-history-info span{color:#d0e1f0}
       .tf-history-info strong{color:#a6f5f2}
-      .tf-timeline-warning{font-size:11px;color:#ddcfed}
+      .tf-timeline-facts{display:flex;align-items:center;flex-wrap:wrap;gap:5px;min-width:0;flex:1}
+      .tf-timeline-fact{display:inline-flex;align-items:center;gap:4px;padding:4px 6px;border:1px solid rgba(110,211,228,.42);border-radius:8px;background:rgba(25,50,66,.75);font-size:11px;color:#e2f6ff;overflow-wrap:anywhere}
+      .tf-timeline-fact .tf-icon{width:13px;height:13px;stroke:#80e7ec}
+      .tf-timeline-warning{display:flex;flex-wrap:wrap;gap:5px;font-size:11px;color:#ddcfed;line-height:1.35}
       .tf-road-matching{display:flex;align-items:center;gap:7px;min-height:28px;color:#dcf5fd;font-size:12px;cursor:pointer}
       .tf-road-matching input{width:17px;height:17px;accent-color:#38d2dd;flex:none}
       .tf-road-matching[hidden]{display:none}
@@ -238,6 +284,8 @@ class TinyFamilyPanel extends HTMLElement {
       .tf-screen-panel{min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#2ebfc3 transparent;padding:4px 3px}
       .tf-screen-panel[hidden]{display:none!important}
       .tf-activity-view>.tf-screen-panel{display:flex;flex-direction:column;min-height:0}
+      .tf-activity-view .tf-daily-report{overflow:visible;flex:none;min-height:0;height:auto}
+      .tf-activity-view .tf-daily-scroll{overflow:visible;flex:none;max-height:none}
       .tf-mobile-title{font-size:19px;margin:2px 0 5px}
       .tf-activity-list{overflow-y:auto;min-height:0;overscroll-behavior:contain;scrollbar-width:thin}
       .tf-admin-form{min-height:0;display:flex;flex-direction:column;overflow:hidden;flex:1}
@@ -264,6 +312,7 @@ class TinyFamilyPanel extends HTMLElement {
       .tf-fields label{display:grid;gap:4px;font-size:13px}
       .tf-fields select,.tf-fields input{padding:7px;max-width:100%;background:var(--primary-background-color);color:var(--primary-text-color);border:1px solid var(--divider-color);border-radius:8px}
       .tf-wrap button.tf-save{background:linear-gradient(125deg,#079db8,#238dc1 68%,#5262b9);color:#fff;border:1px solid rgba(87,216,229,.56);border-radius:12px;padding:10px 13px;min-height:44px;cursor:pointer;overflow-wrap:anywhere;font-weight:650;box-shadow:0 2px 8px rgba(13,155,186,.13);transition:filter .15s ease,box-shadow .15s ease}
+      .tf-wrap button.tf-save .tf-icon{width:18px;height:18px;display:inline-block;vertical-align:middle;stroke:currentColor}
       .tf-wrap button.tf-save:active{filter:brightness(1.11);box-shadow:0 0 0 2px rgba(45,203,218,.28)}
       .tf-wrap button.tf-save.tf-danger{background:linear-gradient(125deg,#b33347,#d04a4a);border-color:#df7880}
       .tf-message{margin:14px 0;color:var(--secondary-text-color)}
@@ -2387,8 +2436,8 @@ class TinyFamilyPanel extends HTMLElement {
     dock.setAttribute("aria-label","Familiens tidslinje");
     dock.innerHTML=`
       <div class="tf-dock-main">
-        <button type="button" data-mode="live" aria-pressed="true">● Nu</button>
-        <button type="button" data-mode="history" aria-pressed="false">◷ Tidslinje</button>
+        <button type="button" data-mode="live" aria-pressed="true">Nu</button>
+        <button type="button" data-mode="history" aria-pressed="false">Tidslinje</button>
         <select data-role="timeline-person" aria-label="Vælg person"></select>
       </div>
       <div class="tf-history-controls" hidden>
@@ -2398,7 +2447,7 @@ class TinyFamilyPanel extends HTMLElement {
           <button type="button" data-role="next-day" aria-label="Næste dato">›</button>
         </div>
         <div class="tf-scrub-row">
-          <button type="button" data-role="timeline-play" aria-label="Afspil dagsruten">▶</button>
+          <button type="button" data-role="timeline-play" aria-label="Afspil dagsruten"></button>
           <input type="range" data-role="timeline-minute" min="0" max="1439"
             step="1" value="1439" aria-label="Gå gennem dagens GPS-tidslinje">
           <select data-role="timeline-speed" aria-label="Afspilningshastighed">
@@ -2410,7 +2459,7 @@ class TinyFamilyPanel extends HTMLElement {
           </select>
         </div>
         <div class="tf-history-info"><strong data-role="timeline-time">—</strong>
-          <span data-role="timeline-stats">Vælg dato og person</span></div>
+          <div class="tf-timeline-facts" data-role="timeline-stats">Vælg dato og person</div></div>
         <label class="tf-road-matching" data-role="road-matching-label" hidden>
           <input type="checkbox" data-role="road-matching-toggle">
           Følg vejene (styres af administrator)
@@ -2422,11 +2471,18 @@ class TinyFamilyPanel extends HTMLElement {
     root.appendChild(dock);
     const liveTab=dock.querySelector('[data-mode="live"]');
     const historyTab=dock.querySelector('[data-mode="history"]');
+    liveTab.prepend(tinyNeonIcon("gps"));
+    historyTab.prepend(tinyNeonIcon("history"));
     const historyControls=dock.querySelector(".tf-history-controls");
     const dockPerson=dock.querySelector('[data-role="timeline-person"]');
     const dockDate=dock.querySelector('[data-role="timeline-date"]');
     const minuteSlider=dock.querySelector('[data-role="timeline-minute"]');
     const playButton=dock.querySelector('[data-role="timeline-play"]');
+    const setPlayIcon=playing=>{
+      playButton.replaceChildren(tinyNeonIcon(playing?"pause":"play"));
+      playButton.title=playing?"Sæt afspilningen på pause":"Afspil dagsruten";
+    };
+    setPlayIcon(false);
     const playbackSpeed=dock.querySelector('[data-role="timeline-speed"]');
     let playbackTime=null,playbackTickAt=null;
     const stopPlayback=(resetPosition=true)=>{
@@ -2436,11 +2492,19 @@ class TinyFamilyPanel extends HTMLElement {
       }
       if(resetPosition)playbackTime=null;
       playbackTickAt=null;
-      playButton.textContent="▶";
+      setPlayIcon(false);
       playButton.setAttribute("aria-label","Afspil dagsruten");
     };
     const timeLabel=dock.querySelector('[data-role="timeline-time"]');
     const statsLabel=dock.querySelector('[data-role="timeline-stats"]');
+    const setTimelineFacts=parts=>{
+      statsLabel.replaceChildren();
+      for(const [icon,label] of parts){
+        const item=document.createElement("span");item.className="tf-timeline-fact";
+        item.append(tinyNeonIcon(icon),document.createTextNode(label));
+        statsLabel.appendChild(item);
+      }
+    };
     const summaryLabel=dock.querySelector('[data-role="timeline-summary"]');
     const roadMatchLabel=dock.querySelector('[data-role="road-matching-label"]');
     const roadMatchToggle=dock.querySelector('[data-role="road-matching-toggle"]');
@@ -2672,9 +2736,11 @@ class TinyFamilyPanel extends HTMLElement {
       });
       timeLabel.textContent=prettyTime(desired);
       if(eventFocus?.source==="anchor"){
-        statsLabel.textContent=(eventFocus.kind==="stay"?"Ophold":"Tur")+
-          " · Registreret "+(eventFocus.prefix==="start"?"start":"slut")+
-          "position · Ingen GPS-rute for denne begivenhed";
+        setTimelineFacts([
+          [eventFocus.kind==="stay"?"stay":"trip",eventFocus.kind==="stay"?"Ophold":"Tur"],
+          ["gps","Registreret "+(eventFocus.prefix==="start"?"start":"slut")+"position"],
+          ["warning","Ingen GPS-rute"]
+        ]);
         moveTimelineMarker(eventFocus.point);
         return;
       }
@@ -2696,16 +2762,17 @@ class TinyFamilyPanel extends HTMLElement {
         if(estimated){
           const source=estimated.basis==="previous_road_history"
             ?"tidligere rute":"vejnet";
-          statsLabel.textContent="Anslået position ("+source+") · Fart ukendt · GPS-afbrud";
+          setTimelineFacts([["gps","Anslået position ("+source+")"],
+            ["speed","Fart ukendt"],["warning","GPS-afbrud"]]);
           moveTimelineMarker(inferredLocation(estimated,desired));
           return;
         }
         const event=(timelineData.events||[]).find(item=>
           item.started_at<=desired && item.ended_at>=desired);
-        statsLabel.textContent=event
-          ?(event.kind==="stay"?"Ophold":"Tur")+" · "+
-            (event.label||event.duration_min+" min")
-          :"Ingen GPS-måling på dette tidspunkt";
+        setTimelineFacts(event?[[event.kind==="stay"?"stay":"trip",
+          (event.kind==="stay"?"Ophold":"Tur")+" · "+
+            (event.label||event.duration_min+" min")]]:
+          [["warning","Ingen GPS-måling på dette tidspunkt"]]);
         if(timelineMarker && activeMap){activeMap.removeLayer(timelineMarker);timelineMarker=null;}
         previousCenteredFix=null;
         return;
@@ -2717,11 +2784,12 @@ class TinyFamilyPanel extends HTMLElement {
         const ratio=(desired-closest.t)/(next.t-closest.t);
         speed=speed+(next.speed-speed)*ratio;
       }
-      metrics.push(Number.isFinite(speed)?"Fart "+Math.round(speed)+" km/t":"Fart ukendt");
-      if(Number.isFinite(closest.battery))metrics.push(Math.round(closest.battery)+" % batteri");
+      metrics.push(["speed",Number.isFinite(speed)?
+        "Fart "+Math.round(speed)+" km/t":"Fart ukendt"]);
+      if(Number.isFinite(closest.battery))metrics.push(["battery",Math.round(closest.battery)+" % batteri"]);
       if(closest.movement==="stationary" && Number.isFinite(closest.stay_min) &&
-          closest.stay_min>=0)metrics.push("Ophold "+closest.stay_min+" min");
-      statsLabel.textContent=prettyTime(closest.t)+" · "+(metrics.join(" · ")||"Position målt");
+          closest.stay_min>=0)metrics.push(["stay","Ophold "+closest.stay_min+" min"]);
+      setTimelineFacts([["clock","Målt "+prettyTime(closest.t)],...metrics]);
       if(activeMap){
         const loc=playbackLocation(closest,
           next && next.t>closest.t && next.t-closest.t<=300?next:null,desired);
@@ -2804,7 +2872,7 @@ class TinyFamilyPanel extends HTMLElement {
             cursorManuallyMoved=true;
             previousCenteredFix=null;
             if(!focus){
-              statsLabel.textContent="Denne historiske begivenhed mangler både GPS-punkter og gemt position.";
+              setTimelineFacts([["warning","Hændelsen mangler GPS-punkter og gemt position"]]);
               if(timelineMarker&&activeMap){
                 activeMap.removeLayer(timelineMarker);timelineMarker=null;
               }
@@ -2827,18 +2895,35 @@ class TinyFamilyPanel extends HTMLElement {
           Number(minuteSlider.max));
         const sum=result.summary||{};
         const diagnostic=result.gps_diagnostics||{};
-        summaryLabel.textContent=!result.points_count
-          ?"Ingen GPS-punkter for denne dato. Ture og ophold kan være gemt særskilt; ingen rute kan rekonstrueres."
-          :(result.points_count||0)+" GPS-punkter · "+
-          (Number.isFinite(sum.distance_km)?sum.distance_km+" km":"ukendt distance")+
-          (diagnostic.speed_health==="zero_despite_movement"?
-            " · Fartmålinger mangler (0 trods bevægelse)":
-            Number.isFinite(sum.max_speed_kmh)?" · top "+sum.max_speed_kmh+" km/t":"")+
-          (sum.stays?" · "+sum.stays+" ophold":"")+
-          (result.gaps?" · "+result.gaps+" GPS-afbrud"+
-            (diagnostic.gap_causes?
-              " ("+diagnostic.gap_causes.time+" lange pauser)":""):"")+
-          " · Faktiske målinger";
+        summaryLabel.replaceChildren();
+        const summaryFact=(icon,value)=>{
+          const chip=document.createElement("span");chip.className="tf-timeline-fact";
+          chip.append(tinyNeonIcon(icon),document.createTextNode(value));
+          summaryLabel.appendChild(chip);
+        };
+        if(!result.points_count){
+          summaryFact("warning","Ingen GPS-punkter. Gemte ture og ophold kan stadig findes i teksthistorikken.");
+        }else{
+          summaryFact("gps",result.points_count+" GPS-punkter");
+          if(Number.isFinite(sum.distance_km))summaryFact("distance",sum.distance_km+" km");
+          const moving=[];
+          for(const segment of result.segments||[]){
+            for(const point of segment||[]){
+              if(Number.isFinite(point.speed)&&point.speed>=2)moving.push(point.speed);
+            }
+          }
+          if(diagnostic.speed_health==="recorded"&&moving.length){
+            const avg=moving.reduce((total,speed)=>total+speed,0)/moving.length;
+            summaryFact("speed","Gns. målt "+avg.toFixed(1).replace(".",",")+" km/t");
+          }else if(diagnostic.speed_health==="zero_despite_movement"){
+            summaryFact("warning","Fartmålinger mangler (0 trods bevægelse)");
+          }
+          if(diagnostic.speed_health==="recorded"&&Number.isFinite(sum.max_speed_kmh))
+            summaryFact("speed","Top "+sum.max_speed_kmh+" km/t");
+          if(sum.stays)summaryFact("stay",sum.stays+" ophold");
+          if(sum.trips)summaryFact("trip",sum.trips+" ture");
+          if(result.gaps)summaryFact("warning",result.gaps+" GPS-afbrud");
+        }
         summaryLabel.title=diagnostic.speed_health==="zero_despite_movement"
           ?"Telefonen melder 0 km/t trods bevægelse. Kontrollér Companion-hastighedssensor, positionstilladelser og batterisparefunktion."
           :diagnostic.speed_health==="missing"
@@ -2912,7 +2997,7 @@ class TinyFamilyPanel extends HTMLElement {
       // One second of real elapsed time advances one second at 1×. The
       // previous fixed 5 min / 180 ms interval ran at about 1,667×.
       playbackTickAt=performance.now();
-      playButton.textContent="Ⅱ";
+      setPlayIcon(true);
       playButton.setAttribute("aria-label","Sæt dagsruten på pause");
       this._timelinePlaybackTimer=setInterval(()=>{
         if(this.active!=="live"||!timelineMode){stopPlayback();return;}
@@ -3713,8 +3798,8 @@ class TinyFamilyPanel extends HTMLElement {
     ownDiary.className="tf-person tf-person-diary";
     ownDiary.dataset.tfAccordionGroup="today-details";
     const diaryHeading=document.createElement("summary");
-    diaryHeading.textContent="Min teksttidslinje · "+
-      (this.settings?.timeline_retention_days??365)+" dages historik";
+    diaryHeading.append(tinyNeonIcon("history"),document.createTextNode(
+      "Min teksttidslinje · "+(this.settings?.timeline_retention_days??365)+" dages historik"));
     ownDiary.appendChild(diaryHeading);
     root.appendChild(ownDiary);
     ownDiary.addEventListener("toggle",()=>{
@@ -3857,10 +3942,16 @@ class TinyFamilyPanel extends HTMLElement {
     status.className="tf-message";status.setAttribute("role","status");
     status.textContent="Henter registrerede besøg og ture…";
     const stats=document.createElement("div");stats.className="tf-daily-stats";
+    const extraStats=document.createElement("details");extraStats.className="tf-daily-extra";
+    const extraSummary=document.createElement("summary");
+    extraSummary.textContent="Vis flere nøgletal ▾";
+    const extraGrid=document.createElement("div");extraGrid.className="tf-daily-stats";
+    extraStats.append(extraSummary,extraGrid);
     const scroll=document.createElement("div");scroll.className="tf-daily-scroll";
     scroll.setAttribute("aria-label","Tekstbaseret dagsforløb");
     const mapButton=document.createElement("button");mapButton.type="button";
-    mapButton.className="tf-save";mapButton.textContent="Vis denne dag på kortet";
+    mapButton.className="tf-save";
+    mapButton.append(tinyNeonIcon("map"),document.createTextNode(" Vis denne dag på kortet"));
     // The regular map's selector can hide another person's Ghost records;
     // never send an admin from a private diary to the wrong person's map.
     mapButton.hidden=Boolean(fixedPerson);
@@ -3870,7 +3961,7 @@ class TinyFamilyPanel extends HTMLElement {
       this._timelineRequestedDate=date.value;
       this.show("live");
     });
-    panel.append(heading,controls,status,stats,scroll,mapButton);
+    panel.append(heading,controls,status,stats,extraStats,scroll,mapButton);
     root.appendChild(panel);
     let latestRequest=0;
     const formatTime=(timestamp)=>new Date(timestamp*1000).toLocaleTimeString(
@@ -3887,31 +3978,36 @@ class TinyFamilyPanel extends HTMLElement {
       const id=++latestRequest;
       updateButtons();
       status.textContent="Henter "+selectedDay+"…";
-      stats.replaceChildren();scroll.replaceChildren();
+      stats.replaceChildren();extraGrid.replaceChildren();scroll.replaceChildren();
       try{
         const response=await this.hassInstance.callApi("GET",
           "tiny_family/timeline?person="+encodeURIComponent(person)+
           "&date="+encodeURIComponent(selectedDay)+"&view=report");
         if(id!==latestRequest||this.active!==view||!panel.isConnected)return;
         const s=response.summary||{};
+        // Keep average speed visible on a small phone. The secondary values
+        // expand on the SAME scroll surface, not in another miniature pane.
         const statistic=[
-          ["GPS-distance",count(s.gps_distance_km,"km")],
-          ["Arkiverede ture",count(s.archived_trip_distance_km,"km")],
-          ["Gået (anslået)",count(s.walking_minutes,"min")],
-          ["Kørt (anslået)",count(s.driving_minutes,"min")],
-          ["Gåfart (GPS-skøn)",count(s.walking_avg_kmh,"km/t")],
-          ["Kørefart (GPS-skøn)",count(s.driving_avg_kmh,"km/t")],
-          ["Maks. målt fart",count(s.max_recorded_speed_kmh,"km/t")],
-          ["Gns. målt fart i bevægelse",count(s.avg_recorded_moving_speed_kmh,"km/t")],
-          ["Ophold / ture",count(s.stays)+" / "+count(s.trips)],
-          ["GPS-punkter / afbrud",count(s.gps_points)+" / "+count(s.gps_gaps)],
+          ["GPS-distance",count(s.gps_distance_km,"km"),"gps",true],
+          ["Gået (anslået)",count(s.walking_minutes,"min"),"activity",true],
+          ["Kørt (anslået)",count(s.driving_minutes,"min"),"trip",true],
+          ["Gns. målt fart i bevægelse",count(s.avg_recorded_moving_speed_kmh,"km/t"),"speed",true],
+          ["Arkiverede ture",count(s.archived_trip_distance_km,"km"),"distance",false],
+          ["Gåfart (GPS-skøn)",count(s.walking_avg_kmh,"km/t"),"speed",false],
+          ["Kørefart (GPS-skøn)",count(s.driving_avg_kmh,"km/t"),"speed",false],
+          ["Maks. målt fart",count(s.max_recorded_speed_kmh,"km/t"),"speed",false],
+          ["Ophold / ture",count(s.stays)+" / "+count(s.trips),"stay",false],
+          ["GPS-punkter / afbrud",count(s.gps_points)+" / "+count(s.gps_gaps),"gps",false],
         ];
-        for(const [label,value] of statistic){
+        for(const [label,value,icon,main] of statistic){
           const cell=document.createElement("section");cell.className="tf-stat";
+          const head=document.createElement("div");head.className="tf-stat-heading";
           const title=document.createElement("strong");title.textContent=label;
           const number=document.createElement("span");number.textContent=value;
-          cell.append(title,number);stats.appendChild(cell);
+          head.append(tinyNeonIcon(icon),title);cell.append(head,number);
+          (main?stats:extraGrid).appendChild(cell);
         }
+        extraSummary.textContent=extraStats.open?"Skjul flere nøgletal ▴":"Vis alle 10 nøgletal ▾";
         const items=response.items||[];
         status.textContent=!items.length
           ?"Ingen registrerede ophold eller ture for denne dato."
@@ -3932,7 +4028,9 @@ class TinyFamilyPanel extends HTMLElement {
             ?"GPS-afbrud":item.kind==="position"?"Registreret position":
               item.mode==="walking"?"Gang (anslået)":
               item.mode==="driving"?"Kørsel (anslået)":"Tur / bevægelse";
-          name.textContent=kind+" · "+(item.label||"Ukendt sted");
+          name.append(tinyNeonIcon(item.kind==="stay"?"stay":
+            item.kind==="trip"?"trip":item.kind==="gap"?"warning":"gps"),
+            document.createTextNode(kind+" · "+(item.label||"Ukendt sted")));
           const details=document.createElement("div");
           details.className="tf-daily-facts";
           const info=[item.duration_min?count(item.duration_min,"min"):"Tidspunkt registreret"];
@@ -3957,6 +4055,9 @@ class TinyFamilyPanel extends HTMLElement {
         status.textContent="Dagens statistik kunne ikke hentes: "+this.errorText(error);
       }
     };
+    extraStats.addEventListener("toggle",()=>{
+      extraSummary.textContent=extraStats.open?"Skjul flere nøgletal ▴":"Vis alle 10 nøgletal ▾";
+    });
     personSelect.addEventListener("change",()=>{date.value=today;void render();});
     date.addEventListener("change",render);
     back.addEventListener("click",()=>{
@@ -4860,7 +4961,25 @@ class TinyFamilyPanel extends HTMLElement {
         wrap.appendChild(select);container.appendChild(wrap);
         return select;
       };
-      const tracker = choice("Telefon (Home Assistant Companion / GPS)", this.settings.available_trackers || [], this.settings.trackers?.[person.id]);
+      const phones=[...(this.settings.available_trackers||[])].sort((a,b)=>{
+        const gps=id=>this.settings.tracker_diagnostics?.[id]?.tracking_type==="position"?1:0;
+        return gps(b.id)-gps(a.id)||a.name.localeCompare(b.name,"da");
+      }).map(item=>{
+        const diagnosis=this.settings.tracker_diagnostics?.[item.id]||{};
+        const suffix=diagnosis.tracking_type==="connection"?" · IKKE GPS":
+          diagnosis.tracking_type==="position"?" · GPS":" · GPS ukendt";
+        return {...item,name:item.name+suffix+" · "+item.id};
+      });
+      const tracker=choice("Telefon (GPS fra én fysisk enhed)",phones,
+                           this.settings.trackers?.[person.id]);
+      tracker.options[0].textContent="Ingen GPS-telefon (person.* fallback)";
+      const phoneDiagnostic=document.createElement("section");
+      phoneDiagnostic.className="tf-phone-diagnostic";
+      phoneDiagnostic.setAttribute("aria-label","Telefonens GPS og sensorer");
+      const phoneTest=document.createElement("button");
+      phoneTest.type="button";phoneTest.className="tf-save tf-phone-test";
+      phoneTest.append(tinyNeonIcon("refresh"),document.createTextNode(" Kontrollér GPS og sensorer nu"));
+      fields.appendChild(phoneDiagnostic);
       const detected=document.createElement("p");
       detected.className="tf-message";fields.appendChild(detected);
       const sensorPanel=document.createElement("section");
@@ -4871,17 +4990,19 @@ class TinyFamilyPanel extends HTMLElement {
       const gpsState=document.createElement("p");gpsState.className="tf-message";
       gpsState.textContent="GPS/position: altid påkrævet i Tiny Family (kan ikke slås fra her).";
       sensorPanel.appendChild(gpsState);
-      const sensorKeys={battery:"Batteriniveau",charging:"Opladning",activity:"Bevægelsesaktivitet",power_save:"Batterisparetilstand / GPS-kvalitet"};
+      const sensorKeys={battery:["Batteriniveau","battery"],
+        charging:["Opladning","check"],activity:["Bevægelsesaktivitet","activity"],
+        power_save:["Batterisparetilstand / GPS-kvalitet","warning"]};
       const sensors={};
       const enabledSensors=new Set(this.settings.phone_sensor_selection?.[person.id]??Object.keys(sensorKeys));
-      for(const [key,title] of Object.entries(sensorKeys)){
+      for(const [key,[title,icon]] of Object.entries(sensorKeys)){
         const label=document.createElement("label");
         label.className="tf-sensor-option";
         const checked=document.createElement("input");
         checked.type="checkbox";checked.checked=enabledSensors.has(key);
         sensors[key]=checked;
         const status=document.createElement("span");status.dataset.sensorStatus=key;
-        label.append(checked,document.createTextNode(" "+title+" · "),status);
+        label.append(checked,tinyNeonIcon(icon),document.createTextNode(" "+title+" · "),status);
         sensorPanel.appendChild(label);
       }
       const sensorHelp=document.createElement("p");sensorHelp.className="tf-message";
@@ -4896,6 +5017,71 @@ class TinyFamilyPanel extends HTMLElement {
       // No independent battery/activity drop-downs: the backend resolves
       // them from the very same HA device registry entry.
       const battery={value:""},charging={value:""},activity={value:""},powerSave={value:""};
+      const renderPhoneDiagnostic=()=>{
+        phoneDiagnostic.replaceChildren();
+        const data=this.settings.tracker_diagnostics?.[tracker.value];
+        const heading=document.createElement("div");heading.className="tf-phone-heading";
+        heading.append(tinyNeonIcon("phone"),document.createTextNode(
+          data?.device_name||data?.name||"Ingen GPS-telefon valgt"));
+        phoneDiagnostic.appendChild(heading);
+        const entity=document.createElement("code");entity.className="tf-phone-id";
+        entity.textContent=tracker.value||"Ingen device_tracker valgt";
+        phoneDiagnostic.appendChild(entity);
+        const stateNames={fresh:"GPS aktiv",delayed:"GPS forsinket",
+          stale:"GPS forældet",no_fix:"GPS mangler koordinater",
+          not_gps:"Ikke en GPS-enhed",unavailable:"Enheden er utilgængelig",
+          unverified:"GPS kan ikke bekræftes",not_found:"Enheden findes ikke"};
+        const gpsStatus=data?.gps_status||"not_found";
+        const badge=document.createElement("span");badge.className="tf-phone-state";
+        badge.dataset.state=gpsStatus;badge.setAttribute("role","status");
+        badge.textContent=tracker.value?(stateNames[gpsStatus]||"GPS ukendt"):
+          "Vælg en telefon";
+        phoneDiagnostic.appendChild(badge);
+        const grid=document.createElement("div");grid.className="tf-phone-grid";
+        const fact=(icon,label,value)=>{
+          const item=document.createElement("div");item.className="tf-phone-fact";
+          const body=document.createElement("span");
+          const title=document.createElement("strong");title.textContent=label;
+          body.append(title,document.createTextNode(value));
+          item.append(tinyNeonIcon(icon),body);grid.appendChild(item);
+        };
+        if(tracker.value){
+          const age=data?.age_seconds;
+          const ageText=Number.isFinite(age)?age<60?age+" sek siden":
+            Math.round(age/60)+" min siden":"Ingen opdatering";
+          fact("clock","Seneste trackeropdatering",ageText);
+          fact("gps","GPS-nøjagtighed",Number.isFinite(data?.accuracy_m)?
+            data.accuracy_m+" m":"Ikke oplyst");
+          fact("speed","Telefonens fart",Number.isFinite(data?.phone_speed_kmh)?
+            data.phone_speed_kmh.toLocaleString("da-DK")+" km/t":
+            "Ikke oplyst (Tiny Family kan beregne et skøn)");
+          fact("phone","Registreret enhed",[
+            data?.manufacturer,data?.model].filter(Boolean).join(" ")||
+            data?.platform||"Ukendt producent/model");
+          fact("check","GPS-integration",data?.is_companion?
+            "Home Assistant Companion":data?.platform||"Ukendt integration");
+        }
+        phoneDiagnostic.appendChild(grid);
+        const warning=document.createElement("p");warning.className="tf-phone-warning";
+        if(!tracker.value){
+          warning.textContent="Ingen GPS-telefon er bundet. 'Automatisk' læser person.* i stedet for telefonens direkte GPS og kan derfor vise en anden eller forældet position.";
+        }else if(!data){
+          warning.textContent="Ingen enhedsdiagnose tilgængelig. Tryk Kontrollér for at genindlæse.";
+        }else if(data.tracking_type==="connection"){
+          warning.textContent="Denne enhed viser kun forbindelse/tilstedeværelse, ikke en GPS-rute. Vælg telefonens positions-tracker.";
+        }else if(gpsStatus!=="fresh"){
+          warning.textContent="Ingen nylig positionsopdatering. Det kan være normalt, når telefonen ligger stille. Kontrollér igen under bevægelse, og kontrollér præcis lokation og baggrundstilladelser i Companion-appen.";
+        }else if(!data.is_companion){
+          warning.textContent="GPS findes, men enheden er ikke registreret som Companion-telefon. Batteri og øvrige sensorer kan mangle.";
+        }else{
+          warning.textContent="GPS og Companion-tilknytning ser korrekte ud. Liveopdateringer kræver fortsat nye positionsmålinger fra telefonen.";
+        }
+        phoneDiagnostic.append(warning,phoneTest);
+        const note=document.createElement("small");note.className="tf-phone-warning";
+        note.textContent="Kontrollen læser nyeste data i Home Assistant. Den kan ikke tvinge telefonen til at sende en ny GPS-position.";
+        phoneDiagnostic.appendChild(note);
+        phoneTest.disabled=!tracker.value;
+      };
       const refreshPhone=()=>{
         const auto=this.settings.device_sensors?.[tracker.value]||{};
         const inventory=this.settings.phone_sensor_inventory?.[tracker.value]||{};
@@ -4918,7 +5104,28 @@ class TinyFamilyPanel extends HTMLElement {
               })[key]||key).join(", ")
             :"Ingen Companion-sensorer fundet på telefonen. Aktivér dem i Home Assistant Companion."
           :"Vælg telefonen én gang. GPS og tilgængelige sensorer tilknyttes automatisk.";
+        renderPhoneDiagnostic();
       };
+      phoneTest.addEventListener("click",async()=>{
+        phoneTest.disabled=true;
+        const oldText=phoneTest.textContent;
+        phoneTest.textContent="Henter GPS-status…";
+        try{
+          const update=await this.hassInstance.callApi("GET","tiny_family/settings");
+          // Refresh only diagnostics. Unsaved edits in this admin form remain.
+          for(const key of ["tracker_diagnostics","device_sensors","phone_sensor_inventory"])
+            this.settings[key]=update[key]||{};
+          refreshPhone();
+          this.message("GPS og sensorer blev kontrolleret mod Home Assistants aktuelle tilstand.");
+        }catch(error){
+          this.message("Telefonkontrol mislykkedes: "+this.errorText(error),true);
+        }finally{
+          phoneTest.textContent=oldText;
+          phoneTest.replaceChildren(tinyNeonIcon("refresh"),
+            document.createTextNode(" Kontrollér GPS og sensorer nu"));
+          phoneTest.disabled=!tracker.value;
+        }
+      });
       tracker.addEventListener("change",refreshPhone);
       for(const checkbox of Object.values(sensors))checkbox.addEventListener("change",refreshPhone);
       refreshPhone();
@@ -4929,8 +5136,8 @@ class TinyFamilyPanel extends HTMLElement {
       const memberDiary=document.createElement("details");
       memberDiary.className="tf-person tf-person-diary";
       const diarySummary=document.createElement("summary");
-      diarySummary.textContent="Administrator: personhistorik i tekst ("+
-        (this.settings.timeline_retention_days??365)+" dage)";
+      diarySummary.append(tinyNeonIcon("history"),document.createTextNode(
+        "Personhistorik i tekst ("+(this.settings.timeline_retention_days??365)+" dage)"));
       memberDiary.appendChild(diarySummary);
       memberDiary.addEventListener("toggle",()=>{
         if(memberDiary.open && !memberDiary.dataset.loaded){
@@ -5133,6 +5340,22 @@ class TinyFamilyPanel extends HTMLElement {
     save.textContent="Gem indstillinger";form.appendChild(save);
     form.addEventListener("submit",async e => {
       e.preventDefault();
+      const chosenPhones=rows.filter(row=>row.checkbox.checked&&row.tracker.value)
+        .map(row=>row.tracker.value);
+      if(chosenPhones.length!==new Set(chosenPhones).size){
+        this.message("Den samme GPS-telefon må ikke være valgt til to personer.",true);
+        return;
+      }
+      const nonGps=chosenPhones.find(id=>{
+        const diagnosis=this.settings.tracker_diagnostics?.[id];
+        return diagnosis?.tracking_type==="connection"||
+          (diagnosis?.tracking_type==="unknown"&&!diagnosis?.is_companion);
+      });
+      if(nonGps){
+        this.message("Den valgte enhed "+nonGps+
+          " er ikke bekræftet som GPS-tracker. Vælg telefonens positionsenhed.",true);
+        return;
+      }
       if(Number(retentionDays.value)<Number(this.settings.timeline_retention_days??365) &&
          !window.confirm("Kortere lagringstid sletter ældre tidslinjer permanent ved genindlæsning. Fortsæt?"))return;
       if(rows.some(row=>row.checkbox.checked&&Boolean(row.speaker.value)!==Boolean(row.ttsEngine.value))){

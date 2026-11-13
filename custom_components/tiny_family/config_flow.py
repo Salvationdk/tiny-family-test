@@ -7,6 +7,7 @@ from homeassistant.core import callback
 from homeassistant.helpers import selector
 
 from .const import DOMAIN
+from .device_binding import phone_tracker_diagnostic
 
 
 def _person_selector(default=None):
@@ -91,6 +92,13 @@ class TinyFamilyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 errors["tts_engine" if speaker else "speaker"] = "required"
             if tracker and tracker in self._setup_trackers.values():
                 errors["tracker"] = "already_assigned"
+            if tracker and "tracker" not in errors:
+                diagnosis = phone_tracker_diagnostic(self.hass, tracker)
+                if (diagnosis["gps_status"] == "not_found" or
+                        diagnosis["tracking_type"] == "connection" or
+                        (diagnosis["tracking_type"] == "unknown" and
+                         not diagnosis["is_companion"])):
+                    errors["tracker"] = "not_gps"
             if owner and owner in self._setup_owners.values():
                 errors["owner"] = "already_assigned"
             if not errors:

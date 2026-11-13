@@ -26,6 +26,7 @@
     },
     "error": {
       "already_assigned": "Telefon eller konto bruges allerede af et andet familiemedlem",
+      "not_gps": "Vælg telefonens GPS-tracker. Den valgte enhed er kun tilstedeværelse eller kan ikke bekræftes som GPS.",
       "required": "Vælg både smart speaker og TTS-stemme, eller undlad begge"
     }
   },

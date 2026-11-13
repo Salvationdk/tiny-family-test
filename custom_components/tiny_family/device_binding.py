@@ -6,6 +6,9 @@ offers a manual fallback for unusual Home Assistant configurations.
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
+from math import isfinite
+
 from homeassistant.helpers import entity_registry as er
 
 PHONE_SENSOR_KEYS = ("battery", "charging", "activity", "power_save")
@@ -97,3 +100,111 @@ def companion_device_sensors(hass, tracker: str) -> dict[str, str]:
     return {key: info["entity_id"]
             for key, info in companion_sensor_inventory(hass, tracker).items()
             if info["entity_id"] and info["status"] != "disabled_in_ha"}
+
+
+def phone_tracker_diagnostic(hass, tracker: str, now: datetime | None = None) -> dict:
+    """Inspect an actual HA tracker, not the friendly name in the selector.
+
+    Only metadata and health are returned to the admin UI, never coordinates.
+    A GPS fix older than 15 minutes is stale, matching Tiny Family's runtime.
+    Reading the current state cannot force an iOS/Android location update.
+    """
+    now = now or datetime.now(timezone.utc)
+    state = hass.states.get(tracker) if isinstance(tracker, str) else None
+    details = {
+        "tracker": tracker, "name": state.name if state else tracker,
+        "device_name": None, "manufacturer": None, "model": None,
+        "platform": None, "is_companion": False,
+        "tracking_type": "unknown", "gps_status": "not_found",
+        "position_available": False, "age_seconds": None,
+        "accuracy_m": None, "phone_speed_kmh": None,
+    }
+    if not tracker or not tracker.startswith("device_tracker.") or state is None:
+        return details
+
+    registry = er.async_get(hass)
+    registration = registry.async_get(tracker)
+    if registration is not None:
+        details["platform"] = getattr(registration, "platform", None)
+        details["is_companion"] = details["platform"] == "mobile_app"
+        if registration.device_id:
+            from homeassistant.helpers import device_registry as dr
+            device = dr.async_get(hass).async_get(registration.device_id)
+            if device is not None:
+                details["device_name"] = (getattr(device, "name_by_user", None)
+                                          or getattr(device, "name", None))
+                details["manufacturer"] = getattr(device, "manufacturer", None)
+                details["model"] = getattr(device, "model", None)
+
+    attrs = state.attributes
+    tracking_type = attrs.get("tracking_type")
+    source_type = attrs.get("source_type")
+    if tracking_type == "connection" or source_type in ("router", "bluetooth", "bluetooth_le"):
+        details["tracking_type"] = "connection"
+    elif tracking_type == "position" or source_type == "gps":
+        details["tracking_type"] = "position"
+
+    try:
+        latitude, longitude = float(attrs["latitude"]), float(attrs["longitude"])
+        details["position_available"] = (isfinite(latitude) and isfinite(longitude)
+                                         and -90 <= latitude <= 90 and -180 <= longitude <= 180)
+    except (KeyError, TypeError, ValueError, OverflowError):
+        pass
+    # Legacy GPS trackers may not expose tracking_type/source_type.
+    if details["tracking_type"] == "unknown" and details["position_available"]:
+        details["tracking_type"] = "position"
+
+    try:
+        stamp = state.last_updated
+        if stamp is not None:
+            details["age_seconds"] = max(0, round((now - stamp).total_seconds()))
+    except (AttributeError, TypeError, ValueError):
+        pass
+    try:
+        accuracy = float(attrs["gps_accuracy"])
+        if isfinite(accuracy) and accuracy >= 0:
+            details["accuracy_m"] = round(accuracy)
+    except (KeyError, TypeError, ValueError, OverflowError):
+        pass
+    try:
+        # Device tracker speed is read by Tiny Family in metres per second.
+        speed_mps = float(attrs["speed"])
+        if isfinite(speed_mps) and 0 <= speed_mps <= 200 / 3.6:
+            details["phone_speed_kmh"] = round(speed_mps * 3.6, 1)
+    except (KeyError, TypeError, ValueError, OverflowError):
+        pass
+
+    if details["tracking_type"] == "connection":
+        details["gps_status"] = "not_gps"
+    elif state.state in ("unknown", "unavailable"):
+        details["gps_status"] = "unavailable"
+    elif details["tracking_type"] != "position":
+        details["gps_status"] = "unverified"
+    elif not details["position_available"]:
+        details["gps_status"] = "no_fix"
+    elif details["age_seconds"] is None:
+        details["gps_status"] = "unverified"
+    elif details["age_seconds"] > 15 * 60:
+        details["gps_status"] = "stale"
+    elif details["age_seconds"] > 5 * 60:
+        details["gps_status"] = "delayed"
+    else:
+        details["gps_status"] = "fresh"
+    return details
+
+
+def validate_phone_trackers(hass, mappings: dict[str, str]) -> None:
+    """Prevent multiple people following one device or selecting router presence."""
+    selected = [tracker for tracker in mappings.values() if tracker]
+    if len(selected) != len(set(selected)):
+        raise ValueError("A GPS phone may only be assigned to one person")
+    for tracker in selected:
+        diagnosis = phone_tracker_diagnostic(hass, tracker)
+        if diagnosis["gps_status"] == "not_found":
+            raise ValueError("The selected phone tracker does not exist")
+        if diagnosis["tracking_type"] == "connection":
+            raise ValueError("A connection-only tracker cannot provide GPS")
+        # Companion GPS may not have provided its first fix yet. Permit its
+        # selection so the administrator can diagnose missing permissions.
+        if diagnosis["tracking_type"] == "unknown" and not diagnosis["is_companion"]:
+            raise ValueError("The selected tracker cannot be verified as GPS")

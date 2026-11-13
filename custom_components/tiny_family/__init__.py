@@ -68,7 +68,7 @@ from .authz import require_permission, require_history_log_permission
 from .communications import check_target
 from .device_binding import (
     PHONE_SENSOR_KEYS, companion_device_sensors, companion_sensor_inventory,
-    selected_phone_sensors,
+    phone_tracker_diagnostic, selected_phone_sensors, validate_phone_trackers,
 )
 from .sensors import _publish, remove_generated_states
 from .automation_engine import ALERT_EVENTS, DEFAULT_ALERT_EVENTS
@@ -251,6 +251,22 @@ class TinyFamilySettingsView(HomeAssistantView):
         owner = next((p for p in cfg.get("persons", [])
                       if (cfg.get("owners") or {}).get(p) == request["hass_user"].id), None)
         visible = cfg.get("persons", []) if admin else ([owner] if owner else [])
+        # The admin can verify the exact GPS-capable HA entity and its
+        # physical device, even when friendly names are ambiguous.
+        phone_states = self.hass.states.async_all("device_tracker") if admin else []
+        phone_diagnostics = {
+            state.entity_id: phone_tracker_diagnostic(self.hass, state.entity_id)
+            for state in phone_states
+        }
+        phone_inventories = {
+            state.entity_id: companion_sensor_inventory(self.hass, state.entity_id)
+            for state in phone_states
+        }
+        phone_devices = {
+            tracker: {key: info["entity_id"] for key, info in inventory.items()
+                      if info["entity_id"] and info["status"] != "disabled_in_ha"}
+            for tracker, inventory in phone_inventories.items()
+        }
         return web.json_response({
             "persons": visible,
             "trackers": {p: v for p,v in (cfg.get("trackers") or {}).items() if p in visible},
@@ -265,13 +281,9 @@ class TinyFamilySettingsView(HomeAssistantView):
                 {"id": s.entity_id, "name": s.attributes.get("friendly_name", s.entity_id)}
                 for s in self.hass.states.async_all("person")
             ], key=lambda x: x["name"]) if admin else []),
-            "device_sensors": ({s.entity_id: companion_device_sensors(self.hass, s.entity_id)
-                                for s in self.hass.states.async_all("device_tracker")}
-                               if admin else {}),
-            "phone_sensor_inventory": ({
-                s.entity_id: companion_sensor_inventory(self.hass, s.entity_id)
-                for s in self.hass.states.async_all("device_tracker")
-            } if admin else {}),
+            "device_sensors": phone_devices,
+            "phone_sensor_inventory": phone_inventories,
+            "tracker_diagnostics": phone_diagnostics,
             "phone_sensor_selection": ({
                 p: list(selected_phone_sensors(cfg, p)) for p in visible
             } if admin else {}),
@@ -285,7 +297,7 @@ class TinyFamilySettingsView(HomeAssistantView):
             ], key=lambda item: item["name"]) if admin else []),
             "available_trackers": (sorted([
                 {"id": s.entity_id, "name": s.attributes.get("friendly_name", s.entity_id)}
-                for s in self.hass.states.async_all("device_tracker")
+                for s in phone_states
             ], key=lambda x: x["name"]) if admin else []),
             "available_charging": (sorted([
                 {"id": s.entity_id, "name": s.name}
@@ -458,6 +470,7 @@ class TinyFamilySettingsView(HomeAssistantView):
                    (v and not v.startswith("device_tracker."))
                    for v in trackers.values()):
                 raise ValueError("invalid tracker")
+            validate_phone_trackers(self.hass, trackers)
             if any(not isinstance(v, str) or len(v) > 128 or
                    (v and not v.startswith("sensor."))
                    for v in batteries.values()):
