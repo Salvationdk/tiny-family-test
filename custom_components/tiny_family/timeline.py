@@ -461,6 +461,192 @@ def build_day(points, events):
     }
 
 
+def build_daily_report(data, start, end, *, shared_places=()):
+    """Compact, evidence-labelled daily diary from already authorized data.
+
+    Measured GPS distances do not bridge gaps. Walking/driving labels are
+    only estimates based on plausible speeds, not proven transport modes.
+    """
+    segments = data.get("segments") or []
+    events = data.get("events") or []
+    diagnostic = data.get("gps_diagnostics") or {}
+    speed_healthy = diagnostic.get("speed_health") == "recorded"
+    seconds = {"walking": 0.0, "driving": 0.0, "other": 0.0, "stopped": 0.0}
+    weighted_speed = {"walking": 0.0, "driving": 0.0}
+    top_speed = {"walking": 0.0, "driving": 0.0}
+    raw_speeds = []
+    inferred_rows = []
+    intervals = []
+
+    def place_label(lat, lon, fallback=""):
+        if fallback and fallback.strip():
+            return fallback.strip()[:80]
+        if type(lat) not in (int,float) or type(lon) not in (int,float):
+            return "Ukendt sted"
+        best = None
+        for place in shared_places:
+            if not isinstance(place, dict) or place.get("private") is True:
+                continue
+            plat, plon = place.get("latitude"), place.get("longitude")
+            if not (type(plat) in (int,float) and type(plon) in (int,float)
+                    and all(isfinite(v) for v in (plat,plon))):
+                continue
+            distance = _distance_m({"lat":lat,"lon":lon},
+                                   {"lat":plat,"lon":plon})
+            if distance <= 80 and (best is None or distance < best[0]):
+                best = (distance, str(place.get("name") or "Ukendt sted")[:80])
+        return best[1] if best else "Ukendt sted"
+
+    for segment in segments:
+        active = None
+        for previous, fix in zip(segment, segment[1:]):
+            dt = fix["t"] - previous["t"]
+            if not 0 < dt <= GAP_SECONDS:
+                continue
+            distance = _distance_m(previous, fix)
+            if distance / dt > 55.56:
+                continue
+            measured = [p["speed"] for p in (previous,fix)
+                        if type(p.get("speed")) in (int,float) and
+                        isfinite(p["speed"]) and 0 <= p["speed"] <= 200]
+            if speed_healthy:
+                raw_speeds.extend(v for v in measured if v >= 2)
+            gps_speed = distance / dt * 3.6
+            avg = sum(measured) / len(measured) if measured else None
+            # A GPS displacement cannot be called stationary merely because
+            # Companion reported an implausible constant zero speed.
+            speed = (avg if speed_healthy and avg is not None and
+                     (avg > 0 or distance < 15) else gps_speed)
+            kind = ("stopped" if (speed < 2 and distance < 15) or
+                    (distance < 15 and previous.get("movement")=="stationary"
+                     and fix.get("movement")=="stationary") else
+                    "walking" if 2 <= speed <= 8.5 else
+                    "driving" if speed >= 20 else "other")
+            seconds[kind] += dt
+            if kind in weighted_speed:
+                weighted_speed[kind] += speed*dt
+                top_speed[kind] = max(top_speed[kind],speed)
+            if active and active["kind"] == kind and active["ended_at"] == previous["t"]:
+                active["ended_at"] = fix["t"]
+                active["distance_m"] += distance
+                active["max_speed_kmh"] = max(active["max_speed_kmh"],speed)
+            else:
+                if active:
+                    intervals.append(active)
+                active = {"kind":kind,"started_at":previous["t"],
+                          "ended_at":fix["t"],"distance_m":distance,
+                          "max_speed_kmh":speed,"lat":previous["lat"],
+                          "lon":previous["lon"]}
+        if active:
+            intervals.append(active)
+
+    rows = []
+    for event in events:
+        begun = max(start, event["started_at"])
+        ended = min(end, event["ended_at"])
+        if ended <= begun:
+            continue
+        kind = event.get("kind")
+        if kind not in ("trip","stay"):
+            continue
+        lat, lon = event.get("start_lat"), event.get("start_lon")
+        trip_label = event.get("label") or ""
+        if kind == "trip" and not trip_label:
+            origin = place_label(lat,lon)
+            destination = place_label(event.get("end_lat"),event.get("end_lon"))
+            if origin != "Ukendt sted" or destination != "Ukendt sted":
+                trip_label = origin+" → "+destination
+            else:
+                trip_label = "Tur"
+        recorded_speed = event.get("max_speed_kmh")
+        if type(recorded_speed) not in (int,float) or recorded_speed <= 0:
+            recorded_speed = None
+        rows.append({"kind":kind,"started_at":begun,"ended_at":ended,
+                     "duration_min":round((ended-begun)/60),
+                     "label":place_label(lat,lon,event.get("label") or "") if
+                       kind == "stay" else trip_label,
+                     "distance_km":event.get("distance_km") if kind == "trip" else None,
+                     "max_speed_kmh":recorded_speed if kind == "trip" else None,
+                     "mode":("driving" if recorded_speed and recorded_speed >= 20 else
+                             "walking" if recorded_speed and recorded_speed <= 8.5 else
+                             "other") if kind == "trip" else "stopped",
+                     "source":"archive","gps_gap":bool(event.get("gap"))})
+
+    for interval in intervals:
+        span = interval["ended_at"]-interval["started_at"]
+        if span < (180 if interval["kind"] == "stopped" else 120):
+            continue
+        # Completed activity records take precedence over any approximate
+        # intervals derived from the same GPS points.
+        overlap = sum(max(0,min(interval["ended_at"],r["ended_at"])-
+                          max(interval["started_at"],r["started_at"]))
+                      for r in rows if r["kind"] in ("stay","trip"))
+        if overlap >= span*.5:
+            continue
+        stayed = interval["kind"] == "stopped"
+        inferred_rows.append({
+            "kind":"stay" if stayed else "trip",
+            "started_at":interval["started_at"],"ended_at":interval["ended_at"],
+            "duration_min":round(span/60),
+            "label":place_label(interval["lat"],interval["lon"]) if stayed
+              else "Bevægelse registreret via GPS",
+            "distance_km":None if stayed else round(interval["distance_m"]/1000,2),
+            "max_speed_kmh":None if stayed else round(interval["max_speed_kmh"],1),
+            "mode":interval["kind"],"source":"gps","gps_gap":False,
+        })
+    rows.extend(inferred_rows)
+    # Only substantial missing periods merit an explicit diary line; short
+    # gaps are already represented by the GPS diagnostics below the diary.
+    for previous, following in zip(segments,segments[1:]):
+        if not previous or not following:
+            continue
+        gap_start, gap_end = previous[-1]["t"], following[0]["t"]
+        if gap_end-gap_start >= 900:
+            rows.append({"kind":"gap","started_at":gap_start,
+                         "ended_at":gap_end,"duration_min":round((gap_end-gap_start)/60),
+                         "label":"Ingen sammenhængende GPS-målinger",
+                         "source":"gps","mode":"unknown"})
+    rows.sort(key=lambda item:(item["started_at"],0 if item["source"]=="archive" else 1))
+    if not rows and data.get("points_count"):
+        first = next((part[0] for part in segments if part),None)
+        if first:
+            rows.append({"kind":"position","started_at":first["t"],
+                         "ended_at":first["t"],"duration_min":0,
+                         "label":place_label(first["lat"],first["lon"]),
+                         "source":"gps","mode":"unknown"})
+    archived_km = sum(float(item.get("distance_km") or 0)
+                      for item in rows if item["kind"]=="trip" and
+                      item["source"]=="archive")
+    measured_speed = [p["speed"] for part in segments for p in part
+                      if type(p.get("speed")) in (int,float) and
+                      isfinite(p["speed"]) and p["speed"]>=2] if speed_healthy else []
+    return {"summary":{
+        "gps_distance_km":data.get("summary",{}).get("distance_km",0),
+        "archived_trip_distance_km":round(archived_km,2),
+        "walking_minutes":round(seconds["walking"]/60),
+        "driving_minutes":round(seconds["driving"]/60),
+        "walking_avg_kmh":round(weighted_speed["walking"]/seconds["walking"],1)
+          if seconds["walking"] else None,
+        "walking_max_kmh":round(top_speed["walking"],1)
+          if seconds["walking"] else None,
+        "driving_avg_kmh":round(weighted_speed["driving"]/seconds["driving"],1)
+          if seconds["driving"] else None,
+        "driving_max_kmh":round(top_speed["driving"],1)
+          if seconds["driving"] else None,
+        "other_moving_minutes":round(seconds["other"]/60),
+        "stopped_minutes":round(seconds["stopped"]/60),
+        "observed_minutes":round(sum(seconds.values())/60),
+        "max_recorded_speed_kmh":round(max(measured_speed),1) if measured_speed else None,
+        "avg_recorded_moving_speed_kmh":round(sum(measured_speed)/len(measured_speed),1)
+          if measured_speed else None,
+        "stays":sum(row["kind"]=="stay" for row in rows),
+        "trips":sum(row["kind"]=="trip" for row in rows),
+        "gps_points":data.get("points_count",0),
+        "gps_gaps":data.get("gaps",0),
+        "speed_health":diagnostic.get("speed_health","missing"),
+    },"items":rows}
+
+
 class TinyFamilyTimelineView(HomeAssistantView):
     """One family member and one local calendar date per authorized request."""
     url = "/api/tiny_family/timeline"
@@ -478,14 +664,18 @@ class TinyFamilyTimelineView(HomeAssistantView):
         cfg={**entry.data,**entry.options}
         retention_days = validate_retention_days(cfg.get("timeline_retention_days", RETENTION_DAYS))
         persons=cfg.get("persons") or []
+        admin=bool(getattr(request["hass_user"],"is_admin",False))
         viewer=own_person(request["hass_user"].id, persons, cfg.get("owners") or {})
-        if viewer is None:
+        if viewer is None and not admin:
             return web.json_response({"message":"Account not linked"},status=403)
         person=request.query.get("person",viewer)
         if person not in persons:
             return web.json_response({"message":"Person not configured"},status=404)
-        if person != viewer and person in set(cfg.get("ghost_people") or []):
+        if not admin and person != viewer and person in set(cfg.get("ghost_people") or []):
             return web.json_response({"message":"Historical privacy restriction"},status=403)
+        # A HA administrator can inspect each configured person's full data.
+        # Other family members retain the existing private/Ghost filtering.
+        effective_viewer=person if admin else viewer
         today=datetime.now(ZoneInfo(self.hass.config.time_zone)).date().isoformat()
         day=request.query.get("date",today)
         try:
@@ -495,7 +685,7 @@ class TinyFamilyTimelineView(HomeAssistantView):
             return web.json_response({"message":"Date outside retained archive"},status=400)
         try:
             data=await self.hass.async_add_executor_job(partial(
-                query_day,runtime["timeline_path"],person,start,end,viewer=viewer
+                query_day,runtime["timeline_path"],person,start,end,viewer=effective_viewer
             ))
         except (OSError,sqlite3.Error,KeyError):
             return web.json_response({"message":"Timeline storage unavailable"},status=503)
@@ -506,7 +696,7 @@ class TinyFamilyTimelineView(HomeAssistantView):
         for p in runtime.get("timeline_pending",()):
             if p["person"]!=person or not start<=p["ts"]<end:
                 continue
-            if person!=viewer and p["private"]:
+            if person!=effective_viewer and p["private"]:
                 hidden_gap=True
                 continue
             pending.append({
@@ -524,6 +714,17 @@ class TinyFamilyTimelineView(HomeAssistantView):
             all_points.extend(pending)
             combined={p["ts"]:p for p in all_points}
             data=build_day([combined[k] for k in sorted(combined)],data["events"])
+        if request.query.get("view") == "report":
+            # Text-first diary: no road matching, OSM requests, large point
+            # arrays or map rendering. Reuse the same per-fix privacy filter.
+            public_places=tuple(dict(place) for place in
+                (runtime.get("shared_places") or ()) if isinstance(place,dict))
+            report=await self.hass.async_add_executor_job(partial(
+                build_daily_report,data,start,end,shared_places=public_places))
+            return web.json_response({
+                "person":person,"date":day,"timezone":self.hass.config.time_zone,
+                "retention_days":retention_days,**report,
+            },headers={"Cache-Control":"no-store, private"})
         # Admin-enabled matching also applies to old archived days. Derive
         # lines when a date is viewed, and cache per viewer on disk; an
         # unbounded eager backfill could overload OSM and leak private fixes.
@@ -559,7 +760,7 @@ class TinyFamilyTimelineView(HomeAssistantView):
                     try:
                         stored = await self.hass.async_add_executor_job(
                             read_matched_day, runtime["timeline_path"], person,
-                            day, viewer, source_hash
+                            day, effective_viewer, source_hash
                         )
                     except (OSError, sqlite3.Error, ValueError, KeyError):
                         stored = None
@@ -575,11 +776,11 @@ class TinyFamilyTimelineView(HomeAssistantView):
                             from .road_engine_core import infer_historical_gap
                             past = await self.hass.async_add_executor_job(
                                 earlier_matched_roads, runtime["timeline_path"],
-                                person, day, viewer)
+                                person, day, effective_viewer)
                             inferred = [item for item in (
                                 infer_historical_gap(*pair, past)
                                 for pair in sparse_road_pairs(data["segments"],
-                                    allow_explicit=(viewer == person)))
+                                    allow_explicit=(effective_viewer == person)))
                                 if item is not None]
                     else:
                         # One matching request at a time avoids flooding OSM.
@@ -588,11 +789,11 @@ class TinyFamilyTimelineView(HomeAssistantView):
                                 road_cache = runtime.setdefault("osm_road_cache", {})
                                 past = await self.hass.async_add_executor_job(
                                     earlier_matched_roads, runtime["timeline_path"],
-                                    person, day, viewer)
+                                    person, day, effective_viewer)
                                 matched, inferred, status = await match_day_embedded(
                                     self.hass, data["segments"], road_cache,
                                     include_inferences=True, historical_roads=past,
-                                    allow_owner_gaps=(viewer == person)
+                                    allow_owner_gaps=(effective_viewer == person)
                                 )
                             else:
                                 matched, status = await match_day(
@@ -602,7 +803,7 @@ class TinyFamilyTimelineView(HomeAssistantView):
                             try:
                                 await self.hass.async_add_executor_job(
                                     save_matched_day, runtime["timeline_path"],
-                                    person, day, viewer, source_hash, matched, status
+                                    person, day, effective_viewer, source_hash, matched, status
                                 )
                             except (OSError, sqlite3.Error, ValueError):
                                 pass  # Overlay is optional; keep original GPS.

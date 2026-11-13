@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import asyncio
 import importlib.util
 from pathlib import Path
 import sqlite3
@@ -196,6 +197,115 @@ class TimelineTests(unittest.TestCase):
                          "zero_despite_movement")
         self.assertEqual(report["gps_diagnostics"]["moving_speed_samples"],0)
         self.assertGreater(report["summary"]["distance_km"],.1)
+
+    def test_daily_text_report_distinguishes_measured_and_inferred_motion(self):
+        start=self.now-1800
+        # 4 min of walking and 4 min of faster travel, always with actual
+        # samples. Nobody claims a GPS-based mode is verified transport.
+        samples=[self.sample(start+i*60,55.67,12.20+i*.00004,speed=5)
+                 for i in range(5)]
+        samples.extend(self.sample(start+(4+i)*60,55.67,12.20016+i*.006,
+                                   speed=35) for i in range(1,5))
+        day=T.build_day(samples,[{"kind":"stay","started_at":start-480,
+                                  "ended_at":start-180,"duration_min":5,
+                                  "label":"Skolen","distance_km":0,
+                                  "max_speed_kmh":0,"gap":False}])
+        report=T.build_daily_report(day,start-600,start+900)
+        self.assertEqual(report["summary"]["walking_minutes"],4)
+        self.assertGreater(report["summary"]["driving_minutes"],0)
+        self.assertGreater(report["summary"]["walking_avg_kmh"],0)
+        self.assertGreater(report["summary"]["driving_avg_kmh"],20)
+        self.assertGreater(report["summary"]["max_recorded_speed_kmh"],30)
+        self.assertTrue(any(r["label"]=="Skolen" and r["source"]=="archive"
+                            for r in report["items"]))
+        self.assertTrue(any(r["mode"]=="driving" and r["source"]=="gps"
+                            for r in report["items"]))
+
+    def test_daily_text_report_uses_shared_place_and_stays_within_gps_gaps(self):
+        start=self.now-1800
+        samples=[self.sample(start+i*60,55.67,12.2,speed=0,movement="stationary")
+                 for i in range(6)]
+        samples.extend([self.sample(start+1800,55.68,12.3,speed=0,gap=True)])
+        day=T.build_day(samples,[])
+        report=T.build_daily_report(day,start-60,start+2100,
+          shared_places=[{"name":"Hjem","latitude":55.67,"longitude":12.2}])
+        self.assertEqual(report["summary"]["stopped_minutes"],5)
+        self.assertTrue(any(r["kind"]=="stay" and r["label"]=="Hjem"
+                            for r in report["items"]))
+        self.assertEqual(report["summary"]["gps_gaps"],1)
+        self.assertTrue(any(r["kind"]=="gap" for r in report["items"]))
+        self.assertEqual(report["summary"]["gps_distance_km"],0)
+
+    def test_daily_text_report_labels_saved_trip_from_shared_destinations(self):
+        start=self.now-1200
+        day=T.build_day([],[{"kind":"trip","started_at":start,
+                             "ended_at":start+600,"duration_min":10,
+                             "start_lat":55.67,"start_lon":12.2,
+                             "end_lat":55.68,"end_lon":12.3,
+                             "distance_km":2.2,"max_speed_kmh":38,
+                             "gap":False}])
+        places=[{"name":"Hjem","latitude":55.67,"longitude":12.2},
+                {"name":"Arbejde","latitude":55.68,"longitude":12.3}]
+        report=T.build_daily_report(day,start-60,start+900,shared_places=places)
+        self.assertEqual(report["items"][0]["label"],"Hjem → Arbejde")
+        self.assertEqual(report["summary"]["archived_trip_distance_km"],2.2)
+
+    def test_daily_text_report_respects_historical_private_fix_filter(self):
+        start=self.now-1000
+        rows=[self.sample(start,55.67,12.2,private=True),
+              self.sample(start+60,55.68,12.3,private=True)]
+        T.persist_archive(self.path,rows)
+        other=T.query_day(self.path,"person.one",start-1,start+90,
+                          viewer="person.two")
+        diary=T.build_daily_report(other,start-1,start+90)
+        self.assertEqual(diary["summary"]["gps_points"],0)
+        self.assertEqual(diary["items"],[])
+
+    def test_daily_text_report_does_not_misstate_missing_sensor_speed(self):
+        start=self.now-1000
+        samples=[self.sample(start+i*30,55.67,12.200+i*.0004,speed=0)
+                 for i in range(12)]
+        day=T.build_day(samples,[])
+        diary=T.build_daily_report(day,start-60,start+400)
+        self.assertEqual(diary["summary"]["speed_health"],"zero_despite_movement")
+        self.assertIsNone(diary["summary"]["max_recorded_speed_kmh"])
+        self.assertGreater(diary["summary"]["walking_minutes"],0)
+
+    def test_admin_can_read_private_member_diary_without_person_binding(self):
+        now=datetime.now(timezone.utc)
+        ts=now.timestamp()-120
+        T.persist_archive(self.path,[{**self.sample(ts),"person":"person.two",
+                                      "private":True}])
+        cfg={"persons":["person.one","person.two"],
+             "owners":{"person.one":"ordinary"},
+             "ghost_people":["person.two"],"timeline_retention_days":365,
+             "map_matching_enabled":True,"map_matching_backend":"builtin"}
+        entry=types.SimpleNamespace(data=cfg,options={})
+        class Hass:
+            data={"tiny_family_runtime":{"entry":entry,"timeline_path":self.path}}
+            config=types.SimpleNamespace(time_zone="UTC")
+            async def async_add_executor_job(self,func,*args):
+                return func(*args)
+        class Request(dict):
+            def __init__(self,user):
+                super().__init__(hass_user=user)
+                self.query={"person":"person.two","date":now.date().isoformat(),
+                            "view":"report"}
+        view=T.TinyFamilyTimelineView(Hass())
+        response=lambda payload,status=200,headers=None:(status,payload)
+        with patch.object(T.web,"json_response",side_effect=response):
+            allowed=asyncio.run(view.get(Request(types.SimpleNamespace(
+                id="admin",is_admin=True))))
+            denied=asyncio.run(view.get(Request(types.SimpleNamespace(
+                id="ordinary",is_admin=False))))
+            self.assertEqual(allowed[0],200)
+            self.assertEqual(allowed[1]["summary"]["gps_points"],1)
+            self.assertEqual(denied[0],403)
+            cfg["ghost_people"]=[]
+            public=asyncio.run(view.get(Request(types.SimpleNamespace(
+                id="ordinary",is_admin=False))))
+            self.assertEqual(public[0],200)
+            self.assertEqual(public[1]["summary"]["gps_points"],0)
 
     def test_calendar_day_uses_local_timezone_and_dst(self):
         now=datetime(2026,11,9,tzinfo=timezone.utc)

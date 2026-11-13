@@ -106,6 +106,22 @@ class MobileExperienceTests(unittest.TestCase):
         self.assertIn('resetToToday();',self.js)
         self.assertIn('playbackLocation(closest,',self.js)
 
+    def test_daily_diary_is_per_person_date_and_available_from_map_badges(self):
+        self.assertIn('async dailyReport(root,{view="activity",ownOnly=false,fixedPerson=null}={}) {',self.js)
+        self.assertIn('"&date="+encodeURIComponent(selectedDay)+"&view=report"',self.js)
+        self.assertIn('personSelect.addEventListener("change",()=>{date.value=today;',self.js)
+        self.assertIn('className="tf-daily-scroll"',self.js)
+        self.assertIn('className="tf-daily-stats"',self.js)
+        self.assertIn('dayAction.textContent="Dagens statistik og besøg"',self.js)
+        self.assertIn('this._timelineRequestedDate=date.value;',self.js)
+        self.assertIn('if(requestedDate && requestedDate>=dockDate.min',self.js)
+        self.assertIn('this._activityRequestedPerson=person.person;',self.js)
+        self.assertIn('archive.className="tf-person tf-activity-archive";',self.js)
+        self.assertIn('diaryHeading.textContent="Min teksttidslinje · "',self.js)
+        self.assertIn('void this.dailyReport(ownDiary,{view:"today",ownOnly:true});',self.js)
+        self.assertIn('void this.dailyReport(memberDiary,{view:"editor",fixedPerson:person.id});',self.js)
+        self.assertIn('diarySummary.textContent="Administrator: personhistorik i tekst ("',self.js)
+
 
 if __name__=="__main__":
     unittest.main()
