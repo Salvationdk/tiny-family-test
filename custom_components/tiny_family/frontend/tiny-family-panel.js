@@ -51,6 +51,12 @@ class TinyFamilyPanel extends HTMLElement {
       .tf-empty{padding:18px;border:1px dashed var(--divider-color);border-radius:12px;color:var(--secondary-text-color)}
       .tf-wrap a{color:var(--primary-color)}
       .tf-person p{margin:4px 0;overflow-wrap:anywhere}
+      .tf-member-settings>summary{cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:8px;font-weight:750;min-height:43px;list-style:none}
+      .tf-member-settings>summary::-webkit-details-marker{display:none}
+      .tf-member-settings:not([open])>*:not(summary){display:none}
+      .tf-member-settings[open]{border-color:#36bbc9}
+      .tf-member-summary .tf-chip{font-size:11px;flex:none}
+      .tf-wrap .tf-save.tf-danger{background:#a33842;color:#fff}
       .tf-head{display:flex;align-items:center;gap:10px;margin-bottom:12px}
       .tf-head h1{flex:1;min-width:0}
       .tf-header-action{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:44px;min-width:44px;padding:8px;border:1px solid var(--divider-color);border-radius:12px;background:var(--card-background-color);color:var(--primary-text-color);cursor:pointer}
@@ -98,6 +104,13 @@ class TinyFamilyPanel extends HTMLElement {
       .tf-shared-place-actions>*{flex:1 1 150px}
       .tf-place-group{margin:15px 0}
       .tf-place-group>summary{padding:10px 0;cursor:pointer;font-weight:600}
+      .tf-zone-list{display:grid;gap:8px;margin-top:10px}
+      .tf-zone-editor{margin:10px 0}
+      .tf-zone-editor>summary{min-height:43px;cursor:pointer;font-weight:750}
+      .tf-zone-editor:not([open])>*:not(summary){display:none}
+      .tf-zone-polygon-editor{padding-top:12px;border-top:1px solid var(--divider-color)}
+      .tf-zone-editor select{width:100%;padding:10px;border:1px solid var(--divider-color);border-radius:9px;background:var(--primary-background-color);color:var(--primary-text-color)}
+      .tf-zone-editor .tf-card-actions>*{flex:1 1 130px}
       /* Tiny Neon timeline: frosted bottom dock, real daily samples, no page scroll. */
       .tf-timeline-dock{position:relative;z-index:700;max-width:850px;padding:10px 12px;border:1px solid rgba(66,220,230,.55);border-radius:17px;background:rgba(20,28,44,.94);color:#effbff;box-shadow:0 8px 22px rgba(0,0,0,.23),0 0 16px rgba(50,188,217,.17);font-size:13px}
       .tf-dock-main{display:flex;gap:7px;align-items:center}
@@ -300,23 +313,51 @@ class TinyFamilyPanel extends HTMLElement {
     };
     return explanations[code] || error?.body?.message || error?.message || String(error);
   }
+  draftKey(scope) {
+    // Drafts stay in this browser tab and belong only to the signed-in HA
+    // account; never persist unsaved personal places on the HA server.
+    return "tiny-family-draft-v1:"+(this.hassInstance?.user?.id||"local")+":"+scope;
+  }
+  readDraft(scope) {
+    if(!this.hassInstance?.user?.id)return null;
+    try{
+      const saved=JSON.parse(sessionStorage.getItem(this.draftKey(scope))||"null");
+      return saved && Date.now()-saved.at<24*3600*1000?saved.data:null;
+    }catch(_){return null;}
+  }
+  writeDraft(scope,data) {
+    if(!this.hassInstance?.user?.id)return;
+    try{sessionStorage.setItem(this.draftKey(scope),JSON.stringify({at:Date.now(),data}));}
+    catch(_){/* Session storage may be unavailable; never block editing. */}
+  }
+  clearDraft(scope) {
+    if(!this.hassInstance?.user?.id)return;
+    try{sessionStorage.removeItem(this.draftKey(scope));}catch(_){}
+  }
   async refreshSettings() {
     this.settings = await this.hassInstance.callApi("GET", "tiny_family/settings");
   }
   show(key) {
     if (!this.booted) return;
+    const requestedView=key;
     if (key === "editor" && !this.settings?.editable) key = "live";
     if (key === "routes"){
       this._timelineRequestedPerson=this._routeFilterPerson||this._viewerPerson;
       this._routeFilterPerson=null;
       key="live";
     }
+    // Tapping the current mobile tab must not throw away unsaved fields.
+    if(requestedView===this.active && this.querySelector("#tf-main")?.children.length)return;
     this.active = key; this.card = null; this._todayPerson = null; this.message("");
     if(this._familyTimer){clearInterval(this._familyTimer);this._familyTimer=null;}
     if(this._timelinePlaybackTimer){clearInterval(this._timelinePlaybackTimer);this._timelinePlaybackTimer=null;}
     if(this._familyMap){this._familyMap.remove();this._familyMap=null;}
     this.querySelectorAll("[data-view]").forEach(b => b.setAttribute("aria-current", b.dataset.view === key ? "page" : "false"));
     const root = this.querySelector("#tf-main");
+    // Every page uses the same root. Stale page-specific classes made the
+    // map, messages and admin panels inherit each other's mobile layouts.
+    root.classList.remove("tf-places-view","tf-activity-view",
+      "tf-messages-view","tf-admin-mobile");
     root.classList.toggle("tf-admin-panel",key==="editor");
     root.classList.toggle("tf-family-view",key==="live");
     root.classList.toggle("tf-one-screen",key!=="live");
@@ -603,6 +644,24 @@ class TinyFamilyPanel extends HTMLElement {
     submit.className="tf-save";submit.textContent="Gem som fælles sted";
     actions.append(position,submit);form.appendChild(actions);
     create.appendChild(form);root.appendChild(create);
+    const previousPlaceDraft=this.readDraft("places-create");
+    if(previousPlaceDraft){
+      name.value=previousPlaceDraft.name||"";
+      lat.value=previousPlaceDraft.latitude||"";
+      lon.value=previousPlaceDraft.longitude||"";
+      create.open=Boolean(previousPlaceDraft.open);
+    }
+    const savePlaceDraft=()=>{
+      if(!name.value&&!lat.value&&!lon.value){
+        this.clearDraft("places-create");return;
+      }
+      this.writeDraft("places-create",{
+        name:name.value,latitude:lat.value,longitude:lon.value,open:create.open
+      });
+    };
+    form.addEventListener("input",savePlaceDraft);
+    form.addEventListener("change",savePlaceDraft);
+    create.addEventListener("toggle",savePlaceDraft);
     const sharedTitle=document.createElement("h3");sharedTitle.textContent="Fælles steder";
     root.appendChild(sharedTitle);
     const sharedList=document.createElement("div");root.appendChild(sharedList);
@@ -640,21 +699,25 @@ class TinyFamilyPanel extends HTMLElement {
       const pane=document.createElement("section");pane.className="tf-screen-panel";
       root.appendChild(pane);return pane;
     };
-    const sharedPane=makePane(),ownPane=makePane(),adminPane=makePane();
+    const sharedPane=makePane(),ownPane=makePane(),adminPane=makePane(),zonePane=makePane();
     adminPane.hidden=true;
+    zonePane.hidden=true;
     sharedPane.append(create,sharedTitle,sharedList);
     ownPane.appendChild(ownDetails);
     ownDetails.open=true;
     adminPane.appendChild(adminDetails);
     adminPane.appendChild(managedDetails);
     adminDetails.open=true;
+    const savedPlaceView=this.readDraft("places-tab")||"shared";
     const placeViews=[
       {key:"shared",title:"Fælles",pane:sharedPane},
       {key:"mine",title:"Mine ophold",pane:ownPane},
-      {key:"proposals",title:"Forslag",pane:adminPane}
+      {key:"proposals",title:"Forslag",pane:adminPane},
+      {key:"zones",title:"Zoner",pane:zonePane}
     ];
     const selectPlaceView=key=>{
-      if(key==="proposals" && map){
+      this.writeDraft("places-tab",key);
+      if(key!=="shared" && map){
         map.remove();if(this._familyMap===map)this._familyMap=null;
         map=null;marker=null;
       }
@@ -662,12 +725,17 @@ class TinyFamilyPanel extends HTMLElement {
         proposalsMap.remove();if(this._familyMap===proposalsMap)this._familyMap=null;
         proposalsMap=null;proposalLayers=null;
       }
+      if(key!=="zones" && zoneMap){
+        zoneMap.remove();if(this._familyMap===zoneMap)this._familyMap=null;
+        zoneMap=null;zoneLayers=null;zoneDraftLayer=null;
+      }
       for(const option of placeViews){
         option.pane.hidden=option.key!==key;
         option.button?.setAttribute("aria-pressed",String(option.key===key));
       }
       if(key==="proposals")ensureProposalMap();
       if(key==="shared" && create.open)ensurePlaceMap();
+      if(key==="zones")ensureZoneMap();
     };
     for(const option of placeViews){
       const button=document.createElement("button");
@@ -676,9 +744,14 @@ class TinyFamilyPanel extends HTMLElement {
       button.addEventListener("click",()=>selectPlaceView(option.key));
       placeNav.appendChild(button);
     }
-    let map=null,chosen=null,marker=null,mapLoading=false;
+    let map=null,chosen=(previousPlaceDraft&&Number.isFinite(Number(lat.value))&&
+      Number.isFinite(Number(lon.value))&&lat.value!==""&&lon.value!=="")
+      ?{latitude:Number(lat.value),longitude:Number(lon.value)}:null;
+    let marker=null,mapLoading=false;
     let proposalsMap=null,proposalsLoading=false,proposalRows=[],proposalFocus=null;
     let proposalLayers=null;
+    let zoneMap=null,zoneLayers=null,zoneDraftLayer=null,zoneMapLoading=false;
+    let sharedDestinations=[];
     const drawProposalPins=()=>{
       if(!proposalsMap)return;
       if(proposalLayers){proposalLayers.remove();proposalLayers=null;}
@@ -733,6 +806,7 @@ class TinyFamilyPanel extends HTMLElement {
       if(!Number.isFinite(latitude)||!Number.isFinite(longitude))return;
       chosen={latitude:Number(latitude.toFixed(6)),longitude:Number(longitude.toFixed(6))};
       lat.value=String(chosen.latitude);lon.value=String(chosen.longitude);
+      savePlaceDraft();
       if(map){
         if(marker)marker.remove();
         marker=window.L.circleMarker([latitude,longitude],{
@@ -786,14 +860,429 @@ class TinyFamilyPanel extends HTMLElement {
       create.open=true;
       name.value=defaultName || (place.name==="Ukendt sted"?"":place.name)||"";
       choose(Number(place.latitude),Number(place.longitude));
+      savePlaceDraft();
       ensurePlaceMap();
       create.scrollIntoView({behavior:"smooth",block:"start"});
       name.focus();
     };
-    const call=async(method,payload,success)=>{
+    // Zones are geographical areas; destinations are points. A destination
+    // may coincide with a zone's centre or live anywhere inside its border.
+    const zoneHeading=document.createElement("h3");
+    zoneHeading.textContent="Zoner og destinationer";
+    const zoneExplanation=document.createElement("p");
+    zoneExplanation.className="tf-screen-intro";
+    zoneExplanation.textContent="Cirkelzoner er Home Assistant-zoner til ankomst og afgang. Tegnede polygonområder bruges af Tiny Family. Destinationer er selvstændige punkter og kan ligge både inde i og uden for zoner.";
+    const zoneMapNode=document.createElement("div");
+    zoneMapNode.className="tf-map tf-zone-map";
+    zoneMapNode.style.height="275px";zoneMapNode.style.minHeight="275px";
+    const zoneInfo=document.createElement("p");zoneInfo.className="tf-message";
+    zoneInfo.textContent="Tryk på en zone eller destination på kortet for flere oplysninger.";
+    zonePane.append(zoneHeading,zoneExplanation,zoneMapNode,zoneInfo);
+    const zoneTools=document.createElement("details");zoneTools.className="tf-person tf-zone-editor";
+    zoneTools.hidden=true;
+    const zoneToolsTitle=document.createElement("summary");
+    zoneToolsTitle.textContent="+ Tegn eller rediger zone · administrator";
+    zoneTools.appendChild(zoneToolsTitle);
+    zonePane.appendChild(zoneTools);
+    const circular=document.createElement("form");circular.className="tf-shared-place-form";
+    const circleLabel=document.createElement("strong");circleLabel.textContent="Home Assistant-zone (cirkel)";
+    const makeTextField=(label,type="text")=>{
+      const wrap=document.createElement("label");wrap.textContent=label;
+      const input=document.createElement("input");input.type=type;
+      wrap.appendChild(input);return {wrap,input};
+    };
+    const circleExisting=document.createElement("select");
+    circleExisting.setAttribute("aria-label","Vælg zone, der skal redigeres");
+    const circleName=makeTextField("Navn");circleName.input.maxLength=80;circleName.input.required=true;
+    const circleRadius=makeTextField("Radius i meter (25–5000)","number");
+    circleRadius.input.min="25";circleRadius.input.max="5000";
+    circleRadius.input.value="100";circleRadius.input.required=true;
+    const circleLocation=document.createElement("p");circleLocation.className="tf-message";
+    circleLocation.textContent="Tryk på kortet for at placere centrum.";
+    const circleDestination=document.createElement("label");
+    const alsoDestination=document.createElement("input");alsoDestination.type="checkbox";
+    circleDestination.append(alsoDestination,document.createTextNode(
+      " Opret også et fælles destinationspunkt i centrum"));
+    const circleActions=document.createElement("div");circleActions.className="tf-card-actions";
+    const startCircle=document.createElement("button");startCircle.type="button";
+    startCircle.className="tf-save";startCircle.textContent="Vælg centrum på kortet";
+    const saveCircle=document.createElement("button");saveCircle.type="submit";
+    saveCircle.className="tf-save";saveCircle.textContent="Gem cirkulær zone";
+    const removeCircle=document.createElement("button");removeCircle.type="button";
+    removeCircle.className="tf-save tf-danger";removeCircle.textContent="Slet valgt zone";
+    removeCircle.disabled=true;
+    circleActions.append(startCircle,saveCircle,removeCircle);
+    circular.append(circleLabel,circleExisting,circleName.wrap,circleRadius.wrap,
+      circleLocation,circleDestination,circleActions);
+    zoneTools.appendChild(circular);
+    const polygonEditor=document.createElement("form");
+    polygonEditor.className="tf-shared-place-form tf-zone-polygon-editor";
+    const polygonLabel=document.createElement("strong");
+    polygonLabel.textContent="Tiny Family-zone (tegn polygon)";
+    const polygonExisting=document.createElement("select");
+    polygonExisting.setAttribute("aria-label","Vælg polygonområde, der skal redigeres");
+    const polygonName=makeTextField("Navn på polygon");
+    polygonName.input.maxLength=80;polygonName.input.required=true;
+    const polygonHint=document.createElement("p");polygonHint.className="tf-message";
+    polygonHint.textContent="Tegn mindst 3 og højst 32 hjørner på kortet.";
+    const polygonActions=document.createElement("div");polygonActions.className="tf-card-actions";
+    const startPolygon=document.createElement("button");startPolygon.type="button";
+    startPolygon.className="tf-save";startPolygon.textContent="Start polygontegning";
+    const undoVertex=document.createElement("button");undoVertex.type="button";
+    undoVertex.className="tf-save";undoVertex.textContent="Fortryd hjørne";
+    const savePolygon=document.createElement("button");savePolygon.type="submit";
+    savePolygon.className="tf-save";savePolygon.textContent="Gem polygonzone";
+    const deletePolygon=document.createElement("button");deletePolygon.type="button";
+    deletePolygon.className="tf-save tf-danger";deletePolygon.textContent="Slet polygon";
+    deletePolygon.disabled=true;
+    polygonActions.append(startPolygon,undoVertex,savePolygon,deletePolygon);
+    polygonEditor.append(polygonLabel,polygonExisting,polygonName.wrap,
+      polygonHint,polygonActions);
+    zoneTools.appendChild(polygonEditor);
+    const zoneList=document.createElement("div");zoneList.className="tf-zone-list";
+    zonePane.appendChild(zoneList);
+    let zoneRows=[],polygonRows=[],editableZoneRows=[];
+    let editingMode=null,circleCenter=null,polygonVertices=[];
+    const zoneDraft=this.readDraft("places-zone");
+    if(zoneDraft){
+      circleName.input.value=zoneDraft.circleName||"";
+      circleRadius.input.value=zoneDraft.circleRadius||"100";
+      alsoDestination.checked=Boolean(zoneDraft.alsoDestination);
+      polygonName.input.value=zoneDraft.polygonName||"";
+      circleCenter=Array.isArray(zoneDraft.circleCenter)&&
+        zoneDraft.circleCenter.every(Number.isFinite)?zoneDraft.circleCenter:null;
+      polygonVertices=Array.isArray(zoneDraft.polygonVertices)?
+        zoneDraft.polygonVertices.filter(p=>Array.isArray(p)&&p.length===2&&
+          p.every(Number.isFinite)).slice(0,32):[];
+      editingMode=["circle","polygon"].includes(zoneDraft.mode)?zoneDraft.mode:null;
+      if(editingMode==="polygon")startPolygon.textContent="Afslut tegning";
+      if(editingMode==="circle")startCircle.textContent="Tryk på kortet…";
+      if(circleCenter)circleLocation.textContent="Centrum: "+
+        circleCenter.map(x=>x.toFixed(6)).join(", ");
+      circleExisting.dataset.pendingId=zoneDraft.circleId||"";
+      polygonExisting.dataset.pendingId=zoneDraft.polygonId||"";
+      zoneTools.open=Boolean(zoneDraft.open);
+    }
+    const saveZoneDraft=()=>this.writeDraft("places-zone",{
+      circleId:circleExisting.value,circleName:circleName.input.value,
+      circleRadius:circleRadius.input.value,alsoDestination:alsoDestination.checked,
+      circleCenter,polygonId:polygonExisting.value,
+      polygonName:polygonName.input.value,polygonVertices,mode:editingMode,
+      open:zoneTools.open
+    });
+    zoneTools.addEventListener("input",saveZoneDraft);
+    zoneTools.addEventListener("change",saveZoneDraft);
+    zoneTools.addEventListener("toggle",saveZoneDraft);
+    const metersBetween=(a,b)=>{
+      const x=(a[1]-b[1])*111320*Math.cos((a[0]+b[0])*Math.PI/360);
+      const y=(a[0]-b[0])*111320;return Math.hypot(x,y);
+    };
+    const inPolygon=(p,pts)=>{
+      let inside=false;
+      for(let i=0,j=pts.length-1;i<pts.length;j=i++){
+        const a=pts[i],b=pts[j];
+        if((a[0]>p[0])!==(b[0]>p[0]) &&
+           p[1]<(b[1]-a[1])*(p[0]-a[0])/(b[0]-a[0])+a[1])inside=!inside;
+      }
+      return inside;
+    };
+    const polygonInterior=pts=>{
+      const middle=[pts.reduce((s,p)=>s+p[0],0)/pts.length,
+        pts.reduce((s,p)=>s+p[1],0)/pts.length];
+      if(inPolygon(middle,pts))return middle;
+      const latitude=(Math.min(...pts.map(p=>p[0]))+
+        Math.max(...pts.map(p=>p[0])))/2;
+      const hits=[];
+      for(let i=0;i<pts.length;i++){
+        const a=pts[i],b=pts[(i+1)%pts.length];
+        if((a[0]>latitude)!==(b[0]>latitude))
+          hits.push(a[1]+(b[1]-a[1])*(latitude-a[0])/(b[0]-a[0]));
+      }
+      hits.sort((a,b)=>a-b);
+      return hits.length>=2?[latitude,(hits[0]+hits[1])/2]:pts[0];
+    };
+    const zonePreview=()=>{
+      if(!zoneMap)return;
+      if(zoneDraftLayer){zoneDraftLayer.remove();zoneDraftLayer=null;}
+      if(circleCenter){
+        const radius=Number(circleRadius.input.value);
+        if(Number.isFinite(radius)&&radius>=25&&radius<=5000){
+          zoneDraftLayer=window.L.circle(circleCenter,{radius,color:"#f2b76a",
+            weight:3,dashArray:"6 5",fillOpacity:.12}).addTo(zoneMap);
+        }
+      }else if(polygonVertices.length){
+        zoneDraftLayer=(polygonVertices.length>=3
+          ?window.L.polygon(polygonVertices,{color:"#f2b76a",weight:3,
+            dashArray:"6 5",fillOpacity:.15})
+          :window.L.polyline(polygonVertices,{color:"#f2b76a",weight:3,
+            dashArray:"6 5"})).addTo(zoneMap);
+      }
+    };
+    const drawZoneMap=()=>{
+      if(!zoneMap)return;
+      if(zoneLayers){zoneLayers.remove();zoneLayers=null;}
+      zoneLayers=window.L.layerGroup().addTo(zoneMap);
+      const bounds=[];
+      for(const zone of zoneRows){
+        const pos=[zone.latitude,zone.longitude];
+        if(!pos.every(Number.isFinite))continue;
+        bounds.push(pos);
+        const layer=window.L.circle(pos,{radius:zone.radius_m,color:"#24c9d9",
+          weight:2,fillOpacity:.09}).addTo(zoneLayers);
+        const tooltip=document.createElement("span");
+        tooltip.textContent=zone.name+" · HA-zone";
+        layer.bindTooltip(tooltip);
+      }
+      for(const polygon of polygonRows){
+        if(!Array.isArray(polygon.points)||polygon.points.length<3)continue;
+        const tooltip=document.createElement("span");
+        tooltip.textContent=polygon.name+" · Polygonzone";
+        window.L.polygon(polygon.points,{color:"#9f7cd2",weight:2,
+          fillOpacity:.12}).addTo(zoneLayers).bindTooltip(tooltip);
+        bounds.push(...polygon.points);
+      }
+      for(const destination of sharedDestinations){
+        const pos=[destination.latitude,destination.longitude];
+        if(!pos.every(Number.isFinite))continue;
+        const tooltip=document.createElement("span");
+        tooltip.textContent=destination.name+" · Destination";
+        window.L.circleMarker(pos,{radius:6,color:"#fff",weight:2,
+          fillColor:"#e6a968",fillOpacity:.95}).addTo(zoneLayers)
+          .bindTooltip(tooltip);
+      }
+      zonePreview();
+      if(circleCenter&&zoneTools.open)zoneMap.setView(circleCenter,16);
+      else if(polygonVertices.length&&zoneTools.open)
+        zoneMap.fitBounds(polygonVertices,{padding:[24,24],maxZoom:16});
+      else if(bounds.length)zoneMap.fitBounds(bounds,{padding:[24,24],maxZoom:15});
+      else zoneMap.setView([this.hassInstance.config.latitude||0,
+        this.hassInstance.config.longitude||0],12);
+    };
+    const resetZoneDrawing=()=>{
+      editingMode=null;circleCenter=null;polygonVertices=[];
+      startCircle.textContent="Vælg centrum på kortet";
+      startPolygon.textContent="Start polygontegning";
+      zonePreview();
+    };
+    startCircle.addEventListener("click",()=>{
+      editingMode="circle";polygonVertices=[];circleCenter=null;
+      startCircle.textContent="Tryk på kortet…";
+      zonePreview();saveZoneDraft();
+    });
+    circleRadius.input.addEventListener("input",zonePreview);
+    startPolygon.addEventListener("click",()=>{
+      editingMode=editingMode==="polygon"?null:"polygon";
+      circleCenter=null;
+      if(editingMode==="polygon")polygonVertices=[];
+      startPolygon.textContent=editingMode==="polygon"
+        ?"Afslut tegning":"Start polygontegning";
+      zonePreview();saveZoneDraft();
+    });
+    undoVertex.addEventListener("click",()=>{
+      polygonVertices.pop();zonePreview();
+      polygonHint.textContent=polygonVertices.length+" hjørner tegnet.";
+      saveZoneDraft();
+    });
+    const ensureZoneMap=async()=>{
+      if(zoneMap||zoneMapLoading||zonePane.hidden||this.active!=="places")return;
+      zoneMapLoading=true;
       try{
-        await this.hassInstance.callApi(method,"tiny_family/places",payload);
-        this.message(success);
+        await this.leaflet();
+        if(zonePane.hidden||this.active!=="places")return;
+        zoneMap=this.createLeafletMap(zoneMapNode);
+        await this.addBaseMap(zoneMap,zoneMapNode);
+        zoneMap.on("click",event=>{
+          if(editingMode==="circle"){
+            circleCenter=[event.latlng.lat,event.latlng.lng];
+            circleLocation.textContent="Centrum: "+circleCenter.map(x=>x.toFixed(6)).join(", ");
+            editingMode=null;startCircle.textContent="Flyt centrum";
+          }else if(editingMode==="polygon"&&polygonVertices.length<32){
+            polygonVertices.push([event.latlng.lat,event.latlng.lng]);
+            polygonHint.textContent=polygonVertices.length+" hjørner tegnet.";
+          }
+          zonePreview();
+          saveZoneDraft();
+        });
+        await reloadZones();
+        if(zoneMap)zoneMap.invalidateSize();
+      }catch(error){zoneInfo.textContent="Zonekortet kunne ikke indlæses: "+this.errorText(error);}
+      finally{zoneMapLoading=false;}
+    };
+    const zoneCard=(label,description,location,focus,related)=>{
+      const card=document.createElement("section");card.className="tf-person";
+      const heading=document.createElement("strong");heading.textContent=label;
+      const details=document.createElement("p");details.className="tf-message";
+      details.textContent=description+(related.length?
+        " · Destinationer inde i zonen: "+related.map(p=>p.name).join(", "):"");
+      const actions=document.createElement("div");actions.className="tf-card-actions";
+      const view=document.createElement("button");view.type="button";
+      view.className="tf-save";view.textContent="Vis på kort";
+      view.addEventListener("click",()=>{if(zoneMap)zoneMap.setView(focus,16);});
+      const destination=document.createElement("button");destination.type="button";
+      destination.className="tf-save";
+      const alreadyExists=related.some(item=>metersBetween(
+        [item.latitude,item.longitude],location)<10);
+      destination.textContent=alreadyExists?"Destination findes":"Opret destination her";
+      destination.disabled=alreadyExists;
+      if(!alreadyExists)destination.addEventListener("click",()=>fill({
+        latitude:location[0],longitude:location[1],name:label
+      },label));
+      actions.append(view,destination);card.append(heading,details,actions);
+      return card;
+    };
+    const reloadZones=async()=>{
+      const canEdit=!zoneTools.hidden;
+      const [status,geo,stored]=await Promise.all([
+        this.hassInstance.callApi("GET","tiny_family/status"),
+        this.hassInstance.callApi("GET","tiny_family/geofences"),
+        canEdit?this.hassInstance.callApi("GET","tiny_family/zones").catch(()=>({zones:[]})):
+          Promise.resolve({zones:[]})
+      ]);
+      zoneRows=[...(status.zones||[])];
+      polygonRows=geo.geofences||[];
+      editableZoneRows=stored.zones||[];
+      // HA's zone entity may be published a moment after storage saves.
+      // Show the stored item immediately without drawing it twice later.
+      for(const storedZone of editableZoneRows){
+        const centre=[storedZone.latitude,storedZone.longitude];
+        if(!centre.every(Number.isFinite)||!Number.isFinite(storedZone.radius))continue;
+        if(!zoneRows.some(zone=>zone.name===storedZone.name &&
+            metersBetween([zone.latitude,zone.longitude],centre)<10)){
+          zoneRows.push({id:storedZone.id,name:storedZone.name,
+            latitude:storedZone.latitude,longitude:storedZone.longitude,
+            radius_m:storedZone.radius});
+        }
+      }
+      const selectedCircle=circleExisting.value||circleExisting.dataset.pendingId||"";
+      const selectedPolygon=polygonExisting.value||polygonExisting.dataset.pendingId||"";
+      circleExisting.dataset.pendingId="";polygonExisting.dataset.pendingId="";
+      circleExisting.replaceChildren();
+      const circleNew=document.createElement("option");circleNew.value="";
+      circleNew.textContent="Opret ny cirkelzone";circleExisting.appendChild(circleNew);
+      for(const zone of editableZoneRows){
+        const opt=document.createElement("option");opt.value=zone.id;
+        opt.textContent=zone.name;circleExisting.appendChild(opt);
+      }
+      circleExisting.value=selectedCircle;
+      polygonExisting.replaceChildren();
+      const polygonNew=document.createElement("option");polygonNew.value="";
+      polygonNew.textContent="Opret ny polygon";polygonExisting.appendChild(polygonNew);
+      for(const polygon of polygonRows){
+        const opt=document.createElement("option");opt.value=polygon.id;
+        opt.textContent=polygon.name;polygonExisting.appendChild(opt);
+      }
+      polygonExisting.value=selectedPolygon;
+      removeCircle.disabled=!circleExisting.value;
+      deletePolygon.disabled=!polygonExisting.value;
+      zoneList.replaceChildren();
+      for(const zone of zoneRows){
+        const centre=[zone.latitude,zone.longitude];
+        const related=sharedDestinations.filter(p=>
+          metersBetween(centre,[p.latitude,p.longitude])<=zone.radius_m);
+        zoneList.appendChild(zoneCard(zone.name,"HA-cirkel · radius "+
+          Math.round(zone.radius_m)+" m",centre,centre,related));
+      }
+      for(const polygon of polygonRows){
+        if(!Array.isArray(polygon.points)||polygon.points.length<3)continue;
+        const position=polygonInterior(polygon.points);
+        const related=sharedDestinations.filter(p=>
+          inPolygon([p.latitude,p.longitude],polygon.points));
+        zoneList.appendChild(zoneCard(polygon.name,"Tiny Family-polygon · "+
+          polygon.points.length+" hjørner",position,position,related));
+      }
+      if(!zoneList.children.length){
+        const note=document.createElement("p");note.className="tf-empty";
+        note.textContent="Ingen zoner endnu. En administrator kan tegne en cirkel eller polygon på kortet.";
+        zoneList.appendChild(note);
+      }
+      drawZoneMap();
+    };
+    circleExisting.addEventListener("change",()=>{
+      resetZoneDrawing();
+      const item=editableZoneRows.find(zone=>zone.id===circleExisting.value);
+      circleName.input.value=item?.name||"";
+      circleRadius.input.value=String(item?.radius||100);
+      removeCircle.disabled=!item;
+      if(item){circleCenter=[item.latitude,item.longitude];
+        zoneMap?.setView(circleCenter,16);zonePreview();}
+      saveZoneDraft();
+    });
+    polygonExisting.addEventListener("change",()=>{
+      resetZoneDrawing();
+      const item=polygonRows.find(zone=>zone.id===polygonExisting.value);
+      polygonName.input.value=item?.name||"";
+      polygonVertices=item?.points?.map(p=>[p[0],p[1]])||[];
+      deletePolygon.disabled=!item;zonePreview();
+      saveZoneDraft();
+    });
+    circular.addEventListener("submit",async event=>{
+      event.preventDefault();
+      if(!circleCenter){this.message("Tryk på zonekortet for at vælge centrum.",true);return;}
+      saveCircle.disabled=true;
+      const payload={name:circleName.input.value.trim(),radius:Number(circleRadius.input.value),
+        latitude:circleCenter[0],longitude:circleCenter[1]};
+      try{
+        await this.hassInstance.callApi(circleExisting.value?"PUT":"POST",
+          "tiny_family/zones",{...payload,...(circleExisting.value?
+            {zone_id:circleExisting.value}:{})});
+        let destinationNotice="";
+        if(alsoDestination.checked){
+          try{await this.hassInstance.callApi("POST","tiny_family/places",
+            {kind:"shared",name:payload.name,latitude:payload.latitude,
+              longitude:payload.longitude});
+          }catch(error){destinationNotice=" · Destinationen blev ikke gemt: "+this.errorText(error);}
+        }
+        circleExisting.value="";circleName.input.value="";alsoDestination.checked=false;
+        resetZoneDrawing();
+        this.clearDraft("places-zone");
+        await load();await reloadZones();
+        this.message("Zonen er gemt."+destinationNotice,Boolean(destinationNotice));
+      }catch(error){this.message("Zonen kunne ikke gemmes: "+this.errorText(error),true);}
+      finally{saveCircle.disabled=false;}
+    });
+    polygonEditor.addEventListener("submit",async event=>{
+      event.preventDefault();
+      if(polygonVertices.length<3){this.message("Tegn mindst tre hjørner.",true);return;}
+      savePolygon.disabled=true;
+      try{
+        await this.hassInstance.callApi(polygonExisting.value?"PUT":"POST",
+          "tiny_family/geofences",{name:polygonName.input.value.trim(),
+            points:polygonVertices,...(polygonExisting.value?{id:polygonExisting.value}:{})});
+        polygonExisting.value="";polygonName.input.value="";
+        resetZoneDrawing();this.clearDraft("places-zone");await reloadZones();
+        this.message("Polygonzonen er gemt.");
+      }catch(error){this.message("Polygonzonen kunne ikke gemmes: "+this.errorText(error),true);}
+      finally{savePolygon.disabled=false;}
+    });
+    removeCircle.addEventListener("click",async()=>{
+      if(!circleExisting.value||!window.confirm("Slet denne HA-zone permanent?"))return;
+      removeCircle.disabled=true;
+      try{await this.hassInstance.callApi("DELETE","tiny_family/zones",
+        {zone_id:circleExisting.value,confirm:true});
+        circleExisting.value="";circleName.input.value="";resetZoneDrawing();
+        this.clearDraft("places-zone");
+        await reloadZones();this.message("Zonen er slettet.");
+      }catch(error){this.message("Kunne ikke slette zone: "+this.errorText(error),true);}
+      finally{removeCircle.disabled=!circleExisting.value;}
+    });
+    deletePolygon.addEventListener("click",async()=>{
+      if(!polygonExisting.value||!window.confirm("Slet denne polygonzone permanent?"))return;
+      deletePolygon.disabled=true;
+      try{await this.hassInstance.callApi("DELETE","tiny_family/geofences",
+        {id:polygonExisting.value,confirm:true});
+        polygonExisting.value="";polygonName.input.value="";resetZoneDrawing();
+        this.clearDraft("places-zone");
+        await reloadZones();this.message("Polygonzonen er slettet.");
+      }catch(error){this.message("Kunne ikke slette polygon: "+this.errorText(error),true);}
+      finally{deletePolygon.disabled=!polygonExisting.value;}
+    });
+    const call=async(method,payload,success,onSaved)=>{
+      try{
+        const result=await this.hassInstance.callApi(method,"tiny_family/places",payload);
+        this.message(result?.existing
+          ?"Stedet findes allerede som '"+result.name+"'. Intet dubletsted blev oprettet."
+          :success);
+        onSaved?.();
         await load();
         return true;
       }catch(error){this.message("Stedet kunne ikke gemmes: "+this.errorText(error),true);return false;}
@@ -813,9 +1302,17 @@ class TinyFamilyPanel extends HTMLElement {
       input.style.cssText="width:100%;padding:9px;color:var(--primary-text-color);background:var(--primary-background-color);border:1px solid var(--divider-color);border-radius:9px";
       wrapper.appendChild(input);return {wrapper,input};
     };
+    const sharedEditDrafts=this.readDraft("places-shared-edits")||{};
+    const persistSharedEdits=()=>{
+      if(Object.keys(sharedEditDrafts).length)
+        this.writeDraft("places-shared-edits",sharedEditDrafts);
+      else this.clearDraft("places-shared-edits");
+    };
     const load=async()=>{
       const data=await this.hassInstance.callApi("GET","tiny_family/places");
       if(this.active!=="places")return;
+      sharedDestinations=data.shared_places||[];
+      zoneTools.hidden=!data.can_manage_all_places;
       sharedList.replaceChildren();ownList.replaceChildren();adminList.replaceChildren();
       for(const place of data.shared_places||[]){
         const card=document.createElement("section");card.className="tf-person";
@@ -828,10 +1325,25 @@ class TinyFamilyPanel extends HTMLElement {
           const edit=document.createElement("details");
           const editTitle=document.createElement("summary");editTitle.textContent="Rediger sted";
           edit.appendChild(editTitle);
-          const newName=labelInput("Navn",place.name);
-          const newLat=labelInput("Breddegrad",place.latitude);
-          const newLon=labelInput("Længdegrad",place.longitude);
+          const pending=sharedEditDrafts[place.id];
+          edit.open=Boolean(pending?.open);
+          const newName=labelInput("Navn",pending?.name??place.name);
+          const newLat=labelInput("Breddegrad",pending?.latitude??place.latitude);
+          const newLon=labelInput("Længdegrad",pending?.longitude??place.longitude);
           edit.append(newName.wrapper,newLat.wrapper,newLon.wrapper);
+          const remember=()=>{
+            if(!edit.open && newName.input.value===place.name &&
+               newLat.input.value===String(place.latitude) &&
+               newLon.input.value===String(place.longitude)){
+              delete sharedEditDrafts[place.id];
+            }else sharedEditDrafts[place.id]={
+              open:edit.open,name:newName.input.value,
+              latitude:newLat.input.value,longitude:newLon.input.value
+            };
+            persistSharedEdits();
+          };
+          edit.addEventListener("input",remember);
+          edit.addEventListener("toggle",remember);
           const editActions=document.createElement("div");editActions.className="tf-card-actions";
           const save=document.createElement("button");save.type="button";
           save.className="tf-save";save.textContent="Gem ændringer";
@@ -843,7 +1355,9 @@ class TinyFamilyPanel extends HTMLElement {
             }
             save.disabled=true;
             await call("PUT",{shared_id:place.id,name:newName.input.value.trim(),
-              latitude,longitude},"Fælles sted opdateret.");
+              latitude,longitude},"Fælles sted opdateret.",()=>{
+                delete sharedEditDrafts[place.id];persistSharedEdits();
+              });
             save.disabled=false;
           });
           const remove=document.createElement("button");remove.type="button";
@@ -852,7 +1366,9 @@ class TinyFamilyPanel extends HTMLElement {
           remove.addEventListener("click",async()=>{
             if(!window.confirm("Slet dette fælles sted for alle familiemedlemmer?"))return;
             remove.disabled=true;
-            await call("DELETE",{shared_id:place.id},"Fælles sted slettet.");
+            await call("DELETE",{shared_id:place.id},"Fælles sted slettet.",()=>{
+              delete sharedEditDrafts[place.id];persistSharedEdits();
+            });
             remove.disabled=false;
           });
           editActions.appendChild(save);
@@ -868,6 +1384,7 @@ class TinyFamilyPanel extends HTMLElement {
         sharedList.appendChild(empty);
       }
       for(const place of data.places||[]){
+        if(place.status==="zone")continue; // HA zones have their own Zoner view.
         const card=document.createElement("section");card.className="tf-person";
         const heading=document.createElement("strong");
         heading.textContent=place.name+" · "+(place.status==="suggested"?"Forslag":"Ophold");
@@ -979,12 +1496,16 @@ class TinyFamilyPanel extends HTMLElement {
         for(const place of proposalRows){
           const card=document.createElement("section");card.className="tf-person";
           const heading=document.createElement("strong");
-          heading.textContent=place.person_name+" · "+place.name;
+          heading.textContent=(place.sources_count>1
+            ?"Samlet forslag · "+place.people.join(", ")
+            :place.person_name+" · "+place.name);
           const info=document.createElement("p");
           info.textContent=place.visits+" besøg · "+place.minutes+" minutter"+
+            (place.sources_count>1?" · "+place.sources_count+" nærliggende registreringer":"")+
             (place.last?" · sidst "+place.last:"")+
             (place.private?" · PRIVAT":"");
           const actions=document.createElement("div");actions.className="tf-card-actions";
+          let groupedDetails=null;
           const showOnMap=document.createElement("button");
           showOnMap.type="button";showOnMap.className="tf-save";
           showOnMap.textContent="Vis på kort";
@@ -997,20 +1518,19 @@ class TinyFamilyPanel extends HTMLElement {
           if(data.can_manage_all_places){
           const zone=document.createElement("button");zone.type="button";
           zone.className="tf-save";zone.textContent="Opret HA-zone";
-          zone.addEventListener("click",async()=>{
-            const named=window.prompt("Navn på zonen",place.name==="Ukendt sted"?"":place.name);
-            if(named===null||!named.trim())return;
-            const radiusText=window.prompt("Zonens radius i meter (25–5000)","100");
-            if(radiusText===null)return;
-            const radius=Number(radiusText);
-            if(!Number.isInteger(radius)||radius<25||radius>5000){
-              this.message("Vælg en radius mellem 25 og 5000 meter.",true);return;
-            }
-            zone.disabled=true;
-            await call("POST",{person:place.person,name:named.trim(),radius,
-              latitude:place.latitude,longitude:place.longitude},"Home Assistant-zone oprettet.");
-            zone.disabled=false;
+          zone.addEventListener("click",()=>{
+            selectPlaceView("zones");zoneTools.open=true;
+            circleExisting.value="";
+            circleName.input.value=place.name==="Ukendt sted"?"":place.name;
+            circleRadius.input.value="100";
+            // Promoting a proposal to a zone also creates its named point,
+            // unless the administrator explicitly unchecks this option.
+            alsoDestination.checked=true;
+            polygonVertices=[];circleCenter=[place.latitude,place.longitude];
+            editingMode=null;zonePreview();saveZoneDraft();
+            zoneMap?.setView(circleCenter,16);
           });
+          if((place.sources_count||1)===1){
           const rename=document.createElement("button");rename.type="button";
           rename.className="tf-save";rename.textContent="Ret stednavn";
           rename.addEventListener("click",async()=>{
@@ -1044,8 +1564,51 @@ class TinyFamilyPanel extends HTMLElement {
             removeSuggestion.disabled=false;
           });
           actions.append(zone,rename,privateToggle,removeSuggestion);
+          }else{
+            actions.appendChild(zone);
+            const distinct=document.createElement("details");
+            distinct.className="tf-place-group";
+            const distinctTitle=document.createElement("summary");
+            distinctTitle.textContent="Administrer de "+place.sources_count+" enkelte ophold";
+            distinct.appendChild(distinctTitle);
+            for(const source of place.sources||[]){
+              const row=document.createElement("div");row.className="tf-person";
+              const label=document.createElement("strong");
+              label.textContent=source.person_name+" · "+source.visits+" besøg";
+              const rowActions=document.createElement("div");
+              rowActions.className="tf-card-actions";
+              const renameOne=document.createElement("button");
+              renameOne.type="button";renameOne.className="tf-save";
+              renameOne.textContent="Navngiv";
+              renameOne.addEventListener("click",async()=>{
+                const value=window.prompt("Navn på ophold for "+source.person_name,
+                  source.name==="Ukendt sted"?"":source.name);
+                if(value===null||!value.trim())return;
+                await call("PUT",{person:source.person,name:value.trim(),
+                  latitude:source.latitude,longitude:source.longitude},"Opholdet er navngivet.");
+              });
+              const privateOne=document.createElement("button");
+              privateOne.type="button";privateOne.className="tf-save";
+              privateOne.textContent=source.private?"Gør fælles":"Gør privat";
+              privateOne.addEventListener("click",()=>call("PUT",{
+                kind:"privacy",person:source.person,private:!source.private,
+                latitude:source.latitude,longitude:source.longitude},"Synlighed ændret."));
+              const deleteOne=document.createElement("button");
+              deleteOne.type="button";deleteOne.className="tf-save tf-danger";
+              deleteOne.textContent="Slet ophold";
+              deleteOne.addEventListener("click",async()=>{
+                if(!window.confirm("Slet kun dette ophold for "+source.person_name+"?"))return;
+                await call("DELETE",{person:source.person,
+                  latitude:source.latitude,longitude:source.longitude},"Opholdet er slettet.");
+              });
+              rowActions.append(renameOne,privateOne,deleteOne);
+              row.append(label,rowActions);distinct.appendChild(row);
+            }
+            groupedDetails=distinct;
+          }
           }
           card.append(heading,info,actions);
+          if(groupedDetails)card.appendChild(groupedDetails);
           adminList.appendChild(card);
         }
         if(!adminList.children.length)adminList.textContent="Ingen registrerede destinationer endnu.";
@@ -1076,11 +1639,17 @@ class TinyFamilyPanel extends HTMLElement {
       submit.disabled=true;
       if(await call("POST",{kind:"shared",name:name.value.trim(),
            latitude,longitude},"Fælles sted er oprettet for hele familien.")){
-        name.value="";
+        name.value="";lat.value="";lon.value="";
+        chosen=null;create.open=false;
+        this.clearDraft("places-create");
       }
       submit.disabled=false;
     });
-    try{await load();}
+    try{
+      await load();
+      if(["shared","mine","proposals","zones"].includes(savedPlaceView))
+        selectPlaceView(savedPlaceView);
+    }
     catch(error){this.message("Steder kunne ikke indlæses: "+this.errorText(error),true);}
   }
 
@@ -1153,9 +1722,11 @@ class TinyFamilyPanel extends HTMLElement {
                 color:"#389ab8",weight:4,opacity:0.88
               }).addTo(map);
             }
+            const routeTip=document.createElement("span");
+            routeTip.textContent=names[row.person]||row.person;
             L.circleMarker([pts[pts.length-1][0],pts[pts.length-1][1]],{
               radius:5,color:"#157c9b"
-            }).bindTooltip(names[row.person]||row.person).addTo(map);
+            }).bindTooltip(routeTip).addTo(map);
             bounds.push(...pts.map(p=>[p[0],p[1]]));
             count+=pts.length;
           }
@@ -1777,7 +2348,9 @@ class TinyFamilyPanel extends HTMLElement {
           Number(minuteSlider.max));
         const sum=result.summary||{};
         const diagnostic=result.gps_diagnostics||{};
-        summaryLabel.textContent=(result.points_count||0)+" GPS-punkter · "+
+        summaryLabel.textContent=!result.points_count
+          ?"Ingen GPS-punkter for denne dato. Ture og ophold kan være gemt særskilt; ingen rute kan rekonstrueres."
+          :(result.points_count||0)+" GPS-punkter · "+
           (Number.isFinite(sum.distance_km)?sum.distance_km+" km":"ukendt distance")+
           (diagnostic.speed_health==="zero_despite_movement"?
             " · Fartmålinger mangler (0 trods bevægelse)":
@@ -2007,7 +2580,9 @@ class TinyFamilyPanel extends HTMLElement {
             const shape=window.L.polygon(polygon.points,{
               color:"#9c56c4",weight:2,fillColor:"#9c56c4",fillOpacity:0.10
             }).addTo(map);
-            shape.bindTooltip(polygon.name);
+            const polygonTip=document.createElement("span");
+            polygonTip.textContent=polygon.name;
+            shape.bindTooltip(polygonTip);
             zoneBounds.push(polygon.points[0]);
           }
         }
@@ -2907,6 +3482,21 @@ class TinyFamilyPanel extends HTMLElement {
     }
     channelLabel.appendChild(channelSelect);
     form.appendChild(channelLabel);
+    // The HA panel may be remounted mid-typing. A per-user, per-tab draft
+    // preserves the unfinished message without sending it to the server.
+    const composeDraft=this.readDraft("contact-compose")||{};
+    input.value=composeDraft.message||"";
+    if(typeof composeDraft.includePosition==="boolean")
+      includePositionCheckbox.checked=composeDraft.includePosition;
+    if(composeDraft.channel==="speaker")channelSelect.value="speaker";
+    let pendingRecipient=composeDraft.recipient||"";
+    const saveComposeDraft=()=>this.writeDraft("contact-compose",{
+      message:input.value,includePosition:includePositionCheckbox.checked,
+      recipient:recipientSelect.value||pendingRecipient,
+      channel:channelSelect.value
+    });
+    form.addEventListener("input",saveComposeDraft);
+    form.addEventListener("change",saveComposeDraft);
     const channelNotice=document.createElement("p");
     channelNotice.className="tf-message";
     channelNotice.textContent="Oplæsning kan høres af andre i rummet og kræver én navngiven modtager med højttaler og dansk TTS.";
@@ -2969,7 +3559,10 @@ class TinyFamilyPanel extends HTMLElement {
           " modtager(e)."+(failed?" "+failed+" kunne ikke accepteres.":"")+
           positionText+" Telefonlevering kan ikke verificeres. En læsekvittering kræver handling i Tiny Family.";
         setRetry(null);
-        if(payload.action==="message" && accepted>0 && input.value===payload.message)input.value="";
+        if(payload.action==="message" && accepted>0 && input.value===payload.message){
+          input.value="";
+          saveComposeDraft();
+        }
         try{await loadHistory();}catch(historyError){
           note.textContent+=" Beskedhistorikken kunne ikke opdateres.";
         }
@@ -3019,7 +3612,9 @@ class TinyFamilyPanel extends HTMLElement {
       const shortcut=document.createElement("button");
       shortcut.type="button";shortcut.textContent=phrase;
       shortcut.style.cssText="padding:7px 10px;border:1px solid var(--divider-color);background:var(--card-background-color);color:var(--primary-text-color);border-radius:10px";
-      shortcut.addEventListener("click",()=>{input.value=phrase;input.focus();});
+      shortcut.addEventListener("click",()=>{
+        input.value=phrase;input.focus();saveComposeDraft();
+      });
       shortcuts.appendChild(shortcut);
     }
     const shortcutsPanel=document.createElement("details");
@@ -3088,7 +3683,8 @@ class TinyFamilyPanel extends HTMLElement {
     const loadHistory = async () => {
       try {
         const response = await this.hassInstance.callApi("GET","tiny_family/communications");
-        const prior = recipientSelect.value;
+        const prior = pendingRecipient||recipientSelect.value;
+        pendingRecipient="";
         recipientChannels=new Map((response.recipients||[]).map(person=>[person.person,person]));
         recipientSelect.replaceChildren(everyone);
         for (const person of response.recipients || []) {
@@ -3098,6 +3694,11 @@ class TinyFamilyPanel extends HTMLElement {
         }
         if ([...recipientSelect.options].some(option=>option.value===prior)) {
           recipientSelect.value = prior;
+        }else if(prior){
+          note.textContent="Den gemte modtager er ikke længere tilgængelig. Vælg en ny modtager.";
+          for(const {button,action} of buttons){
+            if(action==="message")button.disabled=true;
+          }
         }
         syncChannel();
         note.textContent = note.textContent || (response.recipients_configured ?
@@ -3110,6 +3711,7 @@ class TinyFamilyPanel extends HTMLElement {
             recipientSelect.value=chosen;
             input.focus();
             syncChannel();
+            saveComposeDraft();
           }else{
             note.textContent="Den valgte person har ingen tilknyttet beskedmodtager. Kontakt administrator i Administration.";
             // Never fall back to 'everyone' when direct messaging was requested.
@@ -3178,6 +3780,7 @@ class TinyFamilyPanel extends HTMLElement {
               selectMessages("compose");
               input.focus();
               note.textContent="Svar sendes kun til "+item.fra+".";
+              saveComposeDraft();
             });
             box.appendChild(reply);
           }
@@ -3331,13 +3934,22 @@ class TinyFamilyPanel extends HTMLElement {
     const rows = [];
     const memberSections=[];
     for (const person of this.settings.available_persons || []) {
-      const section = document.createElement("section");
-      section.className = "tf-person";
+      const section = document.createElement("details");
+      section.className = "tf-person tf-member-settings";
+      section.dataset.personId=person.id;
+      const personSummary=document.createElement("summary");
+      personSummary.className="tf-member-summary";
+      const memberStatus=document.createElement("span");
+      memberStatus.className="tf-chip";
+      personSummary.append(document.createTextNode(person.name),memberStatus);
+      section.appendChild(personSummary);
       const label = document.createElement("label");
       const checkbox = document.createElement("input");
       checkbox.type = "checkbox";
       checkbox.checked = (this.settings.persons || []).includes(person.id);
-      label.append(checkbox, document.createTextNode(" " + person.name));
+      const statusMember=()=>memberStatus.textContent=checkbox.checked?"● Aktiv":"○ Ikke tilføjet";
+      checkbox.addEventListener("change",statusMember);statusMember();
+      label.append(checkbox, document.createTextNode(" Medtag i Tiny Family"));
       section.appendChild(label);
       const fields = document.createElement("div");
       fields.className = "tf-fields";
@@ -3663,6 +4275,7 @@ class TinyFamilyPanel extends HTMLElement {
           map_matching_url:mapMatchUrl.value.trim()
         });
         await this.refreshSettings();
+        this.clearDraft("editor");
         this.message("Ændringer gemt. Integrationen genindlæses.");
       } catch(error) { this.message("Kunne ikke gemme: "+error.message,true); }
       finally {save.disabled=false;}
@@ -3768,6 +4381,74 @@ class TinyFamilyPanel extends HTMLElement {
     }
     form.replaceChildren(adminGroups,save);
     root.appendChild(form);
+    // Preserve unfinished admin inputs through a panel reload/navigation.
+    // Exclude destructive erasure confirmations and local uploaded files.
+    erasePanel.classList.add("tf-erase-actions");
+    const inputFields=()=>[...form.querySelectorAll("input,select,textarea")]
+      .filter(el=>el.type!=="file"&&!el.closest(".tf-erase-actions")&&
+        el!==migrationReady);
+    const draftFields=inputFields();
+    const keys=new Map(),memberIndexes=new Map();
+    let globalIndex=0;
+    for(const el of draftFields){
+      const member=el.closest(".tf-member-settings");
+      if(member){
+        const index=memberIndexes.get(member)||0;
+        keys.set(el,"member:"+member.dataset.personId+":"+index);
+        memberIndexes.set(member,index+1);
+      }else keys.set(el,"global:"+globalIndex++);
+    }
+    const fieldKey=el=>keys.get(el);
+    const draft=this.readDraft("editor");
+    if(draft?.fields){
+      for(const el of draftFields){
+        const saved=draft.fields[fieldKey(el)];
+        if(!saved||saved.type!==el.type)continue;
+        if(el.type==="checkbox")el.checked=saved.checked;
+        else if(el.tagName==="SELECT"){
+          if([...el.options].some(option=>option.value===saved.value))el.value=saved.value;
+        }else if(typeof saved.value==="string")el.value=saved.value;
+      }
+      for(const row of rows){
+        row.refreshPhone();
+        row.useGlobalEvents.dispatchEvent(new Event("change"));
+      }
+      for(const item of [...adminGroups.children,...memberSections]){
+        if(draft.open?.[item.classList.contains("tf-member-settings")
+            ?"member:"+item.dataset.personId:
+            "group:"+[...adminGroups.children].indexOf(item)]!==undefined){
+          item.open=Boolean(draft.open[item.classList.contains("tf-member-settings")
+            ?"member:"+item.dataset.personId:
+            "group:"+[...adminGroups.children].indexOf(item)]);
+        }
+      }
+      const notice=document.createElement("div");notice.className="tf-card-actions";
+      const note=document.createElement("span");note.className="tf-chip";
+      note.textContent="Ikke-gemte indstillinger gendannet fra denne browserfane";
+      const discard=document.createElement("button");
+      discard.type="button";discard.className="tf-save";
+      discard.textContent="Forkast kladde";
+      discard.addEventListener("click",()=>{
+        this.clearDraft("editor");root.replaceChildren();this.editor(root);
+        this.message("Kladde fjernet. De senest gemte indstillinger vises.");
+      });
+      notice.append(note,discard);root.prepend(notice);
+    }
+    const saveEditorDraft=()=>{
+      const fields={};
+      for(const el of draftFields)fields[fieldKey(el)]={
+        type:el.type,value:el.value,checked:el.type==="checkbox"?el.checked:undefined
+      };
+      const open={};
+      for(const [index,item] of [...adminGroups.children].entries())
+        open["group:"+index]=item.open;
+      for(const item of memberSections)open["member:"+item.dataset.personId]=item.open;
+      this.writeDraft("editor",{fields,open});
+    };
+    form.addEventListener("input",saveEditorDraft);
+    form.addEventListener("change",saveEditorDraft);
+    for(const item of [...adminGroups.children,...memberSections])
+      item.addEventListener("toggle",saveEditorDraft);
     const permissions=document.createElement("section");
     permissions.className="tf-person";
     const headingPermissions=document.createElement("strong");

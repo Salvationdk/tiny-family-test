@@ -169,6 +169,78 @@ class PlacesPermissionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(after["family_suggestions"], [])
         self.assertIn("Fælles mødested", [p["name"] for p in after["shared_places"]])
 
+    async def test_repeated_nearby_proposals_are_grouped_not_deleted(self):
+        bob = self.hass.data["tiny_family"]["person.bob"]["places"]
+        bob.append({**bob[1],"lat":57.0001,"visits":3,"min":45})
+        data=json.loads((await self.view.get(Request(self.alice))).text)
+        self.assertEqual(len(data["family_suggestions"]),1)
+        group=data["family_suggestions"][0]
+        self.assertEqual(group["sources_count"],2)
+        self.assertEqual(group["visits"],7)
+        self.assertEqual(len(group["sources"]),2)
+        self.assertEqual(len(bob),3,"Underlying learned history is immutable")
+
+    async def test_named_destination_hides_equivalent_proposals_of_other_people(self):
+        alice=self.hass.data["tiny_family"]["person.alice"]["places"]
+        alice.append({"lat":57.00005,"lon":11.0,"visits":5,"min":80,
+                      "label":"Musikskolen","source":"named","private":False})
+        data=json.loads((await self.view.get(Request(self.admin))).text)
+        self.assertFalse(any(p["latitude"]==57.0
+            for p in data["family_suggestions"]))
+        self.assertIn("Musikskolen",[p["name"] for p in data["managed_places"]])
+
+    async def test_destination_inside_zone_still_remains_a_destination(self):
+        self.mod.shared_map_zones=lambda _:[{"id":"zone.home","name":"Hjem",
+            "latitude":57.0,"longitude":11.0,"radius_m":150}]
+        inside=self.mod.describe_places(self.hass,[{
+            "lat":57.0005,"lon":11.0,"visits":4,"min":90,
+            "label":"","source":"learned","private":False,
+        }])[0]
+        self.assertEqual(inside["status"],"suggested")
+        self.assertEqual(inside["zones"],["Hjem"])
+        zone=self.mod.describe_places(self.hass,[{
+            "lat":57.0,"lon":11.0,"visits":0,"min":0,
+            "label":"Hjem","source":"zone",
+        }])[0]
+        self.assertEqual(zone["status"],"zone")
+
+    async def test_duplicate_create_is_idempotent_not_a_new_shared_place(self):
+        existing=self.hass.data["tiny_family_runtime"]["shared_places"]
+        response=await self.view.post(Request(self.alice,{
+            "kind":"shared","name":"Another school","latitude":55.00001,
+            "longitude":11.0,
+        }))
+        self.assertEqual(response.status,200)
+        self.assertTrue(json.loads(response.text)["existing"])
+        self.assertEqual(len(existing),1)
+
+    async def test_matching_name_with_small_gps_drift_is_not_duplicated(self):
+        shared=self.hass.data["tiny_family_runtime"]["shared_places"]
+        response=await self.view.post(Request(self.alice,{
+            "kind":"shared","name":"sKoLe","latitude":55.0005,
+            "longitude":11.0,
+        }))
+        self.assertEqual(response.status,200)
+        self.assertTrue(json.loads(response.text)["existing"])
+        self.assertEqual(len(shared),1)
+
+    async def test_promoted_ha_zone_does_not_erase_destination(self):
+        created=[]
+        async def add(item):
+            created.append(item)
+        self.mod.zone_collection=lambda _:types.SimpleNamespace(async_create_item=add)
+        self.mod.shared_map_zones=lambda _:[]
+        personal=self.hass.data["tiny_family"]["person.bob"]["places"][1]
+        response=await self.view.post(Request(self.admin,{
+            "person":"person.bob","latitude":57.0,"longitude":11.0,
+            "name":"Fritidsklub","radius":125,
+        }))
+        self.assertEqual(response.status,200)
+        self.assertEqual(len(created),1)
+        self.assertEqual(personal["label"],"Fritidsklub")
+        self.assertEqual(personal["source"],"named")
+        self.assertEqual(self.mod.describe_places(self.hass,[personal])[0]["status"],"named")
+
     async def test_admin_can_make_place_private_and_delete_shared_place(self):
         privacy = await self.view.put(Request(self.admin, {
             "kind": "privacy", "person": "person.alice",
