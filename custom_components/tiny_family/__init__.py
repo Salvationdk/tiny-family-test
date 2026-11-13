@@ -31,7 +31,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.discovery import async_load_platform
 from homeassistant.helpers.event import async_track_state_change_event, async_track_time_change, async_track_time_interval
 
-from .const import CARD_VERSION, DOMAIN, HISTORY_FILE, HISTORY_KEY, PLACES_FILE, SHARED_PLACES_FILE, STATIC_URL
+from .const import CARD_VERSION, DOMAIN, HISTORY_FILE, HISTORY_KEY, PLACES_FILE, SHARED_PLACES_FILE, STATIC_URL, default_road_matching_options
 from .migration import migrate_local_json_once
 from .places import _predict, _record_place, _seed_zones, estimate_home_eta, estimate_destination_eta
 from .historical_prediction import load_historical_patterns
@@ -106,7 +106,12 @@ async def async_setup_entry(hass: HomeAssistant, entry) -> bool:
             "Tiny Family YAML and a UI config entry cannot be active together. "
             "Back up your files and remove the old tiny_family YAML first."
         )
-    cfg = {**entry.data, **entry.options}
+    upgraded_options = default_road_matching_options(entry.data, entry.options)
+    if upgraded_options is not None:
+        # Previously disabled by a setup default, not by an administrator.
+        # Save the new default once; a saved explicit False is never changed.
+        hass.config_entries.async_update_entry(entry, options=upgraded_options)
+    cfg = {**entry.data, **entry.options, **(upgraded_options or {})}
     if not await _async_setup_runtime(hass, {DOMAIN: cfg}):
         return False
     hass.data.setdefault(RUNTIME_KEY, {})["entry"] = entry
@@ -291,7 +296,7 @@ class TinyFamilySettingsView(HomeAssistantView):
                 if s.attributes.get("device_class") == "battery" or "battery" in s.entity_id
             ], key=lambda x: x["name"]) if admin else []),
             "editable": bool(request["hass_user"].is_admin),
-            "map_matching_enabled": bool(cfg.get("map_matching_enabled", False)),
+            "map_matching_enabled": bool(cfg.get("map_matching_enabled", True)),
             "timeline_retention_days": cfg.get("timeline_retention_days", 365),
             "map_matching_backend": cfg.get("map_matching_backend") or (
                 "osrm" if cfg.get("map_matching_url") else "builtin"
@@ -363,7 +368,7 @@ class TinyFamilySettingsView(HomeAssistantView):
             auto_notifications_enabled = data.get("auto_notifications_enabled", False)
             learn_routines_enabled = data.get("learn_routines_enabled", False)
             routine_learning_people = data.get("routine_learning_people", saved.get("routine_learning_people", []))
-            map_matching_enabled = data.get("map_matching_enabled", False)
+            map_matching_enabled = data.get("map_matching_enabled", True)
             map_matching_backend = data.get("map_matching_backend", "builtin")
             map_matching_url = validate_match_server(data.get("map_matching_url", ""))
             if (type(map_matching_enabled) is not bool or

@@ -1,4 +1,4 @@
-# Tiny Family — offentlig testversion 0.8.3
+# Tiny Family — offentlig testversion 0.8.4
 
 <!-- BEGIN: Salvationdk repository metrics -->
 [![Release downloads](https://img.shields.io/github/downloads/Salvationdk/tiny-family-test/total?label=Release%20downloads&style=flat-square)](https://github.com/Salvationdk/tiny-family-test/releases)
@@ -23,10 +23,15 @@ Tiny Family er en Home Assistant-integration til familiekort, GPS-ruter, opdagel
 
 **Testversion:** Integrationen er stadig under praktisk afprøvning. SOS er ikke en certificeret nødtjeneste, og Home Assistant-notifikationer garanterer ikke levering på en telefon.
 
+## Nyt i 0.8.4 – indbygget vejtilpasning er tændt som standard
+- **Ny installation:** Indbygget OpenStreetMap/Snap-on-road er aktiveret fra første opsætning. Ingen OSRM-server eller API-nøgle kræves.
+- **Eksisterende installation:** Hvis vejtilpasningen aldrig er gemt som et administratorvalg, opgraderes den tidligere deaktiverede standard automatisk til **til** ved næste opstart. Et udtrykkeligt administratorvalg om **fra** bevares. Fremover kan administrator stadig slå vejtilpasningen til eller fra i Administration → Vejtilpasning.
+- **Databeskyttelse:** Når en tidslinjedato med egnede GPS-punkter vises, kan motoren hente vejgeometri fra OpenStreetMap Overpass. Den sender kun et afgrænset geografisk område, ikke person-id, rå GPS-punktliste eller tidsstempler. Historiske råmålinger ændres ikke.
+
 ## Nyt i 0.8.3 – tidslinje, vejtilpasning og registrerede steder
 - **Tidslinjeafspilning:** Starter ved første GPS-måling, når man trykker Afspil. **1× er reel tid**, mens 5×, 20×, 60× og 300× kan vælges på kortet. Klokken viser sekunder; den målte fart vises undervejs. Ved pause og manuel spoling kan personen fortsat følges på kortet.
 - **Personen i centrum:** Valgt person følges under afspilning og spoling. Ved personskift nulstilles datoen til **i dag**, og den tidligere persons rute fjernes straks. Hvis der endnu ikke er dagens historik, bruges den valgte persons sidste kendte position som kortcentrum.
-- **Tættere vejtilpasning:** Den indbyggede motor accepterer nu sikre, sammenhængende Companion GPS-fix med op til fem minutter imellem. På matchede dele tegnes den faktiske OSM-vejgeometri frem for en ekstra rå GPS-streg; afspilningsmarkøren følger vejkurverne. Huller over fem minutter forbindes ikke kunstigt. Vejtilpasning kræver fortsat, at administrator har aktiveret **Indbygget OpenStreetMap** under Administration → Vejtilpasning. Hvis OSM-data ikke er tilgængelige, er råmålingerne fallback.
+- **Tættere vejtilpasning:** Den indbyggede motor accepterer nu sikre, sammenhængende Companion GPS-fix med op til fem minutter imellem. På matchede dele tegnes den faktiske OSM-vejgeometri frem for en ekstra rå GPS-streg; afspilningsmarkøren følger vejkurverne. Huller over fem minutter forbindes ikke kunstigt. Fra 0.8.4 er den indbyggede motor aktiv som standard. Hvis OSM-data ikke er tilgængelige, er råmålingerne fallback.
 - **Stedforslag afsluttes:** Når et forslag bliver oprettet som fælles sted eller får et navn, forsvinder det fra listen over forslag. Det findes under fælles steder eller registrerede ophold i stedet. **Kun administrator kan senere rette eller slette** fælles og navngivne opholdssteder; administrator kan også markere dem private.
 
 ## Nyt i 0.8.2 – administratorstyring, stedforslag og GPS-drift
@@ -41,7 +46,7 @@ Tiny Family er en Home Assistant-integration til familiekort, GPS-ruter, opdagel
 
 ## Nyt i 0.8.1 – indbygget Snap-on-road
 - **Indbygget vejtilpasning** i Tiny Family: Ingen OSRM-server eller API-nøgle er påkrævet. Motoren bygger en lokal vejgraf af OpenStreetMap-geometri og finder sammenhængende vejruter under hensyn til ensretning.
-- I **Administration → Vejtilpasning** vælges `Indbygget OpenStreetMap` som standard, eller eksisterende selvhostet OSRM som valgfrit alternativ. Funktionen er deaktiveret indtil administrator slår den til.
+- I **Administration → Vejtilpasning** vælges `Indbygget OpenStreetMap` som standard, eller eksisterende selvhostet OSRM som valgfrit alternativ. Fra version 0.8.4 er den indbyggede funktion som standard aktiveret, men administrator kan slå den fra.
 - I 0.8.1 skulle den enkelte bruger aktivt vælge korttilpasning. Fra 0.8.2 styres dette af administrator, og en historisk dato tilpasses automatisk ved åbning, hvis funktionen er slået til. Den indbyggede motor henter da vejgeometri via HTTPS fra Overpass. Kun rutens geografiske afgrænsning sendes ud; ingen person-id, rå GPS-punktliste eller tidsstempler sendes til Overpass.
 - Vejgeometri caches i hukommelsen i op til 24 timer. Forespørgsler er begrænsede; lange ture, manglende vejdata, serveroverbelastning eller usikre GPS-prøver kan give **delvis vejtilpasning**. Rå GPS-spor vises fortsat, hvor match ikke kan beregnes.
 - Originale koordinater, historisk SQLite-database, afspilning og personcentreret kort ændres ikke. Det er et vejforslag baseret på de registrerede målepunkter, ikke et bevis for den kørte rute.
@@ -151,6 +156,6 @@ Ghost Mode fra tidligere installationer ændrer ikke Home Assistants `person`, `
 
 ## Teknisk
 
-Home Assistant-domæne: `tiny_family`. Version: `0.8.3`. Integrationens filer ligger i `custom_components/tiny_family/`.
+Home Assistant-domæne: `tiny_family`. Version: `0.8.4`. Integrationens filer ligger i `custom_components/tiny_family/`.
 
 Dette offentlige testrepository indeholder kun installationskode og dokumentation, ikke den private udviklingshistorik, personlige GPS-ruter, telefonnumre eller Home Assistant-konfigurationsdata.
