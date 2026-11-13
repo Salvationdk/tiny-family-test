@@ -68,6 +68,24 @@ class TinyFamilyPanel extends HTMLElement {
       .tf-location-actions{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:9px;align-items:center}
       .tf-location-actions button{min-height:42px}
       @media(max-width:380px){.tf-location-actions{grid-template-columns:minmax(0,1fr)}}
+      .tf-daily-report{display:flex;flex-direction:column;gap:9px;min-height:0;flex:1;overflow:hidden}
+      .tf-daily-controls{display:grid;grid-template-columns:40px minmax(0,1fr) 40px;gap:6px}
+      .tf-daily-controls select{grid-column:1/-1}
+      .tf-daily-controls input,.tf-daily-controls select,.tf-daily-controls button{min-height:40px;min-width:0;border:1px solid var(--divider-color);border-radius:10px;background:var(--card-background-color);color:var(--primary-text-color);padding:6px 8px;font:inherit}
+      .tf-daily-stats{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+      .tf-daily-stats .tf-stat{padding:9px;gap:3px}
+      .tf-daily-stats .tf-stat span{font-weight:750;font-variant-numeric:tabular-nums}
+      .tf-daily-scroll{min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;padding:2px 3px 10px;flex:1}
+      .tf-daily-row{display:grid;grid-template-columns:90px minmax(0,1fr);gap:9px;padding:10px 7px;border-bottom:1px solid var(--divider-color)}
+      .tf-daily-row time{font-size:12px;font-variant-numeric:tabular-nums;color:var(--secondary-text-color)}
+      .tf-daily-row strong{display:block;font-size:13px;overflow-wrap:anywhere}
+      .tf-daily-row span{font-size:12px;color:var(--secondary-text-color);overflow-wrap:anywhere}
+      .tf-activity-archive{flex:none;max-height:38vh;overflow:auto}
+      .tf-activity-archive:not([open])>*:not(summary){display:none}
+      .tf-activity-archive summary{cursor:pointer;min-height:34px}
+      .tf-person-diary>summary{cursor:pointer;min-height:43px;font-weight:750}
+      .tf-person-diary:not([open])>*:not(summary){display:none}
+      .tf-person-diary[open] .tf-daily-report{height:min(60dvh,580px);min-height:350px}
       .tf-head{display:flex;align-items:center;gap:10px;margin-bottom:12px}
       .tf-head h1{flex:1;min-width:0}
       .tf-header-action{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:44px;min-width:44px;padding:8px;border:1px solid var(--divider-color);border-radius:12px;background:var(--card-background-color);color:var(--primary-text-color);cursor:pointer}
@@ -2995,6 +3013,14 @@ class TinyFamilyPanel extends HTMLElement {
               loadTimeline();
             });
             popup.appendChild(timelineAction);
+            const dayAction=document.createElement("button");
+            dayAction.type="button";dayAction.className="tf-save tf-mini";
+            dayAction.textContent="Dagens statistik og besøg";
+            dayAction.addEventListener("click",()=>{
+              this._activityRequestedPerson=person.person;
+              this.show("activity");
+            });
+            popup.appendChild(dayAction);
             mapMarker.bindPopup(popup);
             bounds.push(point);
             if(!person.stale){
@@ -3009,6 +3035,15 @@ class TinyFamilyPanel extends HTMLElement {
           }
           const cardActions=document.createElement("div");
           cardActions.className="tf-card-actions";
+          const dayReportButton=document.createElement("button");
+          dayReportButton.type="button";dayReportButton.className="tf-save";
+          dayReportButton.textContent="Dagens statistik";
+          dayReportButton.disabled=person.ghost && person.person!==data.viewer_person;
+          dayReportButton.addEventListener("click",()=>{
+            this._activityRequestedPerson=person.person;
+            this.show("activity");
+          });
+          cardActions.appendChild(dayReportButton);
           const goRoute=document.createElement("button");
           goRoute.type="button";goRoute.className="tf-save";
           goRoute.textContent="Vis rute";goRoute.disabled=person.ghost && person.person!==data.viewer_person;
@@ -3138,9 +3173,13 @@ class TinyFamilyPanel extends HTMLElement {
     if(this._timelineRequestedPerson){
       const requested=this._timelineRequestedPerson;
       this._timelineRequestedPerson=null;
+      const requestedDate=this._timelineRequestedDate;
+      this._timelineRequestedDate=null;
       if([...dockPerson.options].some(option=>option.value===requested)){
         dockPerson.value=requested;
       }
+      if(requestedDate && requestedDate>=dockDate.min && requestedDate<=dockDate.max)
+        dockDate.value=requestedDate;
       await loadTimeline();
     }
     this._familyTimer=setInterval(()=>{
@@ -3294,6 +3333,19 @@ class TinyFamilyPanel extends HTMLElement {
       }
       if(!recentBody.children.length)recentBody.textContent="Ingen afsluttede ture eller ophold endnu.";
     }catch(error){recentBody.textContent="Arkivet er ikke tilgængeligt endnu.";}
+    const ownDiary=document.createElement("details");
+    ownDiary.className="tf-person tf-person-diary";
+    const diaryHeading=document.createElement("summary");
+    diaryHeading.textContent="Min teksttidslinje · "+
+      (this.settings?.timeline_retention_days??365)+" dages historik";
+    ownDiary.appendChild(diaryHeading);
+    root.appendChild(ownDiary);
+    ownDiary.addEventListener("toggle",()=>{
+      if(ownDiary.open && !ownDiary.dataset.loaded){
+        ownDiary.dataset.loaded="1";
+        void this.dailyReport(ownDiary,{view:"today",ownOnly:true});
+      }
+    });
     const values = document.createElement("div");
     values.className = "tf-metrics";
     // Show live status first on mobile, without using a detached DOM anchor.
@@ -3394,22 +3446,204 @@ class TinyFamilyPanel extends HTMLElement {
       element.textContent = values[element.dataset.todayMetric] || "—");
   }
 
+  async dailyReport(root,{view="activity",ownOnly=false,fixedPerson=null}={}) {
+    const timezone=this.hassInstance.config.time_zone||undefined;
+    const localDay=()=>new Intl.DateTimeFormat("sv-SE",{
+      timeZone:timezone,year:"numeric",month:"2-digit",day:"2-digit"
+    }).format(new Date());
+    const shiftDay=(day,offset)=>{
+      const [year,month,date]=day.split("-").map(Number);
+      return new Date(Date.UTC(year,month-1,date+offset)).toISOString().slice(0,10);
+    };
+    const today=localDay();
+    const retention=Math.max(30,Math.min(3650,
+      Number(this.settings?.timeline_retention_days??365)||365));
+    const firstDay=shiftDay(today,1-retention);
+    const panel=document.createElement("section");
+    panel.className="tf-daily-report";
+    const heading=document.createElement("strong");
+    heading.textContent="Dagens statistik og tidslinje";
+    const controls=document.createElement("div");
+    controls.className="tf-daily-controls";
+    const personSelect=document.createElement("select");
+    personSelect.setAttribute("aria-label","Person for dagsrapport");
+    const back=document.createElement("button");back.type="button";
+    back.textContent="‹";back.setAttribute("aria-label","Forrige dag");
+    const date=document.createElement("input");date.type="date";
+    date.value=today;date.min=firstDay;date.max=today;
+    date.setAttribute("aria-label","Dato for dagsrapport");
+    const next=document.createElement("button");next.type="button";
+    next.textContent="›";next.setAttribute("aria-label","Næste dag");
+    controls.append(personSelect,back,date,next);
+    const status=document.createElement("p");
+    status.className="tf-message";status.setAttribute("role","status");
+    status.textContent="Henter registrerede besøg og ture…";
+    const stats=document.createElement("div");stats.className="tf-daily-stats";
+    const scroll=document.createElement("div");scroll.className="tf-daily-scroll";
+    scroll.setAttribute("aria-label","Tekstbaseret dagsforløb");
+    const mapButton=document.createElement("button");mapButton.type="button";
+    mapButton.className="tf-save";mapButton.textContent="Vis denne dag på kortet";
+    // The regular map's selector can hide another person's Ghost records;
+    // never send an admin from a private diary to the wrong person's map.
+    mapButton.hidden=Boolean(fixedPerson);
+    mapButton.addEventListener("click",()=>{
+      if(!personSelect.value)return;
+      this._timelineRequestedPerson=personSelect.value;
+      this._timelineRequestedDate=date.value;
+      this.show("live");
+    });
+    panel.append(heading,controls,status,stats,scroll,mapButton);
+    root.appendChild(panel);
+    let latestRequest=0;
+    const formatTime=(timestamp)=>new Date(timestamp*1000).toLocaleTimeString(
+      "da-DK",{hour:"2-digit",minute:"2-digit",timeZone:timezone});
+    const count=(number,unit="")=>Number.isFinite(number)?
+      String(number).replace(".",",")+(unit?" "+unit:""):"—";
+    const updateButtons=()=>{
+      back.disabled=date.value<=firstDay;
+      next.disabled=date.value>=today;
+    };
+    const render=async()=>{
+      const person=personSelect.value,selectedDay=date.value;
+      if(!person || selectedDay<firstDay || selectedDay>today)return;
+      const id=++latestRequest;
+      updateButtons();
+      status.textContent="Henter "+selectedDay+"…";
+      stats.replaceChildren();scroll.replaceChildren();
+      try{
+        const response=await this.hassInstance.callApi("GET",
+          "tiny_family/timeline?person="+encodeURIComponent(person)+
+          "&date="+encodeURIComponent(selectedDay)+"&view=report");
+        if(id!==latestRequest||this.active!==view||!panel.isConnected)return;
+        const s=response.summary||{};
+        const statistic=[
+          ["GPS-distance",count(s.gps_distance_km,"km")],
+          ["Arkiverede ture",count(s.archived_trip_distance_km,"km")],
+          ["Gået (anslået)",count(s.walking_minutes,"min")],
+          ["Kørt (anslået)",count(s.driving_minutes,"min")],
+          ["Gåfart (GPS-skøn)",count(s.walking_avg_kmh,"km/t")],
+          ["Kørefart (GPS-skøn)",count(s.driving_avg_kmh,"km/t")],
+          ["Maks. målt fart",count(s.max_recorded_speed_kmh,"km/t")],
+          ["Gns. målt fart i bevægelse",count(s.avg_recorded_moving_speed_kmh,"km/t")],
+          ["Ophold / ture",count(s.stays)+" / "+count(s.trips)],
+          ["GPS-punkter / afbrud",count(s.gps_points)+" / "+count(s.gps_gaps)],
+        ];
+        for(const [label,value] of statistic){
+          const cell=document.createElement("section");cell.className="tf-stat";
+          const title=document.createElement("strong");title.textContent=label;
+          const number=document.createElement("span");number.textContent=value;
+          cell.append(title,number);stats.appendChild(cell);
+        }
+        const items=response.items||[];
+        status.textContent=!items.length
+          ?"Ingen registrerede ophold eller ture for denne dato."
+          :items.length+" registreringer · "+count(s.observed_minutes,"min")+
+            " med sammenhængende GPS. Kun registrerede perioder tælles.";
+        if(s.speed_health==="zero_despite_movement")
+          status.textContent+=" Telefonen har meldt 0 km/t trods bevægelse; gå/kør er GPS-skøn.";
+        if(s.speed_health==="missing")
+          status.textContent+=" Fartsensoren har ikke leveret brugbare målinger.";
+        for(const item of items){
+          const row=document.createElement("article");row.className="tf-daily-row";
+          const clock=document.createElement("time");
+          clock.textContent=formatTime(item.started_at)+
+            (item.ended_at>item.started_at?"–"+formatTime(item.ended_at):"");
+          const content=document.createElement("div");
+          const name=document.createElement("strong");
+          const kind=item.kind==="stay"?"Ophold":item.kind==="gap"
+            ?"GPS-afbrud":item.kind==="position"?"Registreret position":
+              item.mode==="walking"?"Gang (anslået)":
+              item.mode==="driving"?"Kørsel (anslået)":"Tur / bevægelse";
+          name.textContent=kind+" · "+(item.label||"Ukendt sted");
+          const details=document.createElement("span");
+          const info=[item.duration_min?count(item.duration_min,"min"):"Tidspunkt registreret"];
+          if(Number.isFinite(item.distance_km))info.push(count(item.distance_km,"km"));
+          if(Number.isFinite(item.max_speed_kmh))
+            info.push("op til "+count(item.max_speed_kmh,"km/t"));
+          info.push(item.kind==="gap"?"manglende GPS-data":
+            item.source==="archive"?"gemt begivenhed":"GPS-baseret skøn");
+          if(item.gps_gap)info.push("afbrudt rute");
+          details.textContent=info.join(" · ");
+          content.append(name,details);row.append(clock,content);scroll.appendChild(row);
+        }
+      }catch(error){
+        if(id!==latestRequest||this.active!==view||!panel.isConnected)return;
+        status.textContent="Dagens statistik kunne ikke hentes: "+this.errorText(error);
+      }
+    };
+    personSelect.addEventListener("change",()=>{date.value=today;void render();});
+    date.addEventListener("change",render);
+    back.addEventListener("click",()=>{
+      if(date.value>firstDay){date.value=shiftDay(date.value,-1);void render();}
+    });
+    next.addEventListener("click",()=>{
+      if(date.value<today){date.value=shiftDay(date.value,1);void render();}
+    });
+    if(fixedPerson){
+      // An HA administrator may be unbound to a Tiny Family person. The
+      // settings editor already has the verified person ID; don't depend on
+      // the normal family status endpoint, which requires a personal binding.
+      const member=(this.settings?.available_persons||[])
+        .find(item=>item.id===fixedPerson);
+      const option=document.createElement("option");
+      option.value=fixedPerson;option.textContent=member?.name||fixedPerson;
+      personSelect.appendChild(option);
+      personSelect.hidden=true;
+      await render();
+      return;
+    }
+    try{
+      const family=await this.hassInstance.callApi("GET","tiny_family/status");
+      if(this.active!==view||!panel.isConnected)return;
+      for(const member of family.people||[]){
+        if(ownOnly && member.person!==family.viewer_person)continue;
+        if(fixedPerson && member.person!==fixedPerson)continue;
+        if(member.ghost && member.person!==family.viewer_person)continue;
+        const option=document.createElement("option");
+        option.value=member.person;option.textContent=member.name;
+        personSelect.appendChild(option);
+      }
+      const requested=fixedPerson || (ownOnly?family.viewer_person:
+        (this._activityRequestedPerson||family.viewer_person));
+      if(!ownOnly && !fixedPerson)this._activityRequestedPerson=null;
+      personSelect.value=[...personSelect.options].some(o=>o.value===requested)
+        ?requested:family.viewer_person;
+      if(!personSelect.value && personSelect.options.length)
+        personSelect.selectedIndex=0;
+      personSelect.hidden=ownOnly||Boolean(fixedPerson);
+      if(!personSelect.value){
+        status.textContent="Ingen person er tilknyttet din konto.";return;
+      }
+      await render();
+    }catch(error){
+      if(this.active===view && panel.isConnected)
+        status.textContent="Kan ikke hente familiens personliste: "+this.errorText(error);
+    }
+  }
+
   async activity(root) {
     root.classList.add("tf-activity-view");
     const heading=document.createElement("h2");
-    heading.textContent="Mine ture og ophold";root.appendChild(heading);
+    heading.textContent="Familiens dagsoversigt";root.appendChild(heading);
     const note=document.createElement("p");note.className="tf-message tf-screen-intro";
-    note.textContent="Her ses dine seneste afsluttede ture og ophold. Åbn Kort → Tidslinje for at gennemgå GPS-spor og målinger for en bestemt dato, op til "+(this.settings.timeline_retention_days??365)+" dage tilbage.";
+    note.textContent="Vælg person og dato. Registrerede besøg, ture og GPS-baserede fartskøn vises som tekst. Historik gemmes i "+(this.settings.timeline_retention_days??365)+" dage, som administrator kan ændre.";
     root.appendChild(note);
+    void this.dailyReport(root);
+    const archive=document.createElement("details");
+    archive.className="tf-person tf-activity-archive";
+    const archiveHeading=document.createElement("summary");
+    archiveHeading.textContent="Seneste afsluttede ture og ophold (min konto)";
+    archive.appendChild(archiveHeading);
+    root.appendChild(archive);
     const routeButton=document.createElement("button");
     routeButton.className="tf-save";routeButton.type="button";
     routeButton.textContent="Se egne og delte GPS-spor på rutekortet";
     routeButton.addEventListener("click",()=>this.show("routes"));
-    root.appendChild(routeButton);
+    archive.appendChild(routeButton);
     const activityNav=document.createElement("nav");activityNav.className="tf-screen-nav";
     activityNav.setAttribute("aria-label","Filtrér ture og ophold");
-    root.appendChild(activityNav);
-    const list=document.createElement("div");list.className="tf-activity-list";root.appendChild(list);
+    archive.appendChild(activityNav);
+    const list=document.createElement("div");list.className="tf-activity-list";archive.appendChild(list);
     const activityFilters=[
       ["all","Alle"],["trip","Ture"],["stay","Ophold"]
     ];
@@ -4247,7 +4481,21 @@ class TinyFamilyPanel extends HTMLElement {
       const colorLabel = document.createElement("label");colorLabel.textContent = "Farve";
       const color = document.createElement("input");color.type="color";color.value=this.settings.colors?.[person.id]||"#00a8a9";
       colorLabel.appendChild(color);fields.appendChild(colorLabel);
-      section.append(fields);form.appendChild(section);
+      section.appendChild(fields);
+      const memberDiary=document.createElement("details");
+      memberDiary.className="tf-person tf-person-diary";
+      const diarySummary=document.createElement("summary");
+      diarySummary.textContent="Administrator: personhistorik i tekst ("+
+        (this.settings.timeline_retention_days??365)+" dage)";
+      memberDiary.appendChild(diarySummary);
+      memberDiary.addEventListener("toggle",()=>{
+        if(memberDiary.open && !memberDiary.dataset.loaded){
+          memberDiary.dataset.loaded="1";
+          void this.dailyReport(memberDiary,{view:"editor",fixedPerson:person.id});
+        }
+      });
+      section.appendChild(memberDiary);
+      form.appendChild(section);
       memberSections.push(section);
       const owner = choice("Home Assistant-bruger", this.settings.available_users || [],
                            this.settings.owners?.[person.id]);

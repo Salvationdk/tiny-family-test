@@ -1,4 +1,4 @@
-# Tiny Family — offentlig testversion 0.8.8
+# Tiny Family — offentlig testversion 0.8.9
 
 <!-- BEGIN: Salvationdk repository metrics -->
 [![Release downloads](https://img.shields.io/github/downloads/Salvationdk/tiny-family-test/total?label=Release%20downloads&style=flat-square)](https://github.com/Salvationdk/tiny-family-test/releases)
@@ -22,6 +22,13 @@
 Tiny Family er en Home Assistant-integration til familiekort, GPS-ruter, opdagelse af steder, datobaserede tidslinjer, beskeder, SOS og familieadvarsler.
 
 **Testversion:** Integrationen er stadig under praktisk afprøvning. SOS er ikke en certificeret nødtjeneste, og Home Assistant-notifikationer garanterer ikke levering på en telefon.
+
+## Nyt i 0.8.9 – dagsstatistik og teksttidslinje pr. person
+- **Aktivitet → Familiens dagsoversigt:** Vælg et familiemedlem og en dato, og se GPS-distance, arkiverede turlængder, ophold, ture, GPS-punkter, afbrud samt gå- og køretid. Gennemsnitlig gå-/kørefart fra GPS angives tydeligt som *skøn*; faktisk registreret maksimum og gennemsnit vises kun, når sensoren har leveret brugbare data.
+- **Teksttidslinje med klokkeslæt:** Gennemgå ophold med kendte stednavne, afgang og ankomst, turvarighed, distance og GPS-afbrud. Et arkiveret ophold har forrang frem for en GPS-baseret udledning. Ukendte eller manglende oplysninger opfindes ikke.
+- **Hurtig og lokal:** Et kompakt `view=report`-svar bruger det eksisterende autoriserede SQLite-arkiv og udløser ikke vejtilpasning eller nye OSM-kald. Historikken følger administratorens opbevaringstid, **365 dage som standard**; data kan kun vises for dage, hvor Tiny Family faktisk har registreret dem.
+- **Under brugeren:** På **Min status** findes nu en sammenklappelig *Min teksttidslinje* med egen historik. Tryk på en persons badge og vælg *Dagens statistik og besøg*, eller brug fanen Aktivitet til at vælge familiemedlem og dato. Knappen *Vis denne dag på kortet* åbner den eksisterende GPS-tidslinje på samme dato; kort, ruter og afspilning er fuldt bevaret. Den tidligere aktivitetsliste ligger i et sammenklappeligt afsnit.
+- **Administrator → person:** Hver person har et separat, sammenklappeligt afsnit med fuld dagsstatistik og teksthistorik. Kun en rigtig Home Assistant-administrator kan her også se privatmarkeret og tidligere Ghost-beskyttet arkiv; almindelige familiemedlemmer følger fortsat rettighederne på deres delte data.
 
 ## Nyt i 0.8.8 – stabilt kort under afspilning
 - **Leaflet-fejl beskyttet:** Tidslinjens personbadges centreres nu med ét samlet kameraskift. Mobilens betjeningspanel tages stadig med i beregningen, men gentagne pan-forskydninger under afspilning fjernes.
@@ -180,6 +187,6 @@ Ghost Mode fra tidligere installationer ændrer ikke Home Assistants `person`, `
 
 ## Teknisk
 
-Home Assistant-domæne: `tiny_family`. Version: `0.8.8`. Integrationens filer ligger i `custom_components/tiny_family/`.
+Home Assistant-domæne: `tiny_family`. Version: `0.8.9`. Integrationens filer ligger i `custom_components/tiny_family/`.
 
 Dette offentlige testrepository indeholder kun installationskode og dokumentation, ikke den private udviklingshistorik, personlige GPS-ruter, telefonnumre eller Home Assistant-konfigurationsdata.
