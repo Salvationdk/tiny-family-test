@@ -112,7 +112,42 @@ def generated_payloads(hass, person):
          {"friendly_name": f"{name} på tur", "person": person,
           "icon": "mdi:car"}),
     ]
+    # Each polygon becomes a proper HA binary_sensor per person. This allows
+    # standard state automations and dashboards, including overlapping zones.
+    memberships = st.get("polygon_memberships") or {}
+    for polygon in hass.data.get("tiny_family_runtime", {}).get("geofences") or []:
+        polygon_id = polygon["id"]
+        status = ("unknown" if ghost or polygon_id not in memberships
+                  or st.get("gps_health") != "fresh" else
+                  ("on" if memberships[polygon_id] else "off"))
+        binary_sensors.append((
+            f"binary_sensor.tiny_family_{slug}_polygon_{polygon_id}", status,
+            {"friendly_name": f"{name} i {polygon['name']}",
+             "person": person, "polygon_id": polygon_id,
+             "polygon_name": polygon["name"], "icon": "mdi:vector-polygon"},
+        ))
     return sensors, binary_sensors
+
+
+def polygon_definition_payloads(hass):
+    """Publish editable polygon geometry as normal HA sensor attributes.
+
+    Another integration can read the geometry through the HA state registry;
+    no private live or historical person coordinates are exposed.
+    """
+    for polygon in hass.data.get("tiny_family_runtime", {}).get("geofences") or []:
+        vertices = polygon["points"]
+        ring = [[lon, lat] for lat, lon in vertices]
+        yield _sensor(
+            f"sensor.tiny_family_polygon_{polygon['id']}", "active",
+            {"friendly_name": f"Tiny Family polygon: {polygon['name']}",
+             "icon": "mdi:vector-polygon", "polygon_id": polygon["id"],
+             "polygon_name": polygon["name"],
+             "points": vertices,
+             "geojson": {"type": "Polygon", "coordinates": [ring + [ring[0]]]},
+             "points_coordinate_order": "latitude,longitude",
+             "geojson_coordinate_order": "longitude,latitude"},
+        )
 
 
 def _publish(hass, person):

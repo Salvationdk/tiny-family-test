@@ -179,6 +179,8 @@ class TinyFamilyPanel extends HTMLElement {
       .tf-zone-editor select{width:100%;padding:10px;border:1px solid var(--divider-color);border-radius:9px;background:var(--primary-background-color);color:var(--primary-text-color)}
       .tf-zone-editor .tf-card-actions>*{flex:1 1 130px}
       .tf-zone-editor .tf-screen-nav{margin:5px 0 12px}
+      .tf-zone-vertex{background:transparent;border:0}
+      .tf-zone-vertex span{display:block;width:15px;height:15px;border:3px solid white;border-radius:50%;background:#8d5bd0;box-shadow:0 1px 7px #111a2b99;box-sizing:border-box}
       .tf-place-item>summary{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:3px 9px;cursor:pointer;list-style:none;min-height:42px}
       .tf-place-item:not([open])>*:not(summary){display:none!important}
       .tf-place-item>summary::-webkit-details-marker{display:none}
@@ -1117,7 +1119,7 @@ class TinyFamilyPanel extends HTMLElement {
     zoneHeading.textContent="Zoner og destinationer";
     const zoneExplanation=document.createElement("p");
     zoneExplanation.className="tf-screen-intro";
-    zoneExplanation.textContent="Cirkelzoner er Home Assistant-zoner til ankomst og afgang. Tegnede polygonområder bruges af Tiny Family. Destinationer er selvstændige punkter og kan ligge både inde i og uden for zoner.";
+    zoneExplanation.textContent="HA-cirkler og tegnede polygoner vises samlet og kan eksistere samtidig. Polygoner kan bruges i Home Assistant via Tiny Family-binærsensorer og hændelser. Destinationer kan ligge inde i zonerne.";
     const zoneMapNode=document.createElement("div");
     zoneMapNode.className="tf-map tf-zone-map";
     zoneMapNode.style.height="275px";zoneMapNode.style.minHeight="275px";
@@ -1166,7 +1168,10 @@ class TinyFamilyPanel extends HTMLElement {
     const removeCircle=document.createElement("button");removeCircle.type="button";
     removeCircle.className="tf-save tf-danger";removeCircle.textContent="Slet valgt zone";
     removeCircle.disabled=true;
-    circleActions.append(startCircle,saveCircle,removeCircle);
+    const convertCircle=document.createElement("button");convertCircle.type="button";
+    convertCircle.className="tf-save";convertCircle.textContent="Lav polygon ud fra cirkel";
+    convertCircle.disabled=true;
+    circleActions.append(startCircle,saveCircle,convertCircle,removeCircle);
     circular.append(circleLabel,circleExisting,circleName.wrap,circleRadius.wrap,
       circleLocation,circleDestination,circleActions);
     zoneTools.appendChild(circular);
@@ -1179,7 +1184,7 @@ class TinyFamilyPanel extends HTMLElement {
     const polygonName=makeTextField("Navn på polygon");
     polygonName.input.maxLength=80;polygonName.input.required=true;
     const polygonHint=document.createElement("p");polygonHint.className="tf-message";
-    polygonHint.textContent="Tegn mindst 3 og højst 32 hjørner på kortet.";
+    polygonHint.textContent="Tegn 3–32 hjørner på kortet. Gemte og omdannede hjørner kan trækkes direkte på kortet.";
     const polygonActions=document.createElement("div");polygonActions.className="tf-card-actions";
     const startPolygon=document.createElement("button");startPolygon.type="button";
     startPolygon.className="tf-save";startPolygon.textContent="Start polygontegning";
@@ -1198,6 +1203,7 @@ class TinyFamilyPanel extends HTMLElement {
     zonePane.appendChild(zoneList);
     let zoneRows=[],polygonRows=[],editableZoneRows=[];
     let editingMode=null,circleCenter=null,polygonVertices=[];
+    let convertCircleZoneId=null;
     let selectedZoneShape="circle";
     const zoneDraft=this.readDraft("places-zone");
     if(zoneDraft){
@@ -1219,6 +1225,7 @@ class TinyFamilyPanel extends HTMLElement {
         circleCenter.map(x=>x.toFixed(6)).join(", ");
       circleExisting.dataset.pendingId=zoneDraft.circleId||"";
       polygonExisting.dataset.pendingId=zoneDraft.polygonId||"";
+      convertCircleZoneId=zoneDraft.convertCircleZoneId||null;
       zoneTools.open=Boolean(zoneDraft.open);
     }
     const saveZoneDraft=()=>this.writeDraft("places-zone",{
@@ -1227,6 +1234,7 @@ class TinyFamilyPanel extends HTMLElement {
       circleRadius:circleRadius.input.value,alsoDestination:alsoDestination.checked,
       circleCenter,polygonId:polygonExisting.value,
       polygonName:polygonName.input.value,polygonVertices,mode:editingMode,
+      convertCircleZoneId,
       open:zoneTools.open
     });
     zoneTools.addEventListener("input",saveZoneDraft);
@@ -1234,6 +1242,7 @@ class TinyFamilyPanel extends HTMLElement {
     zoneTools.addEventListener("toggle",saveZoneDraft);
     const selectZoneShape=shape=>{
       selectedZoneShape=shape==="polygon"?"polygon":"circle";
+      if(selectedZoneShape==="circle")convertCircleZoneId=null;
       circular.hidden=selectedZoneShape!=="circle";
       polygonEditor.hidden=selectedZoneShape!=="polygon";
       circleShape.setAttribute("aria-pressed",String(selectedZoneShape==="circle"));
@@ -1287,11 +1296,26 @@ class TinyFamilyPanel extends HTMLElement {
             weight:3,dashArray:"6 5",fillOpacity:.12}).addTo(zoneMap);
         }
       }else if(selectedZoneShape==="polygon"&&polygonVertices.length){
-        zoneDraftLayer=(polygonVertices.length>=3
+        zoneDraftLayer=window.L.layerGroup().addTo(zoneMap);
+        const outline=(polygonVertices.length>=3
           ?window.L.polygon(polygonVertices,{color:"#f2b76a",weight:3,
             dashArray:"6 5",fillOpacity:.15})
           :window.L.polyline(polygonVertices,{color:"#f2b76a",weight:3,
-            dashArray:"6 5"})).addTo(zoneMap);
+            dashArray:"6 5"})).addTo(zoneDraftLayer);
+        if(zoneTools.open){
+          polygonVertices.forEach((position,index)=>{
+            const marker=window.L.marker(position,{draggable:true,
+              icon:window.L.divIcon({className:"tf-zone-vertex",
+                html:"<span></span>",iconSize:[15,15],iconAnchor:[7,7]})
+            }).addTo(zoneDraftLayer);
+            marker.on("drag",event=>{
+              polygonVertices[index]=[event.target.getLatLng().lat,
+                event.target.getLatLng().lng];
+              outline.setLatLngs(polygonVertices);
+            });
+            marker.on("dragend",()=>{zonePreview();saveZoneDraft();});
+          });
+        }
       }
     };
     const drawZoneMap=()=>{
@@ -1341,6 +1365,28 @@ class TinyFamilyPanel extends HTMLElement {
       startPolygon.textContent="Start polygontegning";
       zonePreview();
     };
+    convertCircle.addEventListener("click",()=>{
+      const source=editableZoneRows.find(z=>z.id===circleExisting.value);
+      if(!source){this.message("Vælg en gemt HA-cirkel først.",true);return;}
+      const earthRadius=6371000;
+      const lat0=source.latitude*Math.PI/180;
+      const lon0=source.longitude*Math.PI/180;
+      const angle=source.radius/earthRadius;
+      polygonVertices=Array.from({length:16},(_,index)=>{
+        const bearing=2*Math.PI*index/16;
+        const latitude=Math.asin(Math.sin(lat0)*Math.cos(angle)+
+          Math.cos(lat0)*Math.sin(angle)*Math.cos(bearing));
+        const longitude=lon0+Math.atan2(Math.sin(bearing)*Math.sin(angle)*Math.cos(lat0),
+          Math.cos(angle)-Math.sin(lat0)*Math.sin(latitude));
+        return [latitude*180/Math.PI,(longitude*180/Math.PI+540)%360-180];
+      });
+      selectZoneShape("polygon");
+      convertCircleZoneId=source.id;
+      polygonExisting.value="";
+      polygonName.input.value=source.name;
+      polygonHint.textContent="Polygonen har 16 hjørner, som du kan tilpasse. Den oprindelige HA-cirkel bevares også, når du gemmer.";
+      zonePreview();saveZoneDraft();
+    });
     startCircle.addEventListener("click",()=>{
       if(selectedZoneShape!=="circle")selectZoneShape("circle");
       editingMode="circle";polygonVertices=[];circleCenter=null;
@@ -1462,6 +1508,7 @@ class TinyFamilyPanel extends HTMLElement {
       }
       polygonExisting.value=selectedPolygon;
       removeCircle.disabled=!circleExisting.value;
+      convertCircle.disabled=!circleExisting.value;
       deletePolygon.disabled=!polygonExisting.value;
       zoneList.replaceChildren();
       for(const zone of zoneRows){
@@ -1495,12 +1542,14 @@ class TinyFamilyPanel extends HTMLElement {
       circleName.input.value=item?.name||"";
       circleRadius.input.value=String(item?.radius||100);
       removeCircle.disabled=!item;
+      convertCircle.disabled=!item;
       if(item){circleCenter=[item.latitude,item.longitude];
         zoneMap?.setView(circleCenter,16);zonePreview();}
       saveZoneDraft();
     });
     polygonExisting.addEventListener("change",()=>{
       if(selectedZoneShape!=="polygon")selectZoneShape("polygon");
+      convertCircleZoneId=null;
       resetZoneDrawing();
       const item=polygonRows.find(zone=>zone.id===polygonExisting.value);
       polygonName.input.value=item?.name||"";
@@ -1538,12 +1587,14 @@ class TinyFamilyPanel extends HTMLElement {
       if(polygonVertices.length<3){this.message("Tegn mindst tre hjørner.",true);return;}
       savePolygon.disabled=true;
       try{
+        const converting=Boolean(convertCircleZoneId);
         await this.hassInstance.callApi(polygonExisting.value?"PUT":"POST",
           "tiny_family/geofences",{name:polygonName.input.value.trim(),
             points:polygonVertices,...(polygonExisting.value?{id:polygonExisting.value}:{})});
         polygonExisting.value="";polygonName.input.value="";
+        convertCircleZoneId=null;
         resetZoneDrawing();this.clearDraft("places-zone");await reloadZones();
-        this.message("Polygonzonen er gemt.");
+        this.message(converting?"Polygonen er gemt. Den oprindelige HA-cirkel er også bevaret.":"Polygonzonen er gemt.");
       }catch(error){this.message("Polygonzonen kunne ikke gemmes: "+this.errorText(error),true);}
       finally{savePolygon.disabled=false;}
     });

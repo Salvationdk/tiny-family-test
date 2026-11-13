@@ -1,7 +1,7 @@
 """Opt-in geographic polygon overlays native to Tiny Family.
 
 Home Assistant core zones are circular. Polygons here are separate local
-geofences and publish Tiny Family arrival/departure events, not zone.* states.
+geofences exposed through Tiny Family binary sensors and bus events, not zone.*.
 """
 from __future__ import annotations
 
@@ -89,6 +89,40 @@ def polygon_zone(polygons: list[dict], latitude: float, longitude: float) -> str
     return ""
 
 
+def circle_to_polygon(latitude: float, longitude: float, radius: float,
+                      vertices: int = 16) -> list[list[float]]:
+    """Approximate a stored HA circle using an editable clockwise outline."""
+    if not (-85 <= latitude <= 85 and -180 <= longitude <= 180
+            and 25 <= radius <= 5000 and 3 <= vertices <= 32):
+        raise ValueError("Invalid circle")
+    lat_rad = math.radians(latitude)
+    angular = radius / 6_371_000
+    outline = []
+    for step in range(vertices):
+        bearing = 2 * math.pi * step / vertices
+        dest_lat = math.asin(math.sin(lat_rad) * math.cos(angular)
+                             + math.cos(lat_rad) * math.sin(angular) * math.cos(bearing))
+        dest_lon = math.radians(longitude) + math.atan2(
+            math.sin(bearing) * math.sin(angular) * math.cos(lat_rad),
+            math.cos(angular) - math.sin(lat_rad) * math.sin(dest_lat),
+        )
+        outline.append([round(math.degrees(dest_lat), 7),
+                        round((math.degrees(dest_lon) + 180) % 360 - 180, 7)])
+    return outline
+
+
+def polygon_membership_changes(previous: dict | None, polygons: list[dict],
+                               latitude: float, longitude: float):
+    """Return current presence and only genuine transitions, including overlaps."""
+    current = {p["id"]: contains_point(p["points"], latitude, longitude)
+               for p in polygons}
+    changes = [] if previous is None else [
+        (p, current[p["id"]]) for p in polygons
+        if p["id"] in previous and bool(previous[p["id"]]) != current[p["id"]]
+    ]
+    return current, changes
+
+
 class TinyFamilyGeofencesView(HomeAssistantView):
     url = "/api/tiny_family/geofences"
     name = "api:tiny_family:geofences"
@@ -159,6 +193,10 @@ class TinyFamilyGeofencesView(HomeAssistantView):
                 _save_places, self.hass.config.path("tiny_family_geofences.json"),
                 {"items": geofences},
             )
+            for name in ("sync_polygon_definitions", "sync_polygon_entities"):
+                sync = runtime.get(name)
+                if sync:
+                    await sync()
         except (ValueError, TypeError, AttributeError, KeyError):
             return web.json_response({"message": "Invalid geofence"}, status=400)
         return web.json_response({"saved": True, "id": item["id"]},
@@ -182,6 +220,10 @@ class TinyFamilyGeofencesView(HomeAssistantView):
                 _save_places, self.hass.config.path("tiny_family_geofences.json"),
                 {"items": geofences},
             )
+            for name in ("sync_polygon_definitions", "sync_polygon_entities"):
+                sync = runtime.get(name)
+                if sync:
+                    await sync()
         except (ValueError, TypeError, AttributeError):
             return web.json_response({"message": "Invalid deletion request"}, status=400)
         return web.json_response({"deleted": True}, headers={"Cache-Control": "no-store"})

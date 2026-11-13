@@ -10,6 +10,58 @@ get_day_summary:
         entity:
           domain: person
 
+evaluate_location:
+  name: Undersøg position i polygoner
+  description: >-
+    Læser Tiny Familys polygonmotor fra en HA-automation eller et YAML-script.
+    Returnerer alle matchende polygoner; kan også beregne luftlinjeafstand og
+    et forsigtigt ETA-skøn. Ingen persons private position læses. Brug
+    response_variable til resultatet.
+  fields:
+    latitude:
+      name: Breddegrad
+      required: true
+      selector:
+        number:
+          min: -90
+          max: 90
+          step: 0.000001
+          mode: box
+    longitude:
+      name: Længdegrad
+      required: true
+      selector:
+        number:
+          min: -180
+          max: 180
+          step: 0.000001
+          mode: box
+    target_latitude:
+      name: Destinationens breddegrad (valgfri)
+      selector:
+        number:
+          min: -90
+          max: 90
+          step: 0.000001
+          mode: box
+    target_longitude:
+      name: Destinationens længdegrad (valgfri)
+      selector:
+        number:
+          min: -180
+          max: 180
+          step: 0.000001
+          mode: box
+    speed_kmh:
+      name: Hastighed i km/t (valgfri)
+      description: Kræver destinationskoordinater; ETA er et skøn, ikke vej-navigation.
+      selector:
+        number:
+          min: 0
+          max: 200
+          step: 0.1
+          mode: box
+
 log_message:
   name: Gem besked i historik
   description: Gemmer en sendt besked i beskedhistorikken.

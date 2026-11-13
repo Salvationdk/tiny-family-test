@@ -6,7 +6,7 @@ from functools import partial
 
 from homeassistant.components.sensor import SensorEntity
 
-from .sensors import generated_payloads
+from .sensors import generated_payloads, polygon_definition_payloads
 
 
 class TinyFamilySensor(SensorEntity):
@@ -68,4 +68,29 @@ async def async_setup_entry(hass, entry, async_add_entities):
             entity = TinyFamilySensor(entity_id, value, attrs)
             registry[entity_id] = entity
             entities.append(entity)
+    for entity_id, value, attrs in polygon_definition_payloads(hass):
+        entity = TinyFamilySensor(entity_id, value, attrs)
+        registry[entity_id] = entity
+        entities.append(entity)
     async_add_entities(entities)
+
+    async def sync_polygon_definitions():
+        """Expose polygons to dashboards and third-party HA integrations live."""
+        desired = {entity_id: (value, attrs)
+                   for entity_id, value, attrs in polygon_definition_payloads(hass)}
+        added = []
+        for entity_id, (value, attrs) in desired.items():
+            if entity_id not in registry:
+                entity = TinyFamilySensor(entity_id, value, attrs)
+                registry[entity_id] = entity
+                added.append(entity)
+            else:
+                registry[entity_id].update_from_payload(value, attrs)
+        for entity_id in list(registry):
+            if entity_id.startswith("sensor.tiny_family_polygon_") and entity_id not in desired:
+                entity = registry.pop(entity_id)
+                await entity.async_remove()
+        if added:
+            async_add_entities(added)
+
+    runtime["sync_polygon_definitions"] = sync_polygon_definitions

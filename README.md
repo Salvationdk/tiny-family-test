@@ -1,4 +1,4 @@
-# Tiny Family — offentlig testversion 0.8.10
+# Tiny Family — offentlig testversion 0.8.11
 
 <!-- BEGIN: Salvationdk repository metrics -->
 [![Release downloads](https://img.shields.io/github/downloads/Salvationdk/tiny-family-test/total?label=Release%20downloads&style=flat-square)](https://github.com/Salvationdk/tiny-family-test/releases)
@@ -22,6 +22,22 @@
 Tiny Family er en Home Assistant-integration til familiekort, GPS-ruter, opdagelse af steder, datobaserede tidslinjer, beskeder, SOS og familieadvarsler.
 
 **Testversion:** Integrationen er stadig under praktisk afprøvning. SOS er ikke en certificeret nødtjeneste, og Home Assistant-notifikationer garanterer ikke levering på en telefon.
+
+## Nyt i 0.8.11 – polygoner som Home Assistant-sensorer
+- **Både cirkel og polygon:** Under *Steder → Zoner* kan administrator vælge en eksisterende HA-cirkel og trykke **Lav polygon ud fra cirkel**. Den nye polygon får 16 redigerbare hjørner og kan tilpasses på kortet. **Den oprindelige cirkel og dens `zone.*`-entitet bevares**, så eksisterende HA-automatiseringer ikke ødelægges. Ønsker du kun polygonen, kan den gamle cirkel slettes særskilt.
+- **Polygonens form er også en sensor:** Hvert område registreres som `sensor.tiny_family_polygon_<polygon-id>` med tilstanden `active`. Attributten `geojson` indeholder standard GeoJSON-geometri (`Polygon`, koordinater i længdegrad/breddegrad), og `points` indeholder Tiny Familys hjørner (breddegrad/længdegrad). Andre HA-integrationer, dashboards og skabeloner kan hente formen fra entitetens attributter via HA's normale state-API, uden at Tiny Family selv behøver være deres kortvisning.
+- **Brug personens polygonstatus overalt i HA:** Hver polygon får automatisk én rigtig, registreret `binary_sensor.tiny_family_<person>_polygon_<polygon-id>` pr. familiemedlem. Tilstanden er `on` (inde), `off` (ude) eller `unknown` (uden frisk GPS/under Ghost Mode). Sensorerne bliver tilføjet og fjernet **uden genstart**, når polygoner oprettes eller slettes. I *Indstillinger → Automatiseringer* kan du bruge en almindelig **Entitet → Tilstand**-trigger med disse sensorer.
+- **HA-hændelser:** `tiny_family_polygon_entered` og `tiny_family_polygon_left` sendes ved GPS-baserede overgange for hver polygon, også når flere områder overlapper. Hændelsesdata har `person`, `polygon_id`, `polygon_name` og `timestamp` – aldrig rå koordinater. Første valide GPS-position er kun udgangspunkt, så den skaber ikke en falsk ind-/udgangshændelse.
+- **Genbrug motorerne fra YAML:** Den nye svarservice `tiny_family.evaluate_location` tester en valgfri koordinat mod alle gemte polygoner og kan samtidig beregne luftlinjeafstand og et forsigtigt ETA-skøn. Brug den i andre dashboards, scripts eller automatiseringer via `response_variable`. Se **[Tiny Family til YAML, automatiseringer og andre integrationer](docs/AUTOMATION_API.md)** med eksempler, forklaringer og en oversigt over, hvilke motorer der kan kaldes udefra.
+- **HA-begrænsning:** Home Assistants indbyggede `zone.*`-entiteter understøtter cirkelzoner med centrum og radius, ikke polygoner. Brug Tiny Familys binærsensor eller hændelsestrigger til præcise polygoner, ikke HA's indbyggede zonetrigger. Polygoner gemmes lokalt og ændrer ikke familiens originale GPS-spor.
+
+Eksempel, hvis et andet dashboard eller en udvidelse skal læse selve polygonen:
+
+```jinja2
+{{ state_attr('sensor.tiny_family_polygon_<polygon-id>', 'geojson') }}
+```
+
+Erstat `<polygon-id>` med entitetens faktiske ID fra **Indstillinger → Enheder og tjenester → Entiteter**. Brug en `binary_sensor` med personens navn til en almindelig *inde/ude*-automation. Både de almindelige HA-cirkler og Tiny Family-polygoner kan eksistere på samme sted.
 
 ## Nyt i 0.8.10 – sammenhængende mobilflade
 - **Forslag og steder:** Stedkort er kompakte med **Udvid/Luk**, og ét åbent kort lukker automatisk, når et andet åbnes. Samme harmonikaprincip gælder familiepersoner, administration, zoner og hjælpedele. Administratorens ens navngivne GPS-ophold inden for 80 meter samles visuelt, men de oprindelige registreringer forbliver individuelt redigerbare og slettes ikke automatisk.
@@ -195,6 +211,6 @@ Ghost Mode fra tidligere installationer ændrer ikke Home Assistants `person`, `
 
 ## Teknisk
 
-Home Assistant-domæne: `tiny_family`. Version: `0.8.10`. Integrationens filer ligger i `custom_components/tiny_family/`.
+Home Assistant-domæne: `tiny_family`. Version: `0.8.11`. Integrationens filer ligger i `custom_components/tiny_family/`.
 
 Dette offentlige testrepository indeholder kun installationskode og dokumentation, ikke den private udviklingshistorik, personlige GPS-ruter, telefonnumre eller Home Assistant-konfigurationsdata.

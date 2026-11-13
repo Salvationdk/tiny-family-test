@@ -31,6 +31,9 @@ class Entity:
             raise AssertionError("Home Assistant entity was written off the event loop")
         self.writes = getattr(self, "writes", 0) + 1
 
+    async def async_remove(self):
+        self.removed = True
+
 
 def add_module(name, **attributes):
     module = types.ModuleType(name)
@@ -68,6 +71,91 @@ SENSORS, SENSOR, BINARY, AUTHZ = make_modules()
 
 
 class ThreadSafetyTests(unittest.IsolatedAsyncioTestCase):
+    async def test_polygon_geometry_is_registered_for_other_integrations(self):
+        polygon_id = "d" * 32
+        shape = [[55.1, 12.1], [55.2, 12.1], [55.2, 12.2]]
+        runtime = {"geofences": [{"id": polygon_id, "name": "Arbejde", "points": shape}]}
+        hass = types.SimpleNamespace(data={"tiny_family_runtime": runtime})
+        payload = list(SENSORS.polygon_definition_payloads(hass))
+        self.assertEqual(len(payload), 1)
+        entity_id, value, attrs = payload[0]
+        self.assertEqual(entity_id, "sensor.tiny_family_polygon_" + polygon_id)
+        self.assertEqual(value, "active")
+        self.assertEqual(attrs["points"], shape)
+        self.assertEqual(attrs["geojson"]["coordinates"][0],
+                         [[12.1, 55.1], [12.1, 55.2], [12.2, 55.2], [12.1, 55.1]])
+
+        added = []
+        entry = types.SimpleNamespace(data={"persons": []}, options={})
+        await SENSOR.async_setup_entry(hass, entry, lambda entities: added.extend(entities))
+        self.assertEqual(len(added), 1)
+        runtime["geofences"] = []
+        await runtime["sync_polygon_definitions"]()
+        self.assertTrue(added[0].removed)
+        self.assertNotIn(entity_id, runtime["registered_entities"])
+
+    async def test_polygon_binary_sensor_respects_gps_freshness_and_privacy(self):
+        polygon_id = "c" * 32
+        person = "nicolaj"
+        state = {
+            "distance_m": 0, "stays": 0, "current_stay_min": 0,
+            "max_speed": 0, "distance_week_m": 0,
+            "polygon_memberships": {polygon_id: True}, "gps_health": "fresh",
+        }
+        runtime = {"geofences": [{"id": polygon_id, "name": "Park"}],
+                   "ghost_people": set()}
+        hass = types.SimpleNamespace(data={"tiny_family": {person: state},
+                                           "tiny_family_runtime": runtime})
+        original = SENSORS.companion_readings
+        SENSORS.companion_readings = lambda *args, **kwargs: {
+            "activity": "unknown", "charging": "off"}
+        try:
+            def polygon_value():
+                binary = SENSORS.generated_payloads(hass, person)[1]
+                return next(value for entity_id, value, _attrs in binary
+                            if entity_id.endswith("_polygon_" + polygon_id))
+
+            self.assertEqual(polygon_value(), "on")
+            state["gps_health"] = "stale"
+            self.assertEqual(polygon_value(), "unknown")
+            state["gps_health"] = "fresh"
+            runtime["ghost_people"].add(person)
+            self.assertEqual(polygon_value(), "unknown")
+        finally:
+            SENSORS.companion_readings = original
+
+    async def test_new_and_deleted_polygons_sync_binary_sensors_live(self):
+        loop = asyncio.get_running_loop()
+        polygon_ids = ["a" * 32]
+        original = BINARY.generated_payloads
+
+        def payloads(_hass, _person):
+            binary = [("binary_sensor.tiny_family_test_moving", "off", {})]
+            binary += [(f"binary_sensor.tiny_family_test_polygon_{p}", "on", {})
+                       for p in polygon_ids]
+            return [], binary
+
+        added = []
+        hass = types.SimpleNamespace(
+            loop=loop, data={"tiny_family_runtime": {}},
+        )
+        entry = types.SimpleNamespace(data={"persons": ["test"]}, options={})
+        BINARY.generated_payloads = payloads
+        try:
+            await BINARY.async_setup_entry(hass, entry, lambda entities: added.extend(entities))
+            registry = hass.data["tiny_family_runtime"]["registered_entities"]
+            original_id = f"binary_sensor.tiny_family_test_polygon_{polygon_ids[0]}"
+            self.assertIn(original_id, registry)
+            removed = registry[original_id]
+            polygon_ids[:] = ["b" * 32]
+            await hass.data["tiny_family_runtime"]["sync_polygon_entities"]()
+            self.assertTrue(removed.removed)
+            self.assertNotIn(original_id, registry)
+            self.assertIn(f"binary_sensor.tiny_family_test_polygon_{polygon_ids[0]}", registry)
+            self.assertEqual(len(added), 3)
+        finally:
+            BINARY.generated_payloads = original
+
     async def test_registered_sensor_mutation_happens_on_loop(self):
         loop = asyncio.get_running_loop()
         sensor = SENSOR.TinyFamilySensor("sensor.test", 1, {"unit_of_measurement": "km"})
