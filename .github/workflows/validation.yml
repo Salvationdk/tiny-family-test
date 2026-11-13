@@ -25,6 +25,10 @@ jobs:
           node-version: '22'
       - name: Regression tests (sensor threads and automation contexts)
         run: python -m unittest discover -s tests -p "test_runtime_safety.py" -v
+      - name: Polygon sensors and reusable YAML engine tests
+        run: |
+          python -m unittest discover -s tests -p "test_polygon_automations.py" -v
+          python -m unittest discover -s tests -p "test_automation_api.py" -v
       - name: Test persistent timeline archive
         run: python -m unittest discover -s tests -p "test_timeline_archive.py" -v
       - name: Map matching regression tests
@@ -61,11 +65,11 @@ jobs:
           meta=json.loads(Path("custom_components/tiny_family/manifest.json").read_text())
           hacs=json.loads(Path("hacs.json").read_text())
           assert meta["domain"] == "tiny_family"
-          assert meta["version"] == "0.8.10"
+          assert meta["version"] == "0.8.11"
           assert hacs["name"] == "Tiny Family"
           assert Path("custom_components/tiny_family/device_binding.py").is_file()
           assert Path("custom_components/tiny_family/frontend/leaflet/LICENSE").is_file()
-          print("Tiny Family 0.8.10 public package verified")
+          print("Tiny Family 0.8.11 public package verified")
           PY
 
   hassfest:

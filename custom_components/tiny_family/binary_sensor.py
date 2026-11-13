@@ -53,3 +53,27 @@ async def async_setup_entry(hass, entry, async_add_entities):
             registry[entity_id] = entity
             entities.append(entity)
     async_add_entities(entities)
+
+    async def sync_polygon_entities():
+        """Register newly drawn polygons live and retire deleted ones."""
+        desired = {}
+        for person in config.get("persons") or []:
+            desired.update({entity_id: (value, attrs)
+                            for entity_id, value, attrs in generated_payloads(hass, person)[1]
+                            if "_polygon_" in entity_id})
+        added = []
+        for entity_id, (value, attrs) in desired.items():
+            if entity_id not in registry:
+                entity = TinyFamilyBinarySensor(entity_id, value, attrs)
+                registry[entity_id] = entity
+                added.append(entity)
+            else:
+                registry[entity_id].update_from_payload(value, attrs)
+        for entity_id in list(registry):
+            if "_polygon_" in entity_id and entity_id not in desired:
+                entity = registry.pop(entity_id)
+                await entity.async_remove()
+        if added:
+            async_add_entities(added)
+
+    runtime["sync_polygon_entities"] = sync_polygon_entities

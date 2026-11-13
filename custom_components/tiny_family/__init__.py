@@ -49,7 +49,10 @@ from .routes import TinyFamilyRoutesView, record_route, prune_routes
 from .timeline import TinyFamilyTimelineView, initialize_archive, persist_archive, enqueue_fix
 from .map_matching import validate_match_server
 from .activity import TinyFamilyActivityView, add_activity, prune_activity, archive_interrupted_trip
-from .geofences import TinyFamilyGeofencesView, polygon_zone, validate_polygon
+from .geofences import (
+    TinyFamilyGeofencesView, polygon_zone, polygon_membership_changes, validate_polygon,
+)
+from .automation_api import evaluate_location
 from .personal_data import TinyFamilyPersonalDataView
 from .export import TinyFamilyPersonalExportView
 from .places import _nearest_zone_label
@@ -203,10 +206,12 @@ async def async_unload_entry(hass: HomeAssistant, entry) -> bool:
             entry, [Platform.SENSOR, Platform.BINARY_SENSOR]
         )
         runtime.pop("registered_entities", None)
+        runtime.pop("sync_polygon_entities", None)
+        runtime.pop("sync_polygon_definitions", None)
         remove_generated_states(hass, previous_config.get("persons") or [])
         hass.data.pop(DOMAIN, None)
         for name in (
-            "get_day_summary", "mobile_checkin", "mobile_heading_home",
+            "get_day_summary", "evaluate_location", "mobile_checkin", "mobile_heading_home",
             "mobile_sos", "mobile_message", "log_message", "log_notification",
             "clear_history", "create_zone_from_suggestion", "label_place",
             "save_place_as_zone", "delete_place_suggestion",
@@ -765,7 +770,8 @@ async def _async_setup_runtime(hass: HomeAssistant, config: dict) -> bool:
                                      "movement_candidate_samples": 0,
                                      "speed_kmh": 0.0,
                                      "gps_health": "unknown",
-                                     "gps_seen_at": None}
+                                     "gps_seen_at": None,
+                                     "polygon_memberships": None}
         if cfg.get("learn_routines_enabled",False) and person in routine_people:
             learned=typical_departure(routines_data,person,local_now.weekday())
             if learned:
@@ -1020,6 +1026,16 @@ async def _async_setup_runtime(hass: HomeAssistant, config: dict) -> bool:
             if len(runtime["timeline_pending"]) >= 100:
                 await _flush_timeline()
             if person not in ghost_people:
+                memberships, transitions = polygon_membership_changes(
+                    st.get("polygon_memberships"), polygons, lat, lon)
+                st["polygon_memberships"] = memberships
+                for polygon, inside in transitions:
+                    hass.bus.async_fire(
+                        "tiny_family_polygon_entered" if inside else "tiny_family_polygon_left",
+                        {"person": person, "polygon_id": polygon["id"],
+                         "polygon_name": polygon["name"],
+                         "timestamp": datetime.fromtimestamp(t, tz=timezone.utc).isoformat()},
+                    )
                 zone = (polygon_zone(polygons, lat, lon)
                         or _nearest_zone_label(hass, lat, lon))
                 for name, details in update_zone(st, zone, t):
@@ -1278,6 +1294,15 @@ async def _async_setup_runtime(hass: HomeAssistant, config: dict) -> bool:
                 "dest_eta_min": st.get("dest_eta_min", 0)}
 
     hass.services.async_register(DOMAIN, "get_day_summary", get_day_summary,
+                                 supports_response=SupportsResponse.ONLY)
+
+    async def evaluate_location_service(call):
+        try:
+            return evaluate_location(runtime.get("geofences") or [], call.data)
+        except ValueError as err:
+            raise HomeAssistantError(str(err)) from err
+
+    hass.services.async_register(DOMAIN, "evaluate_location", evaluate_location_service,
                                  supports_response=SupportsResponse.ONLY)
 
     # Companion widgets and iOS shortcuts can call these services as their
