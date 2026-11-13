@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone, date
 from functools import partial
+import hashlib
+import json
 from math import asin, cos, isfinite, radians, sin, sqrt
 from pathlib import Path
 import sqlite3
@@ -21,6 +23,8 @@ from .map_matching import match_day
 from .road_engine import match_day_embedded
 
 RETENTION_DAYS = 365
+MIN_RETENTION_DAYS = 30
+MAX_RETENTION_DAYS = 3650
 MAX_DAY_POINTS = 25000
 MAX_DAY_EVENTS = 500
 GAP_SECONDS = 300
@@ -34,8 +38,16 @@ def _connect(path):
     return conn
 
 
-def initialize_archive(path, legacy_routes=None, legacy_activity=None, *, now=None):
+def validate_retention_days(value):
+    if type(value) is not int or not MIN_RETENTION_DAYS <= value <= MAX_RETENTION_DAYS:
+        raise ValueError("Timeline retention must be 30–3650 days")
+    return value
+
+
+def initialize_archive(path, legacy_routes=None, legacy_activity=None, *, now=None,
+                       retention_days=RETENTION_DAYS):
     """Create archive and import previously retained 24 h routes/30 d events."""
+    retention_days = validate_retention_days(retention_days)
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     conn = _connect(path)
     try:
@@ -59,6 +71,12 @@ def initialize_archive(path, legacy_routes=None, legacy_activity=None, *, now=No
               gap INTEGER NOT NULL, private INTEGER NOT NULL
             )""")
             conn.execute("CREATE INDEX IF NOT EXISTS events_by_date ON events(person, started_at)")
+            conn.execute("""CREATE TABLE IF NOT EXISTS matched_days (
+              person TEXT NOT NULL, day TEXT NOT NULL, viewer TEXT NOT NULL,
+              source_hash TEXT NOT NULL, matched_json TEXT NOT NULL,
+              status TEXT NOT NULL,
+              PRIMARY KEY(person, day, viewer)
+            )""")
             # Migration never expands visibility: old legacy privacy flags remain.
             for person, points in (legacy_routes or {}).items():
                 if not isinstance(person, str) or not isinstance(points, list):
@@ -78,10 +96,13 @@ def initialize_archive(path, legacy_routes=None, legacy_activity=None, *, now=No
                         continue
             _insert_events(conn, legacy_activity or {})
             cutoff = (now if now is not None else datetime.now(timezone.utc).timestamp()) - (
-                RETENTION_DAYS * 86400
+                retention_days * 86400
             )
             conn.execute("DELETE FROM fixes WHERE ts < ?", (cutoff,))
             conn.execute("DELETE FROM events WHERE ended_at < ?", (cutoff,))
+            conn.execute("DELETE FROM matched_days WHERE day < ?", (
+                datetime.fromtimestamp(cutoff, timezone.utc).date().isoformat(),
+            ))
     finally:
         conn.close()
 
@@ -113,8 +134,10 @@ def _insert_events(conn, events_by_person):
                 continue
 
 
-def persist_archive(path, samples=(), activity=None):
+def persist_archive(path, samples=(), activity=None, *,
+                    retention_days=RETENTION_DAYS):
     """Append observed fixes and events in one atomic transaction (executor only)."""
+    retention_days = validate_retention_days(retention_days)
     conn = _connect(path)
     try:
         with conn:
@@ -128,6 +151,13 @@ def persist_archive(path, samples=(), activity=None):
                    int(item.get("gap", False)), int(item.get("private", False))))
             if activity:
                 _insert_events(conn, activity)
+            # Prune during normal operation too, even if HA never restarts.
+            cutoff = datetime.now(timezone.utc).timestamp() - retention_days * 86400
+            conn.execute("DELETE FROM fixes WHERE ts < ?", (cutoff,))
+            conn.execute("DELETE FROM events WHERE ended_at < ?", (cutoff,))
+            conn.execute("DELETE FROM matched_days WHERE day < ?", (
+                datetime.fromtimestamp(cutoff, timezone.utc).date().isoformat(),
+            ))
     finally:
         conn.close()
 
@@ -191,6 +221,7 @@ def delete_archive(path, person, *, routes=False, activities=False):
                 deleted["fixes"]=conn.execute(
                     "DELETE FROM fixes WHERE person=?",(person,)
                 ).rowcount
+                conn.execute("DELETE FROM matched_days WHERE person=?", (person,))
             if activities:
                 deleted["events"]=conn.execute(
                     "DELETE FROM events WHERE person=?",(person,)
@@ -200,13 +231,58 @@ def delete_archive(path, person, *, routes=False, activities=False):
         conn.close()
 
 
-def archived_dates(path, person, *, limit=RETENTION_DAYS):
+def match_fingerprint(segments, backend, server=""):
+    """Hash only the GPS samples visible to this viewer, never a global track."""
+    hasher = hashlib.sha256()
+    hasher.update(f"{backend}|{server}|".encode("utf-8"))
+    for segment in segments:
+        hasher.update(b"|")
+        for fix in segment:
+            hasher.update(json.dumps((fix["t"], fix["lat"], fix["lon"]),
+                                     separators=(",", ":")).encode("utf-8"))
+    return hasher.hexdigest()
+
+
+def read_matched_day(path, person, day, viewer, source_hash):
+    """Return a previously derived road overlay for exactly this viewer."""
+    conn = _connect(path)
+    try:
+        row = conn.execute("""SELECT matched_json,status FROM matched_days
+          WHERE person=? AND day=? AND viewer=? AND source_hash=?""",
+          (person, day, viewer, source_hash)).fetchone()
+        if row is None:
+            return None
+        return json.loads(row[0]), row[1]
+    finally:
+        conn.close()
+
+
+def save_matched_day(path, person, day, viewer, source_hash, segments, status):
+    """Persist the derived line only; original GPS fixes remain immutable."""
+    conn = _connect(path)
+    try:
+        with conn:
+            conn.execute("""INSERT INTO matched_days
+              (person,day,viewer,source_hash,matched_json,status)
+              VALUES (?,?,?,?,?,?) ON CONFLICT(person,day,viewer) DO UPDATE SET
+              source_hash=excluded.source_hash,
+              matched_json=excluded.matched_json,status=excluded.status""",
+              (person, day, viewer, source_hash,
+               json.dumps(segments, separators=(",", ":")), status))
+    finally:
+        conn.close()
+
+
+def archived_dates(path, person, *, limit=None,
+                   retention_days=RETENTION_DAYS):
     """Available dates for a person's archive, without returning GPS points."""
+    retention_days = validate_retention_days(retention_days)
     conn=_connect(path)
     try:
         rows=conn.execute("""SELECT DISTINCT date(ts, 'unixepoch') AS day
           FROM fixes WHERE person=? ORDER BY day DESC LIMIT ?""",
-          (person, min(limit,RETENTION_DAYS))).fetchall()
+          (person, min(limit if limit is not None else retention_days,
+                       retention_days))).fetchall()
         return [row[0] for row in rows]
     finally:
         conn.close()
@@ -219,8 +295,10 @@ def _distance_m(a, b):
     return 6371000 * 2 * asin(min(1.0, sqrt(max(0.0,c))))
 
 
-def day_window(value, zone_name, *, now=None):
+def day_window(value, zone_name, *, now=None,
+               retention_days=RETENTION_DAYS):
     """Resolve a calendar day in Home Assistant's timezone, including DST."""
+    retention_days = validate_retention_days(retention_days)
     try:
         chosen = date.fromisoformat(value)
         if chosen.isoformat() != value:
@@ -229,7 +307,7 @@ def day_window(value, zone_name, *, now=None):
     except (ValueError, TypeError, ZoneInfoNotFoundError):
         raise ValueError("Invalid date or timezone") from None
     current = (now or datetime.now(timezone.utc)).astimezone(zone).date()
-    if chosen > current or (current - chosen).days >= RETENTION_DAYS:
+    if chosen > current or (current - chosen).days >= retention_days:
         raise ValueError("Date outside retained archive")
     start = datetime(chosen.year, chosen.month, chosen.day, tzinfo=zone)
     following = chosen + timedelta(days=1)
@@ -332,6 +410,7 @@ class TinyFamilyTimelineView(HomeAssistantView):
         if entry is None:
             return web.json_response({"message":"Not configured"},status=503)
         cfg={**entry.data,**entry.options}
+        retention_days = validate_retention_days(cfg.get("timeline_retention_days", RETENTION_DAYS))
         persons=cfg.get("persons") or []
         viewer=own_person(request["hass_user"].id, persons, cfg.get("owners") or {})
         if viewer is None:
@@ -344,7 +423,8 @@ class TinyFamilyTimelineView(HomeAssistantView):
         today=datetime.now(ZoneInfo(self.hass.config.time_zone)).date().isoformat()
         day=request.query.get("date",today)
         try:
-            start,end=day_window(day,self.hass.config.time_zone)
+            start,end=day_window(day,self.hass.config.time_zone,
+                                 retention_days=retention_days)
         except ValueError:
             return web.json_response({"message":"Date outside retained archive"},status=400)
         try:
@@ -378,13 +458,14 @@ class TinyFamilyTimelineView(HomeAssistantView):
             all_points.extend(pending)
             combined={p["ts"]:p for p in all_points}
             data=build_day([combined[k] for k in sorted(combined)],data["events"])
-        # Map matching never runs for a normal timeline request. The user
-        # must deliberately activate matching and the admin must configure
-        # a matching backend first. Avoid sharing routes across viewers in
-        # memory: their visible GPS samples may differ due to legacy privacy.
+        # Admin-enabled matching also applies to old archived days. Derive
+        # lines when a date is viewed, and cache per viewer on disk; an
+        # unbounded eager backfill could overload OSM and leak private fixes.
         data["matched_segments"]=[]
         data["matching_status"]="off"
-        if request.query.get("map_match") == "1":
+        if request.query.get("map_match") == "1" or (
+            cfg.get("map_matching_enabled") and request.query.get("map_match") != "0"
+        ):
             server = cfg.get("map_matching_url", "")
             backend = cfg.get("map_matching_backend") or (
                 "osrm" if server else "builtin"
@@ -395,12 +476,9 @@ class TinyFamilyTimelineView(HomeAssistantView):
                 data["matching_status"] = "disabled"
             elif data["points_count"] >= 3:
                 cache = runtime.setdefault("map_matching_cache", {})
-                last_fix = max(
-                    (seg[-1]["t"] for seg in data["segments"] if seg), default=0
-                )
+                source_hash = match_fingerprint(data["segments"], backend, server)
                 cache_key = (
-                    request["hass_user"].id, person, day, last_fix,
-                    data["points_count"], backend, server if backend == "osrm" else "",
+                    request["hass_user"].id, person, day, source_hash,
                 )
                 cached = cache.get(cache_key)
                 now_ts = datetime.now(timezone.utc).timestamp()
@@ -408,20 +486,38 @@ class TinyFamilyTimelineView(HomeAssistantView):
                     data["matched_segments"] = cached["segments"]
                     data["matching_status"] = cached["status"]
                 else:
-                    # A single matching request at a time protects external
-                    # road-data services and the Home Assistant event loop.
+                    # Cached historical overlays survive HA restarts.
+                    try:
+                        stored = await self.hass.async_add_executor_job(
+                            read_matched_day, runtime["timeline_path"], person,
+                            day, viewer, source_hash
+                        )
+                    except (OSError, sqlite3.Error, ValueError, KeyError):
+                        stored = None
                     import asyncio
                     lock = runtime.setdefault("map_matching_lock", asyncio.Lock())
-                    async with lock:
-                        if backend == "builtin":
-                            road_cache = runtime.setdefault("osm_road_cache", {})
-                            matched, status = await match_day_embedded(
-                                self.hass, data["segments"], road_cache
-                            )
-                        else:
-                            matched, status = await match_day(
-                                self.hass, server, data["segments"]
-                            )
+                    if stored is not None:
+                        matched, status = stored
+                    else:
+                        # One matching request at a time avoids flooding OSM.
+                        async with lock:
+                            if backend == "builtin":
+                                road_cache = runtime.setdefault("osm_road_cache", {})
+                                matched, status = await match_day_embedded(
+                                    self.hass, data["segments"], road_cache
+                                )
+                            else:
+                                matched, status = await match_day(
+                                    self.hass, server, data["segments"]
+                                )
+                        if matched:
+                            try:
+                                await self.hass.async_add_executor_job(
+                                    save_matched_day, runtime["timeline_path"],
+                                    person, day, viewer, source_hash, matched, status
+                                )
+                            except (OSError, sqlite3.Error, ValueError):
+                                pass  # Overlay is optional; keep original GPS.
                     data["matched_segments"] = matched
                     data["matching_status"] = status
                     cache[cache_key] = {
@@ -434,6 +530,6 @@ class TinyFamilyTimelineView(HomeAssistantView):
                 data["matching_status"] = "not_enough_points"
         return web.json_response({
             "person":person,"date":day,"timezone":self.hass.config.time_zone,
-            "retention_days":RETENTION_DAYS,"start":start,"end":end,
+            "retention_days":retention_days,"start":start,"end":end,
             **data,
         }, headers={"Cache-Control":"no-store, private"})

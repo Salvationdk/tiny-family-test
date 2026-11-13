@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from datetime import datetime, timezone, timedelta
+from functools import partial
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -33,9 +34,10 @@ from homeassistant.helpers.event import async_track_state_change_event, async_tr
 from .const import CARD_VERSION, DOMAIN, HISTORY_FILE, HISTORY_KEY, PLACES_FILE, SHARED_PLACES_FILE, STATIC_URL
 from .migration import migrate_local_json_once
 from .places import _predict, _record_place, _seed_zones, estimate_home_eta, estimate_destination_eta
+from .historical_prediction import load_historical_patterns
 from .places_api import TinyFamilyPlacesView
 from .motion import update_motion
-from .gps_quality import assess_sample, mark_stale, reset_continuity
+from .gps_quality import assess_sample, mark_stale, reset_continuity, screen_gps_drift
 from .automation_engine import update_zone, update_battery, update_speed, notify_family, message_for_event
 from .privacy import TinyFamilyStatusView, TinyFamilyPrivacyView
 from .sharing import TinyFamilySharingView
@@ -57,7 +59,10 @@ from .mobile_actions import process_companion_reply
 from .communications import CommunicationError
 from .authz import require_permission, require_history_log_permission
 from .communications import check_target
-from .device_binding import companion_device_sensors
+from .device_binding import (
+    PHONE_SENSOR_KEYS, companion_device_sensors, companion_sensor_inventory,
+    selected_phone_sensors,
+)
 from .sensors import _publish, remove_generated_states
 from .automation_engine import ALERT_EVENTS, DEFAULT_ALERT_EVENTS
 from .storage import (
@@ -240,6 +245,7 @@ class TinyFamilySettingsView(HomeAssistantView):
             "batteries": {p: v for p,v in (cfg.get("batteries") or {}).items() if p in visible},
             "charging_sensors": {p: v for p,v in (cfg.get("charging_sensors") or {}).items() if p in visible},
             "activity_sensors": {p: v for p,v in (cfg.get("activity_sensors") or {}).items() if p in visible},
+            "power_save_sensors": {p: v for p,v in (cfg.get("power_save_sensors") or {}).items() if p in visible},
             "colors": {p: v for p,v in (cfg.get("colors") or {}).items() if p in visible},
             "available_persons": (sorted([
                 {"id": s.entity_id, "name": s.attributes.get("friendly_name", s.entity_id)}
@@ -248,6 +254,13 @@ class TinyFamilySettingsView(HomeAssistantView):
             "device_sensors": ({s.entity_id: companion_device_sensors(self.hass, s.entity_id)
                                 for s in self.hass.states.async_all("device_tracker")}
                                if admin else {}),
+            "phone_sensor_inventory": ({
+                s.entity_id: companion_sensor_inventory(self.hass, s.entity_id)
+                for s in self.hass.states.async_all("device_tracker")
+            } if admin else {}),
+            "phone_sensor_selection": ({
+                p: list(selected_phone_sensors(cfg, p)) for p in visible
+            } if admin else {}),
             "available_speakers": (sorted([
                 {"id": state.entity_id, "name": state.name}
                 for state in self.hass.states.async_all("media_player")
@@ -279,12 +292,14 @@ class TinyFamilySettingsView(HomeAssistantView):
             ], key=lambda x: x["name"]) if admin else []),
             "editable": bool(request["hass_user"].is_admin),
             "map_matching_enabled": bool(cfg.get("map_matching_enabled", False)),
+            "timeline_retention_days": cfg.get("timeline_retention_days", 365),
             "map_matching_backend": cfg.get("map_matching_backend") or (
                 "osrm" if cfg.get("map_matching_url") else "builtin"
             ),
             "map_matching_url": (cfg.get("map_matching_url", "") if admin else ""),
             "auto_notifications_enabled": bool(cfg.get("auto_notifications_enabled",False)),
             "learn_routines_enabled": bool(cfg.get("learn_routines_enabled",False)),
+            "routine_learning_people": (cfg.get("routine_learning_people", []) if admin else []),
             "notification_events": cfg.get("notification_events", list(DEFAULT_ALERT_EVENTS)),
             "speed_limit_kmh": cfg.get("speed_limit_kmh", 130) if admin else None,
             "speed_limits_kmh": cfg.get("speed_limits_kmh", {}) if admin else {},
@@ -326,6 +341,13 @@ class TinyFamilySettingsView(HomeAssistantView):
             batteries = data.get("batteries", {})
             charging_sensors = data.get("charging_sensors", {})
             activity_sensors = data.get("activity_sensors", {})
+            power_save_sensors = data.get("power_save_sensors", {})
+            phone_sensor_selection = data.get(
+                "phone_sensor_selection", saved.get("phone_sensor_selection", {})
+            )
+            timeline_retention_days = data.get(
+                "timeline_retention_days", saved.get("timeline_retention_days", 365)
+            )
             notification_events = data.get("notification_events", list(DEFAULT_ALERT_EVENTS))
             speed_limit_kmh = data.get("speed_limit_kmh", {**entry.data, **entry.options}.get("speed_limit_kmh", 130))
             speed_limits_kmh = data.get("speed_limits_kmh", {})
@@ -340,6 +362,7 @@ class TinyFamilySettingsView(HomeAssistantView):
             notification_targets = data.get("notification_targets", {})
             auto_notifications_enabled = data.get("auto_notifications_enabled", False)
             learn_routines_enabled = data.get("learn_routines_enabled", False)
+            routine_learning_people = data.get("routine_learning_people", saved.get("routine_learning_people", []))
             map_matching_enabled = data.get("map_matching_enabled", False)
             map_matching_backend = data.get("map_matching_backend", "builtin")
             map_matching_url = validate_match_server(data.get("map_matching_url", ""))
@@ -350,8 +373,15 @@ class TinyFamilySettingsView(HomeAssistantView):
                 raise ValueError("Invalid map matching backend settings")
             if type(auto_notifications_enabled) is not bool or type(learn_routines_enabled) is not bool:
                 raise ValueError("Invalid settings toggle")
+            if (not isinstance(routine_learning_people, list) or
+                    len(routine_learning_people) != len(set(routine_learning_people)) or
+                    any(not isinstance(p, str) or p not in persons
+                        for p in routine_learning_people)):
+                raise ValueError("Invalid routine learning selection")
             if type(speed_limit_kmh) is not int or not 30 <= speed_limit_kmh <= 200:
                 raise ValueError("Invalid speed threshold")
+            if type(timeline_retention_days) is not int or not 30 <= timeline_retention_days <= 3650:
+                raise ValueError("Invalid timeline retention")
             if (not isinstance(speed_limits_kmh, dict) or
                     any(person not in persons or type(limit) is not int or
                         not 30 <= limit <= 200
@@ -377,15 +407,21 @@ class TinyFamilySettingsView(HomeAssistantView):
                     len(set(notification_events)) != len(notification_events)):
                 raise ValueError("Invalid alert categories")
             if not all(isinstance(obj, dict) for obj in (
-                    trackers, batteries, charging_sensors, activity_sensors,
-                    colors, owners, notification_targets,
+                    trackers, batteries, charging_sensors, activity_sensors, power_save_sensors,
+                    phone_sensor_selection, colors, owners, notification_targets,
                     smart_speakers, tts_engines)):
                 raise ValueError("invalid mappings")
             if any(k not in persons for obj in (
-                    trackers, batteries, charging_sensors, activity_sensors,
-                    colors, owners, notification_targets,
+                    trackers, batteries, charging_sensors, activity_sensors, power_save_sensors,
+                    phone_sensor_selection, colors, owners, notification_targets,
                     smart_speakers, tts_engines) for k in obj):
                 raise ValueError("mapping contains a person not selected")
+            if any(not isinstance(selected, list) or
+                   len(selected) != len(set(selected)) or
+                   any(not isinstance(key, str) or key not in PHONE_SENSOR_KEYS
+                       for key in selected)
+                   for selected in phone_sensor_selection.values()):
+                raise ValueError("Invalid Companion sensor selection")
             if any(not isinstance(v, str) or len(v) > 128 or
                    (v and not v.startswith("media_player."))
                    for v in smart_speakers.values()):
@@ -414,7 +450,7 @@ class TinyFamilySettingsView(HomeAssistantView):
                 raise ValueError("invalid battery")
             if any(not isinstance(v, str) or len(v) > 128 or
                    (v and not v.startswith(("sensor.", "binary_sensor.")))
-                   for mapping in (charging_sensors, activity_sensors)
+                    for mapping in (charging_sensors, activity_sensors, power_save_sensors)
                    for v in mapping.values()):
                 raise ValueError("invalid companion sensor")
             if any(not isinstance(v, str) or
@@ -442,6 +478,7 @@ class TinyFamilySettingsView(HomeAssistantView):
             batteries.clear()
             charging_sensors.clear()
             activity_sensors.clear()
+            power_save_sensors.clear()
             for person in persons:
                 tracker = trackers.get(person)
                 if not tracker:
@@ -449,9 +486,9 @@ class TinyFamilySettingsView(HomeAssistantView):
                 found = companion_device_sensors(self.hass, tracker)
                 for key, mapping in (
                     ("battery", batteries), ("charging", charging_sensors),
-                    ("activity", activity_sensors),
+                    ("activity", activity_sensors), ("power_save", power_save_sensors),
                 ):
-                    if found.get(key):
+                    if key in selected_phone_sensors({"phone_sensor_selection": phone_sensor_selection}, person) and found.get(key):
                         mapping[person] = found[key]
         except (KeyError, ValueError, TypeError, AttributeError):
             return web.json_response({"message": "Invalid settings"}, status=400)
@@ -463,6 +500,9 @@ class TinyFamilySettingsView(HomeAssistantView):
             "batteries": batteries, "colors": colors,
             "charging_sensors": charging_sensors,
             "activity_sensors": activity_sensors,
+            "power_save_sensors": power_save_sensors,
+            "phone_sensor_selection": phone_sensor_selection,
+            "timeline_retention_days": timeline_retention_days,
             "notification_events": notification_events,
             "speed_limit_kmh": speed_limit_kmh,
             "speed_limits_kmh": speed_limits_kmh,
@@ -480,7 +520,7 @@ class TinyFamilySettingsView(HomeAssistantView):
             "map_matching_enabled": map_matching_enabled,
             "map_matching_backend": map_matching_backend,
             "map_matching_url": map_matching_url,
-            "routine_learning_people": (options.get("routine_learning_people", [])
+            "routine_learning_people": (routine_learning_people
                                          if learn_routines_enabled else []),
         })
         if not learn_routines_enabled and {**entry.data, **entry.options}.get("learn_routines_enabled",False):
@@ -580,16 +620,16 @@ async def _async_setup_runtime(hass: HomeAssistant, config: dict) -> bool:
         trackers[person] = trackers.get(person) or person
     # Refresh phone-owned sensor mapping during startup as well as on save.
     # This avoids stale sensor references after an upgrade or a phone switch.
-    for mapping_key in ("batteries", "charging_sensors", "activity_sensors"):
+    for mapping_key in ("batteries", "charging_sensors", "activity_sensors", "power_save_sensors"):
         cfg[mapping_key] = {}
     for person in persons:
         tracker = trackers.get(person)
         found = companion_device_sensors(hass, tracker)
         for key, mapping_key in (
             ("battery", "batteries"), ("charging", "charging_sensors"),
-            ("activity", "activity_sensors"),
+            ("activity", "activity_sensors"), ("power_save", "power_save_sensors"),
         ):
-            if found.get(key):
+            if key in selected_phone_sensors(cfg, person) and found.get(key):
                 cfg[mapping_key][person] = found[key]
     # Shared places load once, and each person's prediction engine sees
     # the same in-memory list. Personal learned stays remain separate.
@@ -644,7 +684,8 @@ async def _async_setup_runtime(hass: HomeAssistant, config: dict) -> bool:
     # then keep daily GPS samples in a durable local SQLite archive.
     timeline_path = hass.config.path("tiny_family_timeline.sqlite3")
     await hass.async_add_executor_job(
-        initialize_archive, timeline_path, routes_data, activity_data
+        partial(initialize_archive, timeline_path, routes_data, activity_data,
+                retention_days=cfg.get("timeline_retention_days", 365))
     )
     runtime["timeline_path"] = timeline_path
     runtime["timeline_pending"] = []
@@ -668,7 +709,10 @@ async def _async_setup_runtime(hass: HomeAssistant, config: dict) -> bool:
             snapshot = ({p: [dict(item) for item in rows] for p, rows in events.items()}
                         if events is not None else None)
             try:
-                await hass.async_add_executor_job(persist_archive, timeline_path, batch, snapshot)
+                await hass.async_add_executor_job(partial(
+                    persist_archive, timeline_path, batch, snapshot,
+                    retention_days=cfg.get("timeline_retention_days", 365)
+                ))
                 runtime["timeline_event_fingerprint"] = fingerprint
             except Exception:
                 pending[:0] = batch
@@ -837,13 +881,35 @@ async def _async_setup_runtime(hass: HomeAssistant, config: dict) -> bool:
                 d = _hav(st["last_lat"], st["last_lon"], lat, lon)
             old_timestamp = st.get("gps_seen_at")
             health_before = st.get("gps_health", "unknown")
+            power_save_entity = (cfg.get("power_save_sensors") or {}).get(person)
+            power_save_state = hass.states.get(power_save_entity) if power_save_entity else None
+            power_save = (power_save_state.state == "on") if power_save_state and power_save_state.state in ("on", "off") else None
+            st["power_save"] = power_save
             quality = assess_sample(
                 st, observed_at=t, now_ts=datetime.now(tz=timezone.utc).timestamp(),
                 latitude=lat, longitude=lon, speed_mps=speed,
                 accuracy_m=accuracy, distance_m=d,
             )
+            if quality == "jump":
+                st["gps_glitches"] = st.get("gps_glitches", 0) + 1
+                st["gps_glitch_at"] = t
+                _publish(hass, person)
             if quality in ("invalid", "duplicate", "jump"):
                 return
+            if quality == "continuous":
+                drift = screen_gps_drift(
+                    st, observed_at=t, latitude=lat, longitude=lon,
+                    distance_m=d, accuracy_m=accuracy, speed_mps=speed,
+                    power_save=power_save is True,
+                )
+                if drift == "discard":
+                    st["gps_glitches"] = st.get("gps_glitches", 0) + 1
+                    st["gps_glitch_at"] = t
+                    _publish(hass, person)
+                    return
+                if drift == "rebase":
+                    quality = "gap"
+                    d = None
             if quality == "gap":
                 archive_interrupted_trip(
                     activity_data, person, st, private=person in ghost_people
@@ -941,11 +1007,12 @@ async def _async_setup_runtime(hass: HomeAssistant, config: dict) -> bool:
                         or _nearest_zone_label(hass, lat, lon))
                 for name, details in update_zone(st, zone, t):
                     emit_alert(person, name, details)
-                for name, details in update_speed(
-                        st, speed * 3.6, accuracy, t,
-                        threshold_kmh=(cfg.get("speed_limits_kmh") or {}).get(
-                            person, cfg.get("speed_limit_kmh", 130))):
-                    emit_alert(person, name, details)
+                if quality == "continuous":
+                    for name, details in update_speed(
+                            st, speed * 3.6, accuracy, t,
+                            threshold_kmh=(cfg.get("speed_limits_kmh") or {}).get(
+                                person, cfg.get("speed_limit_kmh", 130))):
+                        emit_alert(person, name, details)
             def fire(event_name, **details):
                 # No raw GPS coordinates, phone identifiers or tokens in events.
                 if person in ghost_people:
@@ -1013,11 +1080,28 @@ async def _async_setup_runtime(hass: HomeAssistant, config: dict) -> bool:
             recent = st.setdefault("recent", [])
             recent.append((t, lat, lon))
             st["recent"] = [p for p in recent if t - p[0] <= 900][-60:]
+            st["prediction_timezone"] = hass.config.time_zone
+            st["prediction_speed_mps"] = speed
+            if cfg.get("learn_routines_enabled") and person in routine_people:
+                refresh_at = datetime.now(timezone.utc).timestamp()
+                if refresh_at - st.get("history_patterns_at", 0) >= 3600:
+                    st["history_patterns_at"] = refresh_at
+                    places_snapshot = [dict(p) for p in st.get("places", [])
+                                       if isinstance(p, dict)]
+                    st["history_patterns"] = await hass.async_add_executor_job(
+                        partial(load_historical_patterns, timeline_path, person,
+                                places_snapshot, hass.config.time_zone,
+                                now_ts=refresh_at,
+                                retention_days=cfg.get("timeline_retention_days", 365))
+                    )
+            else:
+                st["history_patterns"] = []
             previous_destination = st.get("destination") or ""
             pred = _predict(st) if speed >= 2.2 else None
             if pred:
                 pl, d_now = pred
                 st["destination"] = pl.get("label") or "ukendt sted"
+                st["destination_private"] = pl.get("private") is True
                 st["dest_eta_min"] = estimate_destination_eta(d_now,speed) or 0
                 st["dest_dist_m"] = d_now
             else:
@@ -1025,6 +1109,7 @@ async def _async_setup_runtime(hass: HomeAssistant, config: dict) -> bool:
                 st["dest_eta_min"] = 0
                 st["dest_dist_m"] = 0.0
                 st["destination_confidence"] = 0.0
+                st["destination_private"] = False
             st["home_eta_min"] = estimate_home_eta(
                 st, lat, lon, hass.config.latitude, hass.config.longitude, speed
             )
@@ -1052,6 +1137,24 @@ async def _async_setup_runtime(hass: HomeAssistant, config: dict) -> bool:
                 await _handle(person)(SimpleNamespace(
                     data={"new_state": initial_state}
                 ))
+        power_entity = (cfg.get("power_save_sensors") or {}).get(person)
+        if power_entity:
+            def power_save_listener(member):
+                @callback
+                def on_change(event):
+                    state = event.data.get("new_state")
+                    st = hass.data.get(DOMAIN, {}).get(member)
+                    if st is not None:
+                        st["power_save"] = (
+                            state.state == "on" if state is not None and
+                            state.state in ("on", "off") else None
+                        )
+                        _publish(hass, member)
+                return on_change
+            runtime["unsubscribers"].append(
+                async_track_state_change_event(hass, [power_entity],
+                                               power_save_listener(person))
+            )
 
     async def _check_gps_health(now: datetime):
         now_ts = now.timestamp()
@@ -1299,7 +1402,7 @@ async def _async_setup_runtime(hass: HomeAssistant, config: dict) -> bool:
 
     async def _delete_place_suggestion(call):
         person = call.data.get("person")
-        await require_permission(hass, cfg, call, person)
+        await require_permission(hass, cfg, call, person, admin_only=True)
         lat = call.data.get("lat")
         lon = call.data.get("lon")
         if not person or lat is None or lon is None:

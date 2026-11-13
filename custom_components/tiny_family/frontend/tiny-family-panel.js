@@ -565,7 +565,7 @@ class TinyFamilyPanel extends HTMLElement {
     const title=document.createElement("h2");
     title.textContent="Familiens steder";root.appendChild(title);
     const intro=document.createElement("p");intro.className="tf-message tf-screen-intro";
-    intro.textContent="Fælles steder er synlige for alle familiemedlemmer. Du kan oprette og redigere dine egne. Administrator kan ændre alle steder.";
+    intro.textContent="Steder er registrerede ophold, som Tiny Family lærer af GPS. Forslag deles med familien, medmindre administrator markerer dem private. Zoner er geografiske områder med en radius, som administrator opretter for at registrere ankomst og afgang og udløse relevante alarmer.";
     root.appendChild(intro);
 
     const create=document.createElement("details");create.className="tf-person tf-add-place";
@@ -612,8 +612,17 @@ class TinyFamilyPanel extends HTMLElement {
     root.appendChild(ownDetails);
     const adminDetails=document.createElement("details");adminDetails.className="tf-place-group";
     const adminTitle=document.createElement("summary");
-    adminTitle.textContent="Administrator: destinationer og opholdsforslag";
+    adminTitle.textContent="Stedforslag fra familiens registrerede ophold";
     adminDetails.appendChild(adminTitle);
+    const proposalHelp=document.createElement("p");proposalHelp.className="tf-message";
+    proposalHelp.textContent="Forslag opstår efter gentagne ophold. Vælg Vis på kort for at se placeringen. Forslag deles med familien; administrator kan gøre enkelte private. Zoner oprettes separat og bruges til ankomst-/afgangsalarmer.";
+    adminDetails.appendChild(proposalHelp);
+    const proposalMapNode=document.createElement("div");
+    proposalMapNode.className="tf-map tf-place-proposal-map";
+    proposalMapNode.style.height="225px";proposalMapNode.style.minHeight="225px";
+    adminDetails.appendChild(proposalMapNode);
+    const proposalMapTitle=document.createElement("p");proposalMapTitle.className="tf-message";
+    adminDetails.appendChild(proposalMapTitle);
     const adminList=document.createElement("div");adminDetails.appendChild(adminList);
 
     root.classList.add("tf-places-view");
@@ -634,13 +643,23 @@ class TinyFamilyPanel extends HTMLElement {
     const placeViews=[
       {key:"shared",title:"Fælles",pane:sharedPane},
       {key:"mine",title:"Mine ophold",pane:ownPane},
-      ...(this.settings.editable?[{key:"admin",title:"Forslag",pane:adminPane}]:[])
+      {key:"proposals",title:"Forslag",pane:adminPane}
     ];
     const selectPlaceView=key=>{
+      if(key==="proposals" && map){
+        map.remove();if(this._familyMap===map)this._familyMap=null;
+        map=null;marker=null;
+      }
+      if(key!=="proposals" && proposalsMap){
+        proposalsMap.remove();if(this._familyMap===proposalsMap)this._familyMap=null;
+        proposalsMap=null;proposalLayers=null;
+      }
       for(const option of placeViews){
         option.pane.hidden=option.key!==key;
         option.button?.setAttribute("aria-pressed",String(option.key===key));
       }
+      if(key==="proposals")ensureProposalMap();
+      if(key==="shared" && create.open)ensurePlaceMap();
     };
     for(const option of placeViews){
       const button=document.createElement("button");
@@ -649,9 +668,59 @@ class TinyFamilyPanel extends HTMLElement {
       button.addEventListener("click",()=>selectPlaceView(option.key));
       placeNav.appendChild(button);
     }
-    selectPlaceView("shared");
-
     let map=null,chosen=null,marker=null,mapLoading=false;
+    let proposalsMap=null,proposalsLoading=false,proposalRows=[],proposalFocus=null;
+    let proposalLayers=null;
+    const drawProposalPins=()=>{
+      if(!proposalsMap)return;
+      if(proposalLayers){proposalLayers.remove();proposalLayers=null;}
+      const layer=window.L.layerGroup().addTo(proposalsMap);
+      proposalLayers=layer;
+      const bounds=[];
+      for(const row of proposalRows.slice(0,250)){
+        const pos=[Number(row.latitude),Number(row.longitude)];
+        if(!pos.every(Number.isFinite))continue;
+        bounds.push(pos);
+        const icon=window.L.circleMarker(pos,{
+          radius:7,color:row.private?"#9b6dbb":"#26c9d6",
+          weight:2,fillColor:row.private?"#b995e9":"#27b8c3",fillOpacity:.85
+        }).addTo(layer);
+        const popup=document.createElement("div");
+        popup.textContent=row.person_name+" · "+row.name+(row.private?" · Privat":"");
+        icon.bindPopup(popup);
+      }
+      if(proposalFocus){
+        proposalsMap.setView([proposalFocus.latitude,proposalFocus.longitude],16);
+      }else if(bounds.length){
+        proposalsMap.fitBounds(bounds,{padding:[22,22],maxZoom:15});
+      }else{
+        proposalsMap.setView([this.hassInstance.config.latitude||0,
+          this.hassInstance.config.longitude||0],11);
+      }
+    };
+    const ensureProposalMap=async()=>{
+      if(proposalsMap||proposalsLoading||adminPane.hidden||!adminDetails.open||this.active!=="places")return;
+      proposalsLoading=true;
+      try{
+        await this.leaflet();
+        if(adminPane.hidden||this.active!=="places")return;
+        proposalsMap=this.createLeafletMap(proposalMapNode);
+        await this.addBaseMap(proposalsMap,proposalMapNode);
+        drawProposalPins();
+        setTimeout(()=>proposalsMap?.invalidateSize(),140);
+      }catch(error){proposalMapTitle.textContent="Kortet kunne ikke indlæses: "+this.errorText(error);}
+      finally{proposalsLoading=false;}
+    };
+    adminDetails.addEventListener("toggle",()=>{
+      if(adminDetails.open)ensureProposalMap();
+    });
+    const focusProposal=place=>{
+      proposalFocus=place;
+      proposalMapTitle.textContent=place.person_name+" · "+place.name+
+        (place.private?" · Privat":" · Fælles stedforslag");
+      if(proposalsMap){proposalsMap.setView([place.latitude,place.longitude],16);}
+      else ensureProposalMap();
+    };
     const choose=(latitude,longitude)=>{
       if(!Number.isFinite(latitude)||!Number.isFinite(longitude))return;
       chosen={latitude:Number(latitude.toFixed(6)),longitude:Number(longitude.toFixed(6))};
@@ -666,6 +735,10 @@ class TinyFamilyPanel extends HTMLElement {
     };
     const ensurePlaceMap=async()=>{
       if(map||mapLoading||!create.open||this.active!=="places")return;
+      if(proposalsMap){
+        proposalsMap.remove();if(this._familyMap===proposalsMap)this._familyMap=null;
+        proposalsMap=null;proposalLayers=null;
+      }
       mapLoading=true;
       try{
         await this.leaflet();
@@ -699,6 +772,7 @@ class TinyFamilyPanel extends HTMLElement {
         if(map)setTimeout(()=>map.invalidateSize(),100);
       }
     });
+    selectPlaceView("shared");
     const fill=(place,defaultName="")=>{
       selectPlaceView("shared");
       create.open=true;
@@ -773,7 +847,9 @@ class TinyFamilyPanel extends HTMLElement {
             await call("DELETE",{shared_id:place.id},"Fælles sted slettet.");
             remove.disabled=false;
           });
-          editActions.append(save,remove);edit.appendChild(editActions);
+          editActions.appendChild(save);
+          if(place.can_delete)editActions.appendChild(remove);
+          edit.appendChild(editActions);
           card.appendChild(edit);
         }
         sharedList.appendChild(card);
@@ -793,11 +869,17 @@ class TinyFamilyPanel extends HTMLElement {
         const publish=document.createElement("button");publish.type="button";
         publish.className="tf-save";publish.textContent="Del med familien";
         publish.addEventListener("click",()=>fill(place));
-        actions.append(publish,openMaps(place));
+        if(!place.private||data.can_manage_all_places)actions.appendChild(publish);
+        actions.appendChild(openMaps(place));
+        if(place.private){
+          const privacyLabel=document.createElement("span");
+          privacyLabel.className="tf-chip";privacyLabel.textContent="Privat efter administratorvalg";
+          actions.appendChild(privacyLabel);
+        }
         card.append(heading,info,actions);
         if(place.status!=="zone"){
           const edit=document.createElement("details");
-          const editTitle=document.createElement("summary");editTitle.textContent="Ret eller fjern eget ophold";
+          const editTitle=document.createElement("summary");editTitle.textContent="Ret navn på ophold";
           edit.appendChild(editTitle);
           const renameField=labelInput("Navn",place.name==="Ukendt sted"?"":place.name);
           edit.appendChild(renameField.wrapper);
@@ -820,7 +902,9 @@ class TinyFamilyPanel extends HTMLElement {
               "Ophold fjernet.");
             remove.disabled=false;
           });
-          editActions.append(rename,remove);edit.appendChild(editActions);
+          editActions.appendChild(rename);
+          if(data.can_manage_all_places)editActions.appendChild(remove);
+          edit.appendChild(editActions);
           card.appendChild(edit);
         }
         ownList.appendChild(card);
@@ -830,19 +914,32 @@ class TinyFamilyPanel extends HTMLElement {
         empty.textContent="Der er endnu ingen indlærte ophold.";
         ownList.appendChild(empty);
       }
-      if(data.can_manage_all_places){
+      {
         if(!adminDetails.isConnected)adminPane.appendChild(adminDetails);
-        for(const place of data.admin_suggestions||[]){
+        proposalRows=data.family_suggestions||[];
+        if(proposalFocus && !proposalRows.some(row=>
+          row.person===proposalFocus.person && row.latitude===proposalFocus.latitude &&
+          row.longitude===proposalFocus.longitude))proposalFocus=null;
+        drawProposalPins();
+        for(const place of proposalRows){
           const card=document.createElement("section");card.className="tf-person";
           const heading=document.createElement("strong");
           heading.textContent=place.person_name+" · "+place.name;
           const info=document.createElement("p");
           info.textContent=place.visits+" besøg · "+place.minutes+" minutter"+
-            (place.last?" · sidst "+place.last:"");
+            (place.last?" · sidst "+place.last:"")+
+            (place.private?" · PRIVAT":"");
           const actions=document.createElement("div");actions.className="tf-card-actions";
+          const showOnMap=document.createElement("button");
+          showOnMap.type="button";showOnMap.className="tf-save";
+          showOnMap.textContent="Vis på kort";
+          showOnMap.addEventListener("click",()=>focusProposal(place));
+          actions.appendChild(showOnMap);
           const publish=document.createElement("button");publish.type="button";
           publish.className="tf-save";publish.textContent="Opret fælles sted";
           publish.addEventListener("click",()=>fill(place));
+          if(!place.private||data.can_manage_all_places)actions.appendChild(publish);
+          if(data.can_manage_all_places){
           const zone=document.createElement("button");zone.type="button";
           zone.className="tf-save";zone.textContent="Opret HA-zone";
           zone.addEventListener("click",async()=>{
@@ -869,12 +966,35 @@ class TinyFamilyPanel extends HTMLElement {
               latitude:place.latitude,longitude:place.longitude},"Opholdssted opdateret.");
             rename.disabled=false;
           });
-          actions.append(publish,zone,rename);
+          const privateToggle=document.createElement("button");
+          privateToggle.type="button";privateToggle.className="tf-save";
+          privateToggle.textContent=place.private?"Gør forslaget fælles":"Markér som privat";
+          privateToggle.addEventListener("click",async()=>{
+            privateToggle.disabled=true;
+            await call("PUT",{kind:"privacy",person:place.person,
+              latitude:place.latitude,longitude:place.longitude,
+              private:!place.private},
+              place.private?"Forslaget er nu synligt for familien.":"Forslaget er nu privat.");
+            privateToggle.disabled=false;
+          });
+          const removeSuggestion=document.createElement("button");
+          removeSuggestion.type="button";removeSuggestion.className="tf-save";
+          removeSuggestion.style.background="var(--error-color,#b3261e)";
+          removeSuggestion.textContent="Slet forslag";
+          removeSuggestion.addEventListener("click",async()=>{
+            if(!window.confirm("Slet dette indlærte forslag permanent?"))return;
+            removeSuggestion.disabled=true;
+            await call("DELETE",{person:place.person,
+              latitude:place.latitude,longitude:place.longitude},"Forslaget er slettet.");
+            removeSuggestion.disabled=false;
+          });
+          actions.append(zone,rename,privateToggle,removeSuggestion);
+          }
           card.append(heading,info,actions);
           adminList.appendChild(card);
         }
         if(!adminList.children.length)adminList.textContent="Ingen registrerede destinationer endnu.";
-      }else if(adminDetails.isConnected)adminDetails.remove();
+      }
     };
     position.addEventListener("click",async()=>{
       position.disabled=true;
@@ -1068,6 +1188,8 @@ class TinyFamilyPanel extends HTMLElement {
     zoneEditor.style.display="none";
     const zoneHeading=document.createElement("strong");
     zoneHeading.textContent="Administrator: opret geografisk zone";
+    const zoneExplanation=document.createElement("p");zoneExplanation.className="tf-message";
+    zoneExplanation.textContent="En zone er ikke et automatisk lært ophold. Det er et fast område omkring fx hjem, skole eller arbejde. Tiny Family bruger zonens radius til at registrere ankomst og afgang og til zonealarmer. Kun administrator kan oprette, ændre og slette zoner.";
     const zoneName=document.createElement("input");
     zoneName.required=true;zoneName.maxLength=80;
     zoneName.placeholder="Zonenavn (fx Skole eller Træning)";
@@ -1108,7 +1230,7 @@ class TinyFamilyPanel extends HTMLElement {
       zoneLocation.textContent="Kortcentrum valgt fra "+zone.name+
         ". Tryk på kortet for at flytte zonen.";
     });
-    zoneEditor.append(zoneHeading,storedLabel,zoneName,zoneRadius,zoneLocation,zoneSave,deleteZone);
+    zoneEditor.append(zoneHeading,zoneExplanation,storedLabel,zoneName,zoneRadius,zoneLocation,zoneSave,deleteZone);
     root.appendChild(zoneEditor);
     zoneEditor.addEventListener("submit",async event=>{
       event.preventDefault();
@@ -1277,7 +1399,7 @@ class TinyFamilyPanel extends HTMLElement {
           <span data-role="timeline-stats">Vælg dato og person</span></div>
         <label class="tf-road-matching" data-role="road-matching-label" hidden>
           <input type="checkbox" data-role="road-matching-toggle">
-          Følg vejene (vejtilpasning efter eget valg)
+          Følg vejene (styres af administrator)
         </label>
         <div class="tf-road-match-status" data-role="road-matching-status" aria-live="polite"></div>
         <div class="tf-event-strip" data-role="timeline-events" hidden></div>
@@ -1306,6 +1428,8 @@ class TinyFamilyPanel extends HTMLElement {
     const roadMatchToggle=dock.querySelector('[data-role="road-matching-toggle"]');
     const roadMatchStatus=dock.querySelector('[data-role="road-matching-status"]');
     roadMatchLabel.hidden=!this.settings?.map_matching_enabled;
+    roadMatchToggle.checked=Boolean(this.settings?.map_matching_enabled);
+    roadMatchToggle.disabled=true;
     roadMatchLabel.title=(this.settings?.map_matching_backend==="osrm")
       ?"OSRM får GPS-koordinater og tidspunkter ved aktivering."
       :"Indbygget motor: kun et vejområdes koordinatgrænser deles med OpenStreetMap ved aktivering.";
@@ -1316,7 +1440,8 @@ class TinyFamilyPanel extends HTMLElement {
     }).format(d);
     dockDate.value=localDate(new Date());
     dockDate.max=dockDate.value;
-    dockDate.min=localDate(new Date(Date.now()-364*86400000));
+    dockDate.min=localDate(new Date(Date.now()-
+      ((this.settings?.timeline_retention_days??365)-1)*86400000));
     let timelineMode=false,timelineData=null,timelineMarker=null,activeMap=null;
     let timelineRequest=0,timelineRevision=0;
     let previousCenteredFix=null;
@@ -1481,7 +1606,7 @@ class TinyFamilyPanel extends HTMLElement {
     dockDate.addEventListener("change",loadTimeline);
     roadMatchToggle.addEventListener("change",()=>{
       if(roadMatchToggle.checked){
-        // Explicitly request matching for the currently selected date only.
+        // Administrator has enabled matching for the selected date.
         loadTimeline();
       }else{
         roadMatchStatus.textContent="";
@@ -1702,8 +1827,15 @@ class TinyFamilyPanel extends HTMLElement {
             (person.status || "Ukendt")+" · "+(person.stale?"sidste position":"opdateret")+
             (person.battery_percent!=null?" · "+person.battery_percent+" % batteri":"")+
             (person.charging==="on"?" · oplader":"")+
-            (person.activity && person.activity!=="unknown"?" · "+person.activity:"");
+            (person.activity && person.activity!=="unknown"?" · "+person.activity:"")+
+            (person.power_save===true?" · Batterisparer aktiv":"");
           box.appendChild(status);
+          if(!person.ghost && person.gps_glitch_recent){
+            const jitter=document.createElement("p");jitter.className="tf-message";
+            jitter.textContent="GPS-usikkerhed registreret: "+person.gps_glitches+
+              " mistænkelige målinger er udeladt for at undgå falsk bevægelse.";
+            box.appendChild(jitter);
+          }
           if(!person.ghost && person.stale){
             const warning=document.createElement("p");
             warning.className="tf-message";
@@ -1809,6 +1941,12 @@ class TinyFamilyPanel extends HTMLElement {
               const gps=document.createElement("span");
               gps.textContent="GPS er ikke opdateret";
               popup.appendChild(gps);
+            }
+            if(person.power_save===true||person.gps_glitch_recent){
+              const warning=document.createElement("span");
+              warning.textContent=(person.power_save===true?"Batterisparer aktiv · ":"")+
+                (person.gps_glitch_recent?"Mulige GPS-hop frasorteret":"GPS kan opdatere sjældnere");
+              popup.appendChild(warning);
             }
             const timelineAction=document.createElement("button");
             timelineAction.type="button";
@@ -1965,15 +2103,12 @@ class TinyFamilyPanel extends HTMLElement {
     const trackingNote=document.createElement("p");trackingNote.className="tf-message";
     trackingNote.textContent="Din valgte Home Assistant Companion-telefon leverer GPS, batteri, opladning og aktivitet. Hvis telefonen ikke sender data, vises de som utilgængelige.";
     sharing.append(trackingTitle,trackingNote);
-    const routineLabel=document.createElement("label");
-    const routineCheckbox=document.createElement("input");
-    routineCheckbox.type="checkbox";
-    routineLabel.append(routineCheckbox,document.createTextNode(
-      " Lær mine typiske afgangstider lokalt (valgfrit)"));
+    const routineLabel=document.createElement("strong");
+    routineLabel.textContent="Indlæring af destinations- og afgangsmønstre";
     sharing.appendChild(routineLabel);
     const routineNote=document.createElement("p");
     routineNote.className="tf-message";
-    routineNote.textContent="Læring kræver administratorens aktivering og dit personlige samtykke. Tidspunkter gemmes lokalt i op til 60 dage og kan være synlige for andre HA-brugere via HA-sensorer. Slår du fra, slettes mine mønsterdata.";
+    routineNote.textContent="Administrator vælger, hvem der får indlært typiske afgangstider. Data gemmes lokalt i op til 60 dage. Destinationsgæt baseret på bevægelse og kendte steder anvendes stadig.";
     sharing.appendChild(routineNote);
     const permissions=document.createElement("section");
     permissions.className="tf-person";
@@ -1993,7 +2128,8 @@ class TinyFamilyPanel extends HTMLElement {
             ?"Skjult i Tiny Family for andre":"Delt med: "+(mine.tiny_family_location_viewers.join(", ")||"ingen tilknyttede familiemedlemmer")],
           ["Systemhændelser",mine.ghost_active?"Privat i Tiny Family":
             "Synlige for familiemedlemmer med adgang"],
-          ["Lærte steder og turarkiv","Kun min indloggede konto"],
+          ["Stedforslag","Delt med familien, medmindre administrator markerer dem private"],
+          ["Turarkiv","Mine historiske data er personlige; administrator styrer sletning"],
           ["Beskeder","Kun afsender og konfigurerede modtagere"],
           ["Privat historik fra ældre opsætning",mine.ghost_active
             ?"Historiske privatmarkerede data er fortsat beskyttet":"Ingen"],
@@ -2011,30 +2147,12 @@ class TinyFamilyPanel extends HTMLElement {
         permissionsBody.appendChild(caveat);
       }catch(error){permissionsBody.textContent="Delingsoversigten kunne ikke indlæses.";}
     };
-    routineCheckbox.addEventListener("change", async()=>{
-      routineCheckbox.disabled=true;
-      try {
-        const value=await this.hassInstance.callApi("POST","tiny_family/privacy",{
-          learn_my_routines:routineCheckbox.checked
-        });
-        routineCheckbox.checked=value.learn_my_routines;
-        this.message("Min rutineindlæring "+(value.learn_my_routines?"aktiveret":"deaktiveret"));
-      }catch(error){
-        routineCheckbox.checked=!routineCheckbox.checked;
-        this.message("Rutineindlæring kunne ikke ændres: "+error.message,true);
-      }finally{routineCheckbox.disabled=false;}
-    });
     try{
       const privacy=await this.hassInstance.callApi("GET","tiny_family/privacy");
-      routineCheckbox.checked=privacy.learn_my_routines===true;
-      routineCheckbox.disabled=!privacy.routine_learning_available;
-      if(!privacy.routine_learning_available){
-        routineNote.textContent="Administrator skal først aktivere lokal rutineindlæring i Administration.";
-      }
+      routineNote.textContent=privacy.learn_my_routines===true
+        ?"Rutineindlæring er aktiveret af administrator for dig. Dine typiske afgangstider lagres lokalt i op til 60 dage."
+        :"Rutineindlæring er ikke aktiveret for dig. Kun administrator kan ændre dette.";
     }catch(error){
-      // A new setup often has no linked HA user yet. Keep the anchor in the
-      // DOM so later status widgets can be inserted without NotFoundError.
-      routineCheckbox.disabled=true;
       routineNote.textContent="Tilknyt din Home Assistant-bruger til et familiemedlem under Administration for at se personlige data.";
     }
     if(sharing.isConnected)await refreshPermissions();
@@ -2043,13 +2161,10 @@ class TinyFamilyPanel extends HTMLElement {
     const personalTitle=document.createElement("strong");
     personalTitle.textContent="Mine lokalt gemte data";
     const personalIntro=document.createElement("p");
-    personalIntro.textContent="Slet gemte GPS-spor, ture, ophold, steder eller afgangsmønstre. Din 365-dages Tiny Family-tidslinje er omfattet. Home Assistant Recorder skal slettes separat.";
+    personalIntro.textContent="Administrator administrerer sletning af GPS-tidslinjer, ture og steder. Du kan stadig slette dine egne indlærte afgangsmønstre og eksportere dine data. Tidslinjens opbevaring er "+(this.settings.timeline_retention_days??365)+" dage. Home Assistant Recorder er separat.";
     const choices={};
     for(const [key,label] of [
-      ["routes","GPS-spor og tidslinje (op til 365 dage)"],
-      ["activities","Ture og ophold i arkiv (op til 365 dage)"],
-      ["places","Indlærte opholdssteder"],
-      ["routines","Indlærte afgangsmønstre (samtykke slås også fra)"]
+      ["routines","Indlærte afgangsmønstre (administrators valg ændres ikke)"]
     ]){
       const row=document.createElement("label");
       const checked=document.createElement("input");
@@ -2060,7 +2175,7 @@ class TinyFamilyPanel extends HTMLElement {
     const erase=document.createElement("button");
     erase.type="button";erase.className="tf-save";
     erase.style.background="var(--error-color,#a52d2d)";
-    erase.textContent="Slet valgte personlige data";
+    erase.textContent="Slet mine afgangsmønstre";
     erase.addEventListener("click",async()=>{
       const categories=Object.keys(choices).filter(k=>choices[k].checked);
       if(!categories.length){this.message("Vælg først de data, du vil slette.",true);return;}
@@ -2224,7 +2339,7 @@ class TinyFamilyPanel extends HTMLElement {
     const heading=document.createElement("h2");
     heading.textContent="Mine ture og ophold";root.appendChild(heading);
     const note=document.createElement("p");note.className="tf-message tf-screen-intro";
-    note.textContent="Her ses dine seneste afsluttede ture og ophold. Åbn Kort → Tidslinje for at gennemgå GPS-spor og målinger for en bestemt dato, op til 365 dage tilbage.";
+    note.textContent="Her ses dine seneste afsluttede ture og ophold. Åbn Kort → Tidslinje for at gennemgå GPS-spor og målinger for en bestemt dato, op til "+(this.settings.timeline_retention_days??365)+" dage tilbage.";
     root.appendChild(note);
     const routeButton=document.createElement("button");
     routeButton.className="tf-save";routeButton.type="button";
@@ -2818,7 +2933,7 @@ class TinyFamilyPanel extends HTMLElement {
     const heading=document.createElement("h2");heading.textContent="Administration – Tiny Family";
     adminHeading.append(adminIcon,heading);root.appendChild(adminHeading);
     const info=document.createElement("p");info.className="tf-message";
-    info.textContent="Administrationen samler familiens telefoner, notifikationer, fartgrænser og zoner. Vælg én Companion-telefon pr. person; dens registrerede sensorer tilknyttes automatisk.";
+    info.textContent="Administrationen samler familiens telefoner, sensorer, notifikationer, fartgrænser, datalagring og zoner. Telefonens sensorer anvendes kun, når administrator har valgt dem, og Companion-appen sender dem.";
     root.appendChild(info);
     const zoneTools=document.createElement("button");
     zoneTools.type="button";zoneTools.className="tf-save";
@@ -2878,13 +2993,25 @@ class TinyFamilyPanel extends HTMLElement {
     speedHint.textContent="Fælles standard. Hver person kan få egen grænse nedenfor. Advarsel kræver to troværdige GPS-målinger.";
     speedLabel.appendChild(speedHint);
     form.appendChild(speedLabel);
+    const retentionLabel=document.createElement("label");
+    retentionLabel.className="tf-person";
+    retentionLabel.textContent="Gem tidslinjer i antal dage (30–3650)";
+    const retentionDays=document.createElement("input");
+    retentionDays.type="number";retentionDays.min="30";retentionDays.max="3650";
+    retentionDays.step="1";retentionDays.required=true;
+    retentionDays.value=String(this.settings.timeline_retention_days??365);
+    retentionLabel.appendChild(retentionDays);
+    const retentionHint=document.createElement("span");retentionHint.className="tf-message";
+    retentionHint.textContent="Standard: 365 dage. Ændres perioden til færre dage, slettes ældre GPS-punkter og turhændelser automatisk ved næste indlæsning. Det kan ikke fortrydes.";
+    retentionLabel.appendChild(retentionHint);
+    form.appendChild(retentionLabel);
     const routinesLabel=document.createElement("label");
     routinesLabel.className="tf-person";
     const routineLearning=document.createElement("input");
     routineLearning.type="checkbox";
     routineLearning.checked=Boolean(this.settings.learn_routines_enabled);
     routinesLabel.append(routineLearning,document.createTextNode(
-      " Tillad lokal rutineindlæring (hver person skal også give samtykke i Min dag; data slettes ved fravalg)"));
+      " Aktivér lokal rutineindlæring. Kun administrator vælger aktive familiemedlemmer nedenfor; de øvrige kan ikke slå det til eller fra."));
     form.appendChild(routinesLabel);
     const mapMatchPanel=document.createElement("details");
     mapMatchPanel.className="tf-person tf-advanced tf-osrm-setting";
@@ -2896,7 +3023,7 @@ class TinyFamilyPanel extends HTMLElement {
     mapMatchEnabled.type="checkbox";
     mapMatchEnabled.checked=Boolean(this.settings.map_matching_enabled);
     mapMatchLabel.append(mapMatchEnabled,document.createTextNode(
-      " Tillad Følg vejene på familiens tidslinjer"));
+      " Tilpas nye og gamle tidslinjer til veje, når datoen vises (styres af administrator)"));
     const mapMatchBackendLabel=document.createElement("label");
     mapMatchBackendLabel.textContent="Vejmotor";
     const mapMatchBackend=document.createElement("select");
@@ -2923,8 +3050,8 @@ class TinyFamilyPanel extends HTMLElement {
     const updateMapBackend=()=>{
       mapMatchUrlLabel.hidden=mapMatchBackend.value!=="osrm";
       mapMatchNote.textContent=mapMatchBackend.value==="builtin"
-        ?"Den indbyggede vejtilpasning kræver ingen OSRM-server. Når et familiemedlem vælger Følg vejene, henter Tiny Family vejgeometri fra OpenStreetMap Overpass via HTTPS. Kun et afgrænset geografisk område (ikke person-id eller GPS-tidspunkter) sendes ud. Store eller usikre ture kan kun matche delvist. Originale GPS-spor ændres aldrig."
-        :"OSRM er valgfrit og kan være selvhostet. Når et familiemedlem vælger Følg vejene, sender Tiny Family udvalgte GPS-koordinater og tidspunkter til den angivne OSRM-server. Brug helst en lokal server af hensyn til privatlivet.";
+        ?"Indbygget vejtilpasning kræver ingen OSRM-server. Når en gammel eller ny dato åbnes, hentes vejgeometri fra OpenStreetMap Overpass via HTTPS. Kun et geografisk udsnit (ikke person-id eller GPS-tidspunkter) sendes ud. Match lagres lokalt pr. dato, og originale GPS-spor ændres aldrig."
+        :"OSRM er valgfrit og kan være selvhostet. Når en dato åbnes, sender Tiny Family dens synlige GPS-koordinater og tidspunkter til den angivne server. Vejtilpasningen lagres lokalt. Brug helst en lokal server af hensyn til privatlivet.";
     };
     mapMatchBackend.addEventListener("change",updateMapBackend);
     updateMapBackend();
@@ -2960,25 +3087,63 @@ class TinyFamilyPanel extends HTMLElement {
       const tracker = choice("Telefon (Home Assistant Companion / GPS)", this.settings.available_trackers || [], this.settings.trackers?.[person.id]);
       const detected=document.createElement("p");
       detected.className="tf-message";fields.appendChild(detected);
+      const sensorPanel=document.createElement("section");
+      sensorPanel.className="tf-person";
+      const sensorHeading=document.createElement("strong");
+      sensorHeading.textContent="Sensorer administrator kræver fra telefonen";
+      sensorPanel.appendChild(sensorHeading);
+      const gpsState=document.createElement("p");gpsState.className="tf-message";
+      gpsState.textContent="GPS/position: altid påkrævet i Tiny Family (kan ikke slås fra her).";
+      sensorPanel.appendChild(gpsState);
+      const sensorKeys={battery:"Batteriniveau",charging:"Opladning",activity:"Bevægelsesaktivitet",power_save:"Batterisparetilstand / GPS-kvalitet"};
+      const sensors={};
+      const enabledSensors=new Set(this.settings.phone_sensor_selection?.[person.id]??Object.keys(sensorKeys));
+      for(const [key,title] of Object.entries(sensorKeys)){
+        const label=document.createElement("label");
+        const checked=document.createElement("input");
+        checked.type="checkbox";checked.checked=enabledSensors.has(key);
+        sensors[key]=checked;
+        const status=document.createElement("span");status.dataset.sensorStatus=key;
+        label.append(checked,document.createTextNode(" "+title+" · "),status);
+        sensorPanel.appendChild(label);
+      }
+      const sensorHelp=document.createElement("p");sensorHelp.className="tf-message";
+      sensorHelp.textContent="Tilladelser alene aktiverer ikke sensorens kontakt i Companion-appen. Hvis noget mangler: Telefon → Home Assistant → Indstillinger → Companion-app → Administrer sensorer. Kontroller også HA-enhedsregistret. Tiny Family kan ikke tænde de lokale appkontakter eksternt.";
+      sensorPanel.appendChild(sensorHelp);fields.appendChild(sensorPanel);
+      const routineOption=document.createElement("label");
+      const personRoutine=document.createElement("input");personRoutine.type="checkbox";
+      personRoutine.checked=(this.settings.routine_learning_people||[]).includes(person.id);
+      routineOption.append(personRoutine,document.createTextNode(" Administrator: lær typiske afgangstider for denne person"));
+      fields.appendChild(routineOption);
       // The selected Companion phone owns every sensor binding.
       // No independent battery/activity drop-downs: the backend resolves
       // them from the very same HA device registry entry.
-      const battery={value:""},charging={value:""},activity={value:""};
+      const battery={value:""},charging={value:""},activity={value:""},powerSave={value:""};
       const refreshPhone=()=>{
         const auto=this.settings.device_sensors?.[tracker.value]||{};
+        const inventory=this.settings.phone_sensor_inventory?.[tracker.value]||{};
         battery.value=auto.battery||"";
         charging.value=auto.charging||"";
         activity.value=auto.activity||"";
+        powerSave.value=auto.power_save||"";
+        const descriptions={ready:"aktiv",unavailable:"ingen opdatering",disabled_in_ha:"deaktiveret i HA",missing:"mangler i Companion"};
+        for(const key of Object.keys(sensors)){
+          const slot=sensorPanel.querySelector('[data-sensor-status="'+key+'"]');
+          if(slot)slot.textContent=sensors[key].checked
+            ?(descriptions[inventory[key]?.status]||"mangler")
+            :"fravalgt af administrator";
+        }
         const found=Object.keys(auto).filter(key=>auto[key]);
         detected.textContent=tracker.value
           ?found.length
             ?"Sensorer fra denne telefon: "+found.map(key=>({
-               battery:"batteri",charging:"opladning",activity:"aktivitet"
+                battery:"batteri",charging:"opladning",activity:"aktivitet",power_save:"batterisparer"
               })[key]||key).join(", ")
             :"Ingen Companion-sensorer fundet på telefonen. Aktivér dem i Home Assistant Companion."
           :"Vælg telefonen én gang. GPS og tilgængelige sensorer tilknyttes automatisk.";
       };
       tracker.addEventListener("change",refreshPhone);
+      for(const checkbox of Object.values(sensors))checkbox.addEventListener("change",refreshPhone);
       refreshPhone();
       const colorLabel = document.createElement("label");colorLabel.textContent = "Farve";
       const color = document.createElement("input");color.type="color";color.value=this.settings.colors?.[person.id]||"#00a8a9";
@@ -3029,7 +3194,7 @@ class TinyFamilyPanel extends HTMLElement {
           checkbox.disabled=useGlobalEvents.checked;
       });
       fields.appendChild(personEventsBox);
-      rows.push({person:person.id,checkbox,tracker,battery,charging,activity,color,
+      rows.push({person:person.id,checkbox,tracker,battery,charging,activity,powerSave,sensors,personRoutine,color,
                  owner,target,speaker,ttsEngine,personSpeed,useGlobalEvents,individualEvents,refreshPhone});
     }
     const migrateLabel=document.createElement("label");
@@ -3121,11 +3286,63 @@ class TinyFamilyPanel extends HTMLElement {
       note.textContent = "Opret personer under Indstillinger → Personer i Home Assistant.";
       form.appendChild(note);
     }
+    const erasePanel=document.createElement("section");erasePanel.className="tf-person";
+    const eraseIntro=document.createElement("p");eraseIntro.className="tf-message";
+    eraseIntro.textContent="Kun administrator kan slette gemte tidslinjer, turarkiv og indlærte steder. Sletningen gælder den valgte person og kan ikke fortrydes. Home Assistant Recorder og fælles HA-zoner berøres ikke.";
+    const eraseSelect=document.createElement("select");
+    const eraseBlank=document.createElement("option");eraseBlank.value="";
+    eraseBlank.textContent="Vælg familiemedlem";eraseSelect.appendChild(eraseBlank);
+    for(const p of this.settings.available_persons||[]){
+      const item=document.createElement("option");item.value=p.id;item.textContent=p.name;
+      eraseSelect.appendChild(item);
+    }
+    const eraseCounts=document.createElement("p");eraseCounts.className="tf-message";
+    eraseSelect.addEventListener("change",async()=>{
+      eraseCounts.textContent="";
+      if(!eraseSelect.value)return;
+      try{
+        const data=await this.hassInstance.callApi("GET","tiny_family/personal_data?person="+
+          encodeURIComponent(eraseSelect.value));
+        if(data.person===eraseSelect.value)eraseCounts.textContent=
+          data.routes+" GPS-punkter · "+data.activities+" turhændelser · "+data.places+" steder";
+      }catch(error){eraseCounts.textContent="Kunne ikke hente antal gemte data.";}
+    });
+    const eraseChecks={};
+    for(const [key,title] of [["routes","GPS-tidslinjer"],["activities","Tur- og opholdsarkiv"],["places","Indlærte steder"]]){
+      const label=document.createElement("label");
+      const checked=document.createElement("input");checked.type="checkbox";
+      eraseChecks[key]=checked;
+      label.append(checked,document.createTextNode(" "+title));erasePanel.appendChild(label);
+    }
+    const eraseButton=document.createElement("button");eraseButton.type="button";
+    eraseButton.className="tf-save";eraseButton.textContent="Slet valgte data for personen";
+    eraseButton.style.background="var(--error-color,#a52d2d)";
+    eraseButton.addEventListener("click",async()=>{
+      const person=eraseSelect.value;
+      const categories=Object.keys(eraseChecks).filter(k=>eraseChecks[k].checked);
+      if(!person||!categories.length){this.message("Vælg person og datatype før sletning.",true);return;}
+      if(!window.confirm("Slet "+categories.join(", ")+" permanent for "+
+          eraseSelect.selectedOptions[0].textContent+"? Dette kan ikke fortrydes."))return;
+      eraseButton.disabled=true;
+      try{
+        await this.hassInstance.callApi("DELETE","tiny_family/personal_data",{
+          person,categories,confirm:true
+        });
+        for(const input of Object.values(eraseChecks))input.checked=false;
+        eraseSelect.dispatchEvent(new Event("change"));
+        this.message("De valgte data er slettet af administrator.");
+      }catch(error){this.message("Sletning mislykkedes: "+this.errorText(error),true);}
+      finally{eraseButton.disabled=false;}
+    });
+    erasePanel.prepend(eraseIntro,eraseSelect,eraseCounts);
+    erasePanel.appendChild(eraseButton);
     const save = document.createElement("button");
     save.type="submit";save.className="tf-save tf-admin-save";
     save.textContent="Gem indstillinger";form.appendChild(save);
     form.addEventListener("submit",async e => {
       e.preventDefault();
+      if(Number(retentionDays.value)<Number(this.settings.timeline_retention_days??365) &&
+         !window.confirm("Kortere lagringstid sletter ældre tidslinjer permanent ved genindlæsning. Fortsæt?"))return;
       if(rows.some(row=>row.checkbox.checked&&Boolean(row.speaker.value)!==Boolean(row.ttsEngine.value))){
         this.message("Vælg både højttaler og dansk TTS-stemme for hver person, eller lad begge være tomme.",true);
         return;
@@ -3135,7 +3352,8 @@ class TinyFamilyPanel extends HTMLElement {
         return;
       }
       save.disabled=true;this.message("Gemmer …");
-      const persons=[],trackers={},batteries={},charging_sensors={},activity_sensors={},
+      const persons=[],trackers={},batteries={},charging_sensors={},activity_sensors={},power_save_sensors={},
+            phone_sensor_selection={},routine_learning_people=[],
             colors={},owners={},notification_targets={},smart_speakers={},tts_engines={},
             speed_limits_kmh={},person_notification_events={};
       for(const row of rows) if(row.checkbox.checked) {
@@ -3144,6 +3362,10 @@ class TinyFamilyPanel extends HTMLElement {
         batteries[row.person]=row.battery.value;
         charging_sensors[row.person]=row.charging.value;
         activity_sensors[row.person]=row.activity.value;
+        power_save_sensors[row.person]=row.powerSave.value;
+        phone_sensor_selection[row.person]=Object.keys(row.sensors).filter(
+          key=>row.sensors[key].checked);
+        if(row.personRoutine.checked)routine_learning_people.push(row.person);
         colors[row.person]=row.color.value;
         if(row.owner.value) owners[row.person]=row.owner.value;
         if(row.target.value) notification_targets[row.person]=row.target.value;
@@ -3157,13 +3379,14 @@ class TinyFamilyPanel extends HTMLElement {
       }
       try {
         await this.hassInstance.callApi("POST","tiny_family/settings",{
-          persons,trackers,batteries,charging_sensors,activity_sensors,
+          persons,trackers,batteries,charging_sensors,activity_sensors,power_save_sensors,
+          phone_sensor_selection,timeline_retention_days:Number(retentionDays.value),
           colors,owners,notification_targets,smart_speakers,tts_engines,
           speed_limit_kmh:Number(speedLimit.value),
           speed_limits_kmh,person_notification_events,
           notification_events:Object.keys(alertOptions).filter(key=>alertOptions[key].checked),
           auto_notifications_enabled:autoNotifications.checked,
-          learn_routines_enabled:routineLearning.checked,
+          learn_routines_enabled:routineLearning.checked,routine_learning_people,
           map_matching_enabled:mapMatchEnabled.checked,
           map_matching_backend:mapMatchBackend.value,
           map_matching_url:mapMatchUrl.value.trim()
@@ -3252,6 +3475,8 @@ class TinyFamilyPanel extends HTMLElement {
       managedAlerts,autoLabel,categoryBox,speedLabel
     ]);
     const routineGroup=makeGroup("Rutiner og samtykke",[routinesLabel]);
+    const retentionGroup=makeGroup("Tidslinjer og opbevaring",[retentionLabel]);
+    const eraseGroup=makeGroup("Administrator: slet data",[erasePanel]);
     const roadGroup=makeGroup("Vejtilpasning og OSRM",[mapMatchPanel]);
     mapMatchPanel.open=true;
     const migrationGroup=makeGroup("Migrering af gammel opsætning",[
@@ -3260,7 +3485,7 @@ class TinyFamilyPanel extends HTMLElement {
     const advancedGroup=makeGroup("Kortværktøjer og andre valg",[
       zoneTools,placeTools
     ]);
-     for(const group of [peopleGroup,alertsGroup,routineGroup,roadGroup,
+     for(const group of [peopleGroup,alertsGroup,routineGroup,retentionGroup,eraseGroup,roadGroup,
                         migrationGroup,advancedGroup]){
       group.addEventListener("toggle",()=>{
         if(group.open){

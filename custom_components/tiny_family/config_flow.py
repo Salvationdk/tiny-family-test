@@ -37,6 +37,9 @@ class TinyFamilyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             "batteries": {},
             "charging_sensors": {},
             "activity_sensors": {},
+            "power_save_sensors": {},
+            "phone_sensor_selection": {},
+            "timeline_retention_days": 365,
             "notification_events": sorted((
                 "zone_arrived", "zone_departed", "battery_low",
                 "speed_warning", "trip_ended", "weekly_summary",
@@ -163,6 +166,8 @@ class TinyFamilyOptionsFlow(config_entries.OptionsFlow):
                 "batteries": {k: v for k, v in options.get("batteries", {}).items() if k in persons},
                 "charging_sensors": {k: v for k, v in options.get("charging_sensors", {}).items() if k in persons},
                 "activity_sensors": {k: v for k, v in options.get("activity_sensors", {}).items() if k in persons},
+                "power_save_sensors": {k: v for k, v in options.get("power_save_sensors", {}).items() if k in persons},
+                "phone_sensor_selection": {k: v for k, v in options.get("phone_sensor_selection", {}).items() if k in persons},
                 "colors": {k: v for k, v in options.get("colors", {}).items() if k in persons},
                 "speed_limits_kmh": {k: v for k, v in options.get("speed_limits_kmh", {}).items() if k in persons},
                 "person_notification_events": {

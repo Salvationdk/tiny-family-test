@@ -1,9 +1,11 @@
 """Place detection, zone recognition and destination prediction."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from .const import DOMAIN, ZONE_SUGGEST_MIN_VISITS
 from .utils import _hav
+from .historical_prediction import history_confidence_boost
 
 
 def _nearest_zone_label(hass, lat, lon):
@@ -110,6 +112,26 @@ def _predict(st):
                          + min(0.12, approach / 20000))
         if confidence < 0.60:
             continue
+        # Unlike the fallback heuristic, repeated real route/time patterns
+        # have substantial weight when the administrator has enabled learning.
+        historical = st.get("history_patterns") or []
+        if historical:
+            try:
+                local = datetime.fromtimestamp(
+                    t_now, tz=ZoneInfo(st.get("prediction_timezone") or "UTC")
+                )
+                eta = estimate_destination_eta(
+                    d_now, st.get("prediction_speed_mps") or 0
+                ) or 0
+                arrival = local + timedelta(minutes=eta)
+                boost = history_confidence_boost(
+                    historical, place, base=(bla, blo), current=(lat, lon),
+                    weekday=arrival.weekday(),
+                    arrival_minute=arrival.hour * 60 + arrival.minute,
+                )
+                confidence = min(0.98, confidence + boost)
+            except (ValueError, TypeError, OverflowError, KeyError):
+                pass
         # High visit counts help only modestly; avoid selecting a very
         # distant frequently visited location over the nearer target.
         score = confidence - min(0.30, d_now / 500000)
