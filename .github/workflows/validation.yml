@@ -25,6 +25,10 @@ jobs:
           node-version: '22'
       - name: Regression tests (sensor threads and automation contexts)
         run: python -m unittest discover -s tests -p "test_runtime_safety.py" -v
+      - name: Polygon sensors and reusable YAML engine tests
+        run: |
+          python -m unittest discover -s tests -p "test_polygon_automations.py" -v
+          python -m unittest discover -s tests -p "test_automation_api.py" -v
       - name: Test persistent timeline archive
         run: python -m unittest discover -s tests -p "test_timeline_archive.py" -v
       - name: Map matching regression tests
